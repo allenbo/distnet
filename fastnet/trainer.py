@@ -1,6 +1,6 @@
 from pycuda import gpuarray, driver
 from fastnet import util, layer
-from fastnet.fastnet import FastNet, AdaptiveFastNet
+from fastnet.net import FastNet, AdaptiveFastNet
 from fastnet.layer import TRAIN, TEST
 from fastnet.parser import parse_config_file
 from fastnet.scheduler import Scheduler

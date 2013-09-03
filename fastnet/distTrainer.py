@@ -1,7 +1,7 @@
 from mpi4py import MPI
 from fastnet import trainer
 from trainer import Trainer
-from fastnet import fastnet
+from fastnet import net
 from fastnet import DistFastNet
 from fastnet.layer import TEST, TRAIN
 import argparse
