@@ -27,9 +27,9 @@ setup(
     license="GPL",
     version="0.1",
     url="http://github.com/rjpower/fastnet",
-    packages=[ 'striate' ],
+    packages=[ 'fastnet', 'cudaconv2', ],
     package_dir={ 
-      'striate' : 'striate',
+      'fastnet' : 'fastnet',
       'cudaconv2' : 'cudaconv2' ,
     },
     requires=[
