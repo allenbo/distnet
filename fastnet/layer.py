@@ -1,11 +1,11 @@
 from cuda_kernel import *
 from pycuda import cumath, gpuarray, driver as cuda
-from striate.util import *
+from fastnet.util import *
 import cudaconv2
 import numpy as np
 import sys
 
-from striate import util
+from fastnet import util
 
 
 PFout = False

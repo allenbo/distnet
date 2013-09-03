@@ -1,8 +1,8 @@
 from PIL import Image
 from pycuda import gpuarray, driver
-from striate.cuda_kernel import gpu_partial_copy_to, print_matrix
+from fastnet.cuda_kernel import gpu_partial_copy_to, print_matrix
 from os.path import basename
-from striate import util
+from fastnet import util
 import Queue
 import cPickle
 import collections

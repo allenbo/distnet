@@ -1,13 +1,13 @@
 from mpi4py import MPI
 from pycuda import cumath, gpuarray, driver as cuda
 from pycuda.gpuarray import GPUArray
-from striate import util
-from striate.cuda_kernel import gpu_copy_to, transpose
-from striate.layer import ConvLayer, NeuronLayer, MaxPoolLayer, \
+from fastnet import util
+from fastnet.cuda_kernel import gpu_copy_to, transpose
+from fastnet.layer import ConvLayer, NeuronLayer, MaxPoolLayer, \
   ResponseNormLayer, FCLayer, SoftmaxLayer, TRAIN, WeightedLayer, TEST
-from striate.parser import is_cudaconvnet_config, add_layers, FastNetBuilder, \
+from fastnet.parser import is_cudaconvnet_config, add_layers, FastNetBuilder, \
   CudaconvNetBuilder
-from striate.util import timer
+from fastnet.util import timer
 from virtual import virtual_array, Area
 import numpy as np
 import sys

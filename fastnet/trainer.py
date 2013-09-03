@@ -1,10 +1,10 @@
 from pycuda import gpuarray, driver
-from striate import util, layer
-from striate.fastnet import FastNet, AdaptiveFastNet
-from striate.layer import TRAIN, TEST
-from striate.parser import parse_config_file
-from striate.scheduler import Scheduler
-from striate.util import divup, timer, load
+from fastnet import util, layer
+from fastnet.fastnet import FastNet, AdaptiveFastNet
+from fastnet.layer import TRAIN, TEST
+from fastnet.parser import parse_config_file
+from fastnet.scheduler import Scheduler
+from fastnet.util import divup, timer, load
 from data import DataProvider, ImageNetDataProvider
 import argparse
 import cPickle

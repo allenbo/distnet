@@ -1,9 +1,9 @@
 #!/bin/sh
 
 
-python ~/striate/striate/trainer.py \
+python ~/fastnet/fastnet/trainer.py \
   --data_dir /ssd/nn-data/imagenet/ \
-  --param_file ~/striate/striate/imagenet.cfg \
+  --param_file ~/fastnet/fastnet/imagenet.cfg \
   --data_provider imagenet \
   --train_range 0-1200 \
   --test_range 1200-1300 \
@@ -12,7 +12,7 @@ python ~/striate/striate/trainer.py \
   --adjust_freq 100 \
   --learning_rate 0.1 \
   --batch_size 128 \
-  --checkpoint_dir ~/striate/striate/checkpoint/ \
+  --checkpoint_dir ~/fastnet/fastnet/checkpoint/ \
   --trainer minibatch \
   --num_batch 100000000 \
   $@
