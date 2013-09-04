@@ -19,6 +19,10 @@ import time
 class DataDumper(object):
   def __init__(self, target_path, max_mem_size = 500e5):
     self.target_path = target_path
+    dirname = os.path.dirname(self.target_path)
+    if not os.path.exists(dirname):
+      os.makedirs(dirname)
+      util.log('%s is not exist, create a new directory', dirname)
     self.data = []
     self.sz = 0
     self.count = 0
@@ -484,7 +488,7 @@ class ImageNetLayerwisedTrainer(Trainer):
     pprint.pprint(self.stack)
 
     self.layerwised = True
-    self.num_epoch = 2
+    self.num_epoch = self.frag_epoch
     self.net = FastNet(self.learning_rate, self.image_shape, self.curr_model)
 
   def report(self):
@@ -544,7 +548,7 @@ class ImageNetLayerwisedTrainer(Trainer):
       self.net = FastNet(1.0, self.image_shape, init_model = model)
 
       old_num_epoch = self.num_epoch
-      self.num_epoch = 1
+      self.num_epoch = self.subnet_epoch
       Trainer.train(self)
 
       self.curr_batch = self.curr_epoch = 0
@@ -685,38 +689,33 @@ class ImageNetCateGroupTrainer(MiniBatchTrainer):
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
-  parser.add_argument('--test_id', help = 'Test Id', default = None, type = int)
-  parser.add_argument('--data_dir', help = 'The directory that data stored')
-  parser.add_argument('--param_file', help = 'The param_file or checkpoint file')
-  parser.add_argument('--data_provider', help = 'The data provider', choices =['cifar10','imagenet', 'imagenetcategroup'])
-  parser.add_argument('--train_range', help = 'The range of the train set')
-  parser.add_argument('--test_range', help = 'THe range of the test set')
-  parser.add_argument('--save_freq', help = 'How often should I save the checkpoint file', default = 100, type = int)
-  parser.add_argument('--test_freq', help = 'How often should I test the model', default = 100, type = int)
+  parser.add_argument('--test_id', help = 'Test Id', default = None, type = int, required = True)
+  parser.add_argument('--data_dir', help = 'The directory that data stored', required = True)
+  parser.add_argument('--param_file', help = 'The param_file or checkpoint file', required = True)
+  parser.add_argument('--data_provider', help = 'The data provider', choices =['cifar10','imagenet', 'imagenetcategroup'], required = True)
+  parser.add_argument('--train_range', help = 'The range of the train set', required = True)
+  parser.add_argument('--test_range', help = 'THe range of the test set', required = True)
+  parser.add_argument('--save_freq', help = 'How often should I save the checkpoint file', default = 100, type = int, required = True)
+  parser.add_argument('--test_freq', help = 'How often should I test the model', default = 100, type = int, required = True)
   parser.add_argument('--adjust_freq', help = 'How often should I adjust the learning rate', default = 100, type = int)
   parser.add_argument('--factor', help = 'The factor used to adjust the learning rate', default ='1.0')
-  parser.add_argument('--learning_rate' , help = 'The scale learning rate', default = '0.1')
+  parser.add_argument('--learning_rate' , help = 'The scale learning rate', default = '0.1', required = True)
   parser.add_argument('--batch_size', help = 'The size of batch', default = 128, type = int)
-  parser.add_argument('--checkpoint_dir', help = 'The directory to save checkpoint file')
+  parser.add_argument('--checkpoint_dir', help = 'The directory to save checkpoint file', required = True)
 
   parser.add_argument('--trainer', help = 'The type of the trainer', default = 'normal', choices =
-      ['normal', 'catewise', 'categroup', 'minibatch', 'layerwise'])
+      ['normal', 'catewise', 'categroup', 'minibatch', 'layerwise'], required = True)
 
-
-  # extra argument
-  extra_argument = ['num_group_list', 'num_caterange_list', 'num_epoch', 'num_batch', 'output_dir', 'output_method']
   parser.add_argument('--num_group_list', help = 'The list of the group you want to split the data to')
   parser.add_argument('--num_caterange_list', help = 'The list of category range you want to train')
   parser.add_argument('--num_epoch', help = 'The number of epoch you want to train', default = 30, type = int)
-  parser.add_argument('--num_batch', help = 'The number of minibatch you want to train(num*1000)')
+  parser.add_argument('--num_batch', help = 'The number of minibatch you want to train')
   parser.add_argument('--output_dir', help = 'The directory where to dumper input for last fc layer while training', default='')
   parser.add_argument('--output_method', help = 'The method to hold the intermediate output', choices = ['memory', 'disk'], default = 'disk')
+  parser.add_argument('--subnet_epoch', help = 'The #epoch that subnet(layerwised trainer) will train', default = 1, type = int)
+  parser.add_argument('--frag_epoch', help = 'The #epoch that incomplete(layerwised trainer) will train', default = 1, type = int)
 
   args = parser.parse_args()
-
-  for a in [att for att in dir(args) if not att.startswith('__')]:
-    if not getattr(args, a) and a not in extra_argument:
-      assert False, 'You have to specify a value of %s' % a
 
 
   param_dict = {}
@@ -786,9 +785,10 @@ if __name__ == '__main__':
   param_dict['num_caterange_list'] = util.string_to_int_list(args.num_caterange_list)
   param_dict['output_dir'] = args.output_dir
   param_dict['output_method'] = args.output_method
+  param_dict['subnet_epoch'] = args.subnet_epoch
+  param_dict['frag_epoch'] = args.subnet_epoch
 
 
   trainer = Trainer.get_trainer_by_name(trainer, param_dict)
   util.log('start to train...')
   trainer.train()
-  #trainer.predict(['pool5'], 'image.opt')
