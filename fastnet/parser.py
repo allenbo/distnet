@@ -1,6 +1,6 @@
-from striate.layer import ConvLayer, MaxPoolLayer, AvgPoolLayer, \
+from fastnet.layer import ConvLayer, MaxPoolLayer, AvgPoolLayer, \
   CrossMapResponseNormLayer, SoftmaxLayer, NeuronLayer, ResponseNormLayer, FCLayer
-from striate.util import isfloat
+from fastnet.util import isfloat
 import numpy as np
 import os
 

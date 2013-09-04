@@ -1,6 +1,6 @@
 #!/bin/sh
 
-python ~/striate/striate/trainer.py \
+python ~/fastnet/fastnet/trainer.py \
   --data_dir /ssd/nn-data/cifar-10.old/ \
   --param_file ~/striate/config/cifar_from_imagenet.cfg \
   --data_provider cifar10 \
@@ -11,7 +11,8 @@ python ~/striate/striate/trainer.py \
   --adjust_freq 100 \
   --learning_rate 1.0 \
   --batch_size 128 \
-  --checkpoint_dir ~/striate/striate/checkpoint/ \
+  --checkpoint_dir ~/fastnet/fastnet/checkpoint/ \
+  --trainer layerwise \
   --output_dir /scratch1/justin/cifar-pickle/ \
   --trainer layerwise \
   --subnet_epoch 2 \

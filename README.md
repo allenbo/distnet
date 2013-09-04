@@ -3,12 +3,22 @@ Striate
 A [convolutional neural network](http://yann.lecun.com/exdb/lenet/) framework, building on 
 top of the convolutional kernel code from [cuda-convnet](https://code.google.com/p/cuda-convnet/).
 
+
+**Setup**
+
+```
+git clone https://github.com/rjpower/fastnet
+cd fastnet
+python setup.py develop [--user]
+```
+
 **Usage**
 
-  See `python striate/trainer.py --help` for examples of running the trainer.
+To run a trainer directly:
 
-    (cd cudaconv2 && make -j)
-    python striate/trainer.py
+    python fastnet/trainer.py --help
+    
+Take a look at the scripts in `fastnet/scripts` for examples of how to run your own network.
 
 
 **Requires**

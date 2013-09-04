@@ -1,0 +1,17 @@
+4 test adaptive learning rate with 0.01 relu neuron, the learning rate factor [1.05, 0.95, 0.9, 0.85]
+5 test with 0.01 relu normal trainer
+6 test with relu normal trainer test freq = 10
+7 test with relu adaptive learning rate trainer, test freq = 10, factor = [0.95, 0.9, 0.85, 0.8]
+8 compare to test 7, using the different data as train and test data
+9 compare to test 7, after 30 iteration to adjust
+10 run normal trainer 50 epoches, see how far it can go
+11 run adaptive learning rate trainer, 40 iteration, factor [1.05, 0.95, 0.9, 0.85, 0.8]
+12 run adaptive learning rate trainer, 40 iteration, factor [1.05, 0.95, 0.9, 0.85, 0.8] with 1.28 learning rate scale
+13 run normal trainer, with 1.28 learning rate scale and 512 batch size
+14 run normal trainer, with 1.28 learning rate scale and 256 batch size
+15 run normal trainer, with 1.28 learning rate scale and 256 batch size, 70 epochs
+16 run adaptive learning rate trainer when increment is larger than 5%, with 1.28 learning rate scale and 128 batch size, 70 epochs, factor [1.05, 0.95, 0.9, 0.85, 0.8]
+17 run adaptive learning rate trainer when increment is larger than 2.5%, with 1.28 learning rate scale and 128 batch size, 70 epochs, factor [1.05, 0.95, 0.9, 0.85, 0.8]
+18 run adaptive learning rate trainer when increment is larger than 2.5%, with 1 learning rate scale and 128 batch size, 30 epochs, factor [1.5, 1.2, 0.8, 0.66]
+19 compare to 18, the initial learning rate is 1.28
+20 compare to 19, the initial learning rate is 2

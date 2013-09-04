@@ -1,9 +1,9 @@
 from mpi4py import MPI
-from striate import trainer
+from fastnet import trainer
 from trainer import Trainer
-from striate import fastnet
+from fastnet import net
 from fastnet import DistFastNet
-from striate.layer import TEST, TRAIN
+from fastnet.layer import TEST, TRAIN
 import argparse
 
 comm = MPI.COMM_WORLD
