@@ -19,7 +19,7 @@ class ShowConvNet:
   def __init__(self, checkpoint, show_filters, channels = 3):
     self.checkpoint = checkpoint
     self.model = util.load(self.checkpoint)
-    self.layers = self.model['model_state']['layers']
+    self.layers = self.model['layers']
     self.show_filters = show_filters
     self.channels = channels
 

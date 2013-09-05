@@ -1,5 +1,3 @@
-from pycuda import cumath, gpuarray, driver as cuda
-from pycuda.gpuarray import GPUArray
 from fastnet import util
 from fastnet.cuda_kernel import gpu_copy_to, transpose
 from fastnet.layer import ConvLayer, NeuronLayer, MaxPoolLayer, \
@@ -7,8 +5,11 @@ from fastnet.layer import ConvLayer, NeuronLayer, MaxPoolLayer, \
 from fastnet.parser import is_cudaconvnet_config, add_layers, FastNetBuilder, \
   CudaconvNetBuilder
 from fastnet.util import timer
+from pycuda import cumath, gpuarray, driver
+from pycuda.gpuarray import GPUArray
 import numpy as np
 import sys
+import time
 
 
 class FastNet(object):
@@ -17,7 +18,6 @@ class FastNet(object):
     self.numColor, self.imgSize, _ , self.batchSize = imgShape
     self.imgShapes = [imgShape]
     self.inputShapes = [(self.numColor * (self.imgSize ** 2), self.batchSize)]
-    print self.inputShapes
     self.layers = []
     self.outputs = []
     self.grads = []
@@ -33,9 +33,9 @@ class FastNet(object):
       util.log('initial model not provided, network doesn\'t have any layer')
       return
 
-    if 'model_state' in init_model:
+    if 'layers' in init_model:
       # Loading from a checkpoint
-      add_layers(FastNetBuilder(), self, init_model['model_state']['layers'])
+      add_layers(FastNetBuilder(), self, init_model['layers'])
     else:
       if is_cudaconvnet_config(init_model):
         # AlexK config file
@@ -65,7 +65,7 @@ class FastNet(object):
 
     self.outputs.append(gpuarray.zeros((row, col), dtype=np.float32))
     self.grads.append(gpuarray.zeros(self.inputShapes[-2], dtype=np.float32))
-    print >> sys.stderr,  '%s[%s]:%s' % (layer.name, layer.type, outputShape)
+    print >> sys.stderr,  '%s  [%s] : %s' % (layer.name, layer.type, outputShape)
 
   def del_layer(self):
     name = self.layers[-1]
@@ -166,9 +166,8 @@ class FastNet(object):
   def prepare_for_train(self, data, label):
     timer.start()
     input = data
-    ########
-    # The last minibatch of data_batch file may not be 1024
-    ########
+    
+    # If data size doesn't match our expected batchsize, reshape outputs.
     if input.shape[1] != self.batchSize:
       self.batchSize = input.shape[1]
       for l in self.layers:
@@ -190,39 +189,43 @@ class FastNet(object):
 
         self.outputs.append(gpuarray.zeros((row, col), dtype=np.float32))
         self.grads.append(gpuarray.zeros(self.inputShapes[-2], dtype=np.float32))
-
+  
     if not isinstance(data, GPUArray):
-      self.data = gpuarray.to_gpu(data).astype(np.float32)
-    else:
-      self.data = data
+      data = gpuarray.to_gpu(data).astype(np.float32)
 
     if not isinstance(label, GPUArray):
-      self.label = gpuarray.to_gpu(label).astype(np.float32)
-    else:
-      self.label = label
-
-    self.label = self.label.reshape((label.size, 1))
+      label = gpuarray.to_gpu(label).astype(np.float32)
+    
+    label = label.reshape((label.size, 1))
     self.numCase += input.shape[1]
     outputShape = self.inputShapes[-1]
+
     if self.output is None or self.output.shape != outputShape:
       self.output = gpuarray.zeros(outputShape, dtype=np.float32)
 
+    return data, label
+
   def train_batch(self, data, label, train=TRAIN):
-    self.prepare_for_train(data, label)
-    self.fprop(self.data, self.output, train)
-    cost, correct = self.get_cost(self.label, self.output)
+    data, label = self.prepare_for_train(data, label)
+    self.fprop(data, self.output, train)
+    cost, correct = self.get_cost(label, self.output)
     self.cost += cost
     self.correct += correct
 
     if self.save_layers is not None:
       it = [(i, self.layers[i].name) for i in range(len(self.layers)) if self.layers[i].name in self.save_layers]
       outputs = [transpose(o).get() for o in self.outputs]
-      label = self.label.get()
+      label = label.get()
       self.save_output.extend([(label[i, 0], dict([(name, outputs[j][i,:]) for j, name in it])) for i in range(self.batchSize)])
 
     if train == TRAIN:
-      self.bprop(self.data, self.label, self.output)
+      self.bprop(data, label, self.output)
       self.update()
+    
+    # make sure we have everything finished before returning!
+    # also, synchronize properly releases the Python GIL,
+    # allowing other threads to make progress. 
+    driver.Context.synchronize()
 
   def get_dumped_layers(self):
     layers = []

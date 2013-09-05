@@ -66,7 +66,6 @@ class WeightedLayer(Layer):
     if weight is None:
       self.weight = gpuarray.to_gpu(randn(weightShape, np.float32) * self.initW)
     else:
-      print >> sys.stderr,  'init weight from disk'
       self.weight = gpuarray.to_gpu(weight)#.astype(np.float32)
 
     if bias is None:
@@ -75,7 +74,6 @@ class WeightedLayer(Layer):
       else:
         self.bias = gpuarray.zeros(biasShape, dtype=np.float32)
     else:
-      print >> sys.stderr,  'init bias from disk'
       self.bias = gpuarray.to_gpu(bias).astype(np.float32)
 
     self.weightGrad = gpuarray.zeros_like(self.weight)
@@ -84,15 +82,11 @@ class WeightedLayer(Layer):
       if weightIncr is None:
         self.weightIncr = gpuarray.zeros_like(self.weight)
       else:
-        print >> sys.stderr,  'init weightIncr from disk'
-        #weightIncr = np.require(weightIncr, dtype = np.float, requirements = 'C')
         self.weightIncr = gpuarray.to_gpu(weightIncr)
     if self.momW > 0.0:
       if biasIncr is None:
         self.biasIncr = gpuarray.zeros_like(self.bias)
       else:
-        print >> sys.stderr,  'init biasIncr from disk'
-        #biasIncr = np.require(biasIncr, dtype = np.float, requirements = 'C')
         self.biasIncr = gpuarray.to_gpu(biasIncr)
 
 
@@ -178,6 +172,9 @@ class ConvLayer(WeightedLayer):
     self.biasShape = (self.numFilter, 1)
     WeightedLayer.__init__(self, name, 'conv', epsW, epsB, initW, initB, momW, momB, wc, weight,
         bias, weightIncr, biasIncr, self.weightShape, self.biasShape, disableBprop)
+    util.log('num_filter:%d padding:%d stride:%d initW:%s initB:%s, epsW:%s epsB:%s, momW:%s \
+    momB:%s wc:%s', self.numFilter, self.padding, self.stride, self.initW, self.initB, self.epsW,
+    self.epsB, self.momW, self.momB, self.wc)
 
 
   def dump(self):
