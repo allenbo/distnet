@@ -42,9 +42,17 @@ class Timer:
     dic = self.func_time
     for key in sorted(dic):
       print key, ':', dic[key]
-
-
 timer = Timer()
+
+
+class EZTimer(object):
+  def __init__(self, msg=''):
+    self.msg = msg
+    self.start = time.time()
+    
+  def __del__(self):
+    log('Operation %s finished in %.5f seconds', self.msg, time.time() - self.start) 
+    
 
 def divup(x, base):
   if x / base * base == x:
