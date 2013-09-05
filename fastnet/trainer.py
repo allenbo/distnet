@@ -1,11 +1,11 @@
-from pycuda import gpuarray, driver
+from data import DataProvider, ImageNetDataProvider
 from fastnet import util, layer
-from fastnet.net import FastNet, AdaptiveFastNet
 from fastnet.layer import TRAIN, TEST
+from fastnet.net import FastNet, AdaptiveFastNet
 from fastnet.parser import parse_config_file
 from fastnet.scheduler import Scheduler
 from fastnet.util import divup, timer, load
-from data import DataProvider, ImageNetDataProvider
+from pycuda import gpuarray, driver
 import argparse
 import cPickle
 import glob
@@ -15,6 +15,7 @@ import pprint
 import re
 import sys
 import time
+import zipfile
 
 class DataDumper(object):
   def __init__(self, target_path, max_mem_size = 500e5):
@@ -59,8 +60,6 @@ class DataDumper(object):
     self.count += 1
 
   def get_count(self):return self.count
-
-
 
 
 
@@ -146,33 +145,38 @@ class CheckpointDumper(object):
     self.test_id = test_id
     self.regex = re.compile('^test%d-(\d+)$' % self.test_id)
 
-    cp_pattern = self.checkpoint_dir + '/test%d-*' % self.test_id
-    cp_files = glob.glob(cp_pattern)
-
-    if not cp_files:
-      self.checkpoint = None
-      self.checkpoint_file = None
-    else:
-      self.checkpoint_file = sorted(cp_files, key=os.path.getmtime)[-1]
-      util.log('Loading from checkpoint file: %s', self.checkpoint_file)
-      self.checkpoint = util.load(self.checkpoint_file)
 
   def get_checkpoint(self):
-    return self.checkpoint
-
+    cp_pattern = self.checkpoint_dir + '/test%d-*' % self.test_id
+    cp_files = glob.glob(cp_pattern)
+    if not cp_files:
+      return None
+    
+    checkpoint_file = sorted(cp_files, key=os.path.getmtime)[-1]
+    util.log('Loading from checkpoint file: %s', checkpoint_file)
+    dict = {}
+    
+    with zipfile.ZipFile(checkpoint_file, mode='r') as zip_in:
+      for fname in zip_in.namelist():
+        with zip_in.open(fname, mode='r') as entry_f: 
+          dict[fname] = cPickle.load(entry_f)
+    
+    return dict
 
   def dump(self, checkpoint, suffix):
-    self.checkpoint = checkpoint
     saved_filename = [f for f in os.listdir(self.checkpoint_dir) if self.regex.match(f)]
     for f in saved_filename:
       os.remove(os.path.join(self.checkpoint_dir, f))
     checkpoint_filename = "test%d-%d" % (self.test_id, suffix)
     self.checkpoint_file = os.path.join(self.checkpoint_dir, checkpoint_filename)
     print >> sys.stderr,  self.checkpoint_file
-    with open(self.checkpoint_file, 'w') as f:
-      cPickle.dump(checkpoint, f, protocol=-1)
-    util.log('save file finished')
+    
+    with zipfile.ZipFile(self.checkpoint_file, mode='w') as output:
+      for k, v in checkpoint.iteritems():
+        output.writestr(k, cPickle.dumps(v, protocol=-1)) 
+          
 
+    util.log('save file finished')
 
 
 # Trainer should take: (training dp, test dp, fastnet, checkpoint dir)
@@ -184,6 +188,8 @@ class Trainer:
     self.batch_size = batch_size
     self.net = net
     self.curr_batch = self.curr_epoch = 0
+    
+    self.start_time = time.time()
 
     for k, v in kw.iteritems():
       setattr(self, k, v)
@@ -191,8 +197,8 @@ class Trainer:
 
     checkpoint = self.checkpoint_dumper.get_checkpoint()
     if checkpoint:
-      self.train_outputs = checkpoint['model_state']['train_outputs']
-      self.test_outputs = checkpoint['model_state']['test_outputs']
+      self.train_outputs = checkpoint['train_outputs']
+      self.test_outputs = checkpoint['test_outputs']
     else:
       self.train_outputs = []
       self.test_outputs = []
@@ -232,18 +238,19 @@ class Trainer:
     model['train_outputs'] = self.train_outputs
     model['test_outputs'] = self.test_outputs
 
-    dic = {'model_state': model, 'op':None}
     print >> sys.stderr,  '---- save checkpoint ----'
     self.print_net_summary()
-    self.checkpoint_dumper.dump(checkpoint = dic, suffix = self.curr_epoch)
+    self.checkpoint_dumper.dump(checkpoint = model, suffix = self.curr_epoch)
 
 
   def adjust_lr(self):
     print >> sys.stderr,  '---- adjust learning rate ----'
     self.net.adjust_learning_rate(self.factor)
+    
+  def elapsed(self):
+    return time.time() - self.start_time
 
   def get_test_error(self):
-    start = time.time()
     test_data = self.test_dp.get_next_batch(self.batch_size)
 
     input, label = test_data.data, test_data.labels
@@ -251,9 +258,9 @@ class Trainer:
     self._capture_test_data()
 
     cost , correct, numCase, = self.net.get_batch_information()
-    self.test_outputs += [({'logprob': [cost, 1 - correct]}, numCase, time.time() - start)]
+    self.test_outputs += [({'logprob': [cost, 1 - correct]}, numCase, self.elapsed())]
     print >> sys.stderr,  '---- test ----'
-    print >> sys.stderr,  'error: %f logreg: %f time: %f' % (1 - correct, cost, time.time() - start)
+    print >> sys.stderr,  'error: %f logreg: %f' % (1 - correct, cost)
 
   def print_net_summary(self):
     print >> sys.stderr,  '--------------------------------------------------------------'
@@ -303,20 +310,19 @@ class Trainer:
     self.print_net_summary()
     util.log('Starting training...')
     while self.should_continue_training():
+      batch_start = time.time()
       train_data = self.train_dp.get_next_batch(self.batch_size)
-
       self.curr_epoch = train_data.epoch
       self.curr_batch += 1
-
-      start = time.time()
+      
       input, label = train_data.data, train_data.labels
       self.net.train_batch(input, label)
       if self.should_capture_training_data():
         self._capture_training_data()
 
       cost , correct, numCase = self.net.get_batch_information()
-      self.train_outputs += [({'logprob': [cost, 1 - correct]}, numCase, time.time() - start)]
-      print >> sys.stderr,  '%d.%d: error: %f logreg: %f time: %f' % (self.curr_epoch, self.curr_batch, 1 - correct, cost, time.time() - start)
+      self.train_outputs += [({'logprob': [cost, 1 - correct]}, numCase, self.elapsed())]
+      print >> sys.stderr,  '%d.%d: error: %f logreg: %f time: %f' % (self.curr_epoch, self.curr_batch, 1 - correct, cost, time.time() - batch_start)
 
       if self.check_test_data():
         self.get_test_error()
@@ -518,7 +524,7 @@ class ImageNetLayerwisedTrainer(Trainer):
       self.curr_model = self.checkpoint_dumper.get_checkpoint()
       self.curr_batch = self.curr_epoch =  0
 
-      l = self.curr_model['model_state']['layers'][-2]
+      l = self.curr_model['layers'][-2]
       assert l['type'] == 'fc'
 
       l['weight'] = None
@@ -529,7 +535,7 @@ class ImageNetLayerwisedTrainer(Trainer):
       if i == len(self.stack) - 1:
         self.num_epoch = self.final_num_epoch
 
-      layers = self.curr_model['model_state']['layers']
+      layers = self.curr_model['layers']
       stack[0]['epsW'] *= self.learning_rate
       stack[0]['epsB'] *= self.learning_rate
       model = [stack[0], stack[1], layers[-2], layers[-1]]
@@ -542,7 +548,7 @@ class ImageNetLayerwisedTrainer(Trainer):
       self.test_dumper = None
 
       image_shape_old = self.image_shape
-      shape = self.curr_model['model_state']['layers'][-3]['outputShape']
+      shape = self.curr_model['layers'][-3]['outputShape']
       size= shape[0] * shape[1] * shape[2]
       self.image_shape = (size, 1, 1, self.batch_size)
       self.net = FastNet(1.0, self.image_shape, init_model = model)
@@ -556,19 +562,21 @@ class ImageNetLayerwisedTrainer(Trainer):
       self.num_epoch = old_num_epoch
 
       self.image_shape = image_shape_old
-      del layers[-1], layers[-1]
+      del layers[-1]
+      del layers[-1]
+
       layers.extend(self.net.get_dumped_layers())
 
       self.train_dp = train_dp_old
       self.test_dp = test_dp_old
 
-      #for layer in self.curr_model['model_state']['layers'][:-2]:
+      #for layer in self.curr_model['layers'][:-2]:
       #  layer['disableBprop'] = True
 
       #stack[0]['epsW'] *= self.learning_rate
       #stack[0]['epsB'] *= self.learning_rate
-      #self.curr_model['model_state']['layers'].insert(-2, stack[0])
-      #self.curr_model['model_state']['layers'].insert(-2, stack[1])
+      #self.curr_model['layers'].insert(-2, stack[0])
+      #self.curr_model['layers'].insert(-2, stack[1])
 
 
       self.init_output_dumper()
@@ -612,7 +620,7 @@ class ImageNetCatewisedTrainer(MiniBatchTrainer):
       self.num_batch = self.num_batch_list[i]
 
       model = self.checkpoint_dumper.get_checkpoint()
-      layers = model['model_state']['layers']
+      layers = model['layers']
 
       fc = layers[-2]
       fc['weight'] = None
@@ -668,7 +676,7 @@ class ImageNetCateGroupTrainer(MiniBatchTrainer):
       self.num_batch = self.num_batch_list[i]
 
       model = self.checkpoint_dumper.get_checkpoint()
-      layers = model['model_state']['layers']
+      layers = model['layers']
 
       fc = layers[-2]
       fc['outputSize'] = group
