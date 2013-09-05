@@ -187,7 +187,7 @@ if __name__ == '__main__':
   param_dict['init_model'] = init_model
 
   #create train dataprovider and test dataprovider
-  dp_class = DataProvider.get_by_name(param_dict['data_provider'])
+  dp_class = get_by_name(param_dict['data_provider'])
   train_dp = dp_class(param_dict['data_dir'], param_dict['train_range'])
   test_dp = dp_class(param_dict['data_dir'], param_dict['test_range'])
   param_dict['train_dp'] = train_dp

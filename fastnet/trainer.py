@@ -1,5 +1,4 @@
-from data import DataProvider, ImageNetDataProvider
-from fastnet import util, layer
+from fastnet import util, layer, data
 from fastnet.layer import TRAIN, TEST
 from fastnet.net import FastNet, AdaptiveFastNet
 from fastnet.parser import parse_config_file
@@ -507,13 +506,13 @@ class ImageNetLayerwisedTrainer(Trainer):
 
   def init_subnet_data_provider(self):
     if self.output_method == 'disk':
-      dp = DataProvider.get_by_name('intermediate')
+      dp = data.get_by_name('intermediate')
       count = self.train_dumper.get_count()
       self.train_dp = dp(self.train_output_filename,  range(0, count), 'fc')
       count = self.test_dumper.get_count()
       self.test_dp = dp(self.test_output_filename, range(0, count), 'fc')
     elif self.output_method == 'memory':
-      dp = DataProvider.get_by_name('memory')
+      dp = data.get_by_name('memory')
       self.train_dp = dp(self.train_dumper)
       self.test_dp = dp(self.test_dumper)
 
@@ -606,7 +605,7 @@ class ImageNetCatewisedTrainer(MiniBatchTrainer):
 
 
   def set_category_range(self, r):
-    dp = DataProvider.get_by_name(self.data_provider)
+    dp = data.get_by_name(self.data_provider)
     self.train_dp = dp(self.data_dir, self.train_range, category_range = range(r))
     self.test_dp = dp(self.data_dir, self.test_range, category_range = range(r))
 
@@ -662,7 +661,7 @@ class ImageNetCateGroupTrainer(MiniBatchTrainer):
     MiniBatchTrainer._finish_init(self)
 
   def set_num_group(self, n):
-    dp = DataProvider.get_by_name(self.data_provider)
+    dp = data.get_by_name(self.data_provider)
     self.train_dp = dp(self.data_dir, self.train_range, n)
     self.test_dp = dp(self.data_dir, self.test_range, n)
 
@@ -774,7 +773,7 @@ if __name__ == '__main__':
   param_dict['init_model'] = init_model
 
   #create train dataprovider and test dataprovider
-  dp_class = DataProvider.get_by_name(param_dict['data_provider'])
+  dp_class = data.get_by_name(param_dict['data_provider'])
   train_dp = dp_class(param_dict['data_dir'], param_dict['train_range'])
   test_dp = dp_class(param_dict['data_dir'], param_dict['test_range'])
   param_dict['train_dp'] = train_dp

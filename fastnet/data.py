@@ -24,8 +24,7 @@ class BatchData(object):
     self.data = data
     self.labels = labels
     self.epoch = epoch
-  
-dp_dict = {}
+
 
 class DataProvider(object):
   def __init__(self, data_dir='.', batch_range=None):
@@ -68,25 +67,6 @@ class DataProvider(object):
 
   def get_batch_num(self):
     return len(self.batch_range)
-
-  @staticmethod
-  def register_data_provider(name, _class):
-    if name in dp_dict:
-      print 'Data Provider', name, 'already registered'
-    else:
-      dp_dict[name] = _class
-
-  @staticmethod
-  def get_by_name(name):
-    if name not in dp_dict:
-      print >> sys.stderr, 'There is no such data provider --', name, '--'
-      sys.exit(-1)
-    else:
-      dp_klass = dp_dict[name]
-      def construct_dp(*args, **kw):
-        dp = dp_klass(*args, **kw)
-        return ParallelDataProvider(dp)
-      return construct_dp
 
 
 
@@ -387,9 +367,28 @@ class ParallelDataProvider(DataProvider):
     
     return BatchData(data, labels, self._gpu_batch.epoch)
 
+  
+dp_dict = {}
+def register_data_provider(name, _class):
+  if name in dp_dict:
+    print 'Data Provider', name, 'already registered'
+  else:
+    dp_dict[name] = _class
 
-DataProvider.register_data_provider('cifar10', CifarDataProvider)
-DataProvider.register_data_provider('imagenet', ImageNetDataProvider)
-DataProvider.register_data_provider('intermediate', IntermediateDataProvider)
-DataProvider.register_data_provider('memory', MemoryDataProvider)
+def get_by_name(name):
+  if name not in dp_dict:
+    print >> sys.stderr, 'There is no such data provider --', name, '--'
+    sys.exit(-1)
+  else:
+    dp_klass = dp_dict[name]
+    def construct_dp(*args, **kw):
+      dp = dp_klass(*args, **kw)
+      return ParallelDataProvider(dp)
+    return construct_dp
+
+
+register_data_provider('cifar10', CifarDataProvider)
+register_data_provider('imagenet', ImageNetDataProvider)
+register_data_provider('intermediate', IntermediateDataProvider)
+register_data_provider('memory', MemoryDataProvider)
 
