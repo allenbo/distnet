@@ -12,6 +12,20 @@ import sys
 import time
 
 
+
+class FastNetIterator:
+  def __init__(self, layers):
+    util.log('create a iterator')
+    self.layers = layers
+    self.ind = 0
+  def next(self):
+    if self.ind == len(self.layers):
+      raise StopIteration
+    else:
+      layer = self.layers[self.ind]
+      self.ind += 1
+      return layer
+
 class FastNet(object):
   def __init__(self, learningRate, imgShape, init_model = None):
     self.learningRate = learningRate
@@ -47,15 +61,23 @@ class FastNet(object):
 
     util.log('Learning rates:')
     for l in self.layers:
-      util.log('%s: %s %s', l.name, getattr(l, 'epsW', 0), getattr(l, 'epsB', 0))
+      if isinstance(l, WeightedLayer):
+        util.log('%s: %s %s', l.name, getattr(l, 'epsW', 0), getattr(l, 'epsB', 0))
 
   def save_layerouput(self, layers):
     self.save_layers = layers
 
+  def __getitem__(self, name):
+    for layer in self.layers:
+      if layer.name == name:
+        return layer
+
+  def __iter__(self):
+    util.log('get iterator')
+    return FastNetIterator(self.layers)
+
   def append_layer(self, layer):
     self.layers.append(layer)
-    if layer.type == 'conv':
-      self.numConv += 1
 
     outputShape = layer.get_output_shape()
     row = outputShape[0] * outputShape[1] * outputShape[2]
@@ -67,42 +89,50 @@ class FastNet(object):
     self.grads.append(gpuarray.zeros(self.inputShapes[-2], dtype=np.float32))
     print >> sys.stderr,  '%s  [%s] : %s' % (layer.name, layer.type, outputShape)
 
-  def del_layer(self):
-    name = self.layers[-1]
-    del self.layers[-1], self.inputShapes[-1], self.imgShapes[-1], self.outputs[-1], self.grads[-1]
-    print 'delete layer', name
+  def drop_layer_from(self, name):
+    for i, layer in enumerate(self.layers):
+      if layer.name == name:
+        break
+    return_layers = self.layers[i:]
+    self.layers = self.layers[0:i]
+    del self.inputShapes[i:]
+    del self.imgShapes[i:]
+    del self.outputs[i:]
+    del self.grads[i:]
+    print 'delete layer from', name
     print 'the last layer would be', self.layers[-1].name
+    return return_layers
 
   @staticmethod
   def split_conv_to_stack(conv_params):
-    stack = []
+    stack = {}
     s = []
     for ld in conv_params:
       if ld['type'] in ['fc', 'softmax']:
         break
       elif ld['type'] == 'conv':
         if s != []:
-          stack.append(s)
+          stack[s[0]['name']] = s
         s = [ld]
       else:
         s.append(ld)
-    stack.append(s)
+    stack[s[0]['name']] = s
     return stack
 
   @staticmethod
   def split_fc_to_stack(fc_params):
-    stack = []
+    stack = {}
     s = []
     for ld in fc_params:
       if ld['type'] == 'softmax':
         break
       elif ld['type'] == 'fc':
         if s != []:
-          stack.append(s)
+          stack[s[0]['name']] = s
         s = [ld]
       else:
         s.append(ld)
-    stack.append(s)
+    stack[s[0]['name']] = s
     return stack
 
   def fprop(self, data, probs, train=TRAIN):
@@ -221,7 +251,7 @@ class FastNet(object):
     if train == TRAIN:
       self.bprop(data, label, self.output)
       self.update()
-    
+
     # make sure we have everything finished before returning!
     # also, synchronize properly releases the Python GIL,
     # allowing other threads to make progress. 
