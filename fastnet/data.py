@@ -34,7 +34,6 @@ class DataProvider(object):
     self.curr_batch_index = 0
     self.curr_batch = None
     self.curr_epoch = 1
-    self.data = None
 
     if os.path.exists(self.meta_file):
       self.batch_meta = util.load(self.meta_file)
@@ -53,12 +52,15 @@ class DataProvider(object):
     self.curr_batch_index = 0
     self.curr_batch = None
     self.curr_epoch = 1
-    self.data = None
     random.shuffle(self.batch_range)
 
   def get_next_index(self):
-    self.curr_batch_index = (self.curr_batch_index + 1) % len(self.batch_range)
-    return self.curr_batch_index
+    self.curr_batch_index = self.curr_batch_index + 1
+    if self.curr_batch_index == len(self.batch_range) + 1:
+      random.shuffle(self.batch_range)
+      self.curr_epoch += 1
+      self.curr_batch_index = 1
+    self.curr_batch = self.batch_range[self.curr_batch_index - 1]
 
   def del_batch(self, batch):
     print 'delete batch', batch
@@ -141,10 +143,6 @@ class ImageNetDataProvider(DataProvider):
   def get_next_batch(self):
     self.get_next_index()
 
-    self.curr_batch = self.batch_range[self.curr_batch_index]
-    if self.curr_batch_index == 0:
-      self.curr_epoch += 1
-
     epoch = self.curr_epoch
     batchnum = self.curr_batch
     names = self.images[self.batches[batchnum]]
@@ -188,7 +186,7 @@ class ImageNetDataProvider(DataProvider):
     # util.log("Loaded %d images in %.2f seconds (%.2f _load, %.2f align)",
     #         num_imgs, time.time() - start, load_time, align_time)
     # self.data = {'data' : SharedArray(cropped), 'labels' : SharedArray(labels)}
-    
+
     return BatchData(cropped, labels, epoch)
 
   # Returns the dimensionality of the two data matrices returned by get_next_batch
@@ -205,17 +203,10 @@ class CifarDataProvider(DataProvider):
   BATCH_REGEX = re.compile('^data_batch_(\d+)$')
   def get_next_batch(self):
     self.get_next_index()
-    if self.curr_batch_index == 0:
-      random.shuffle(self.batch_range)
-      self.curr_epoch += 1
-    self.curr_batch = self.batch_range[self.curr_batch_index]
-    # print self.batch_range, self.curr_batch
-
     filename = os.path.join(self.data_dir, 'data_batch_%d' % self.curr_batch)
 
     data = util.load(filename)
     img = data['data'] - self.batch_meta['data_mean']
-    
     return BatchData(np.require(img, requirements='C', dtype=np.float32),
                      np.array(data['labels']),
                      self.curr_epoch)
@@ -237,16 +228,10 @@ class IntermediateDataProvider(DataProvider):
   def get_next_batch(self):
     self.get_next_index()
 
-    if self.curr_batch_index == 0:
-      random.shuffle(self.batch_range)
-      self.curr_epoch += 1
-    self.curr_batch = self.batch_range[self.curr_batch_index]
-
     filename = os.path.join(self.data_dir + '.%s' % self.curr_batch)
+    util.log('reading from %s', filename)
 
     data_dic = util.load(filename)
-    #data = np.concantenate([data[self.data_name] for data in data_list], axis = 1)
-    #labels = np.concatenate([np.array( data['labels'].tolist() ) for data in data_list])
     data  = data_dic[self.data_name].transpose()
     labels = data_dic['labels']
     data = np.require(data, requirements='C', dtype=np.float32)
@@ -268,17 +253,11 @@ class MemoryDataProvider(DataProvider):
   def get_next_batch(self):
     self.get_next_index()
 
-    if self.curr_batch_index == 0:
-      random.shuffle(self.batch_range)
-      self.curr_epoch += 1
-    self.curr_batch = self.batch_range[self.curr_batch_index]
-
     data = self.data_list[self.curr_batch]
     labels = data['labels']
     img = np.require(data[self.data_name].transpose(), requirements='C', dtype=np.float32)
-    
     return BatchData(img, labels, self.curr_epoch)
-  
+
 
 class ReaderThread(threading.Thread):
   def __init__(self, queue, dp):
@@ -288,17 +267,19 @@ class ReaderThread(threading.Thread):
     self.dp = dp
     self._stop = False
     self._running = True
-    
+
   def run(self):
     while not self._stop:
       util.log('Fetching...')
       self.queue.put(self.dp.get_next_batch())
+      util.log('%s', self.dp.curr_batch_index)
       util.log('Done.')
-    
+
     self._running = False
-    
+
   def stop(self):
     self._stop = True
+    batch_data = self.queue.get()
     while self._running:
       time.sleep(0.1)
 
@@ -317,10 +298,10 @@ class ParallelDataProvider(DataProvider):
 
   def reset(self):
     self.dp.reset()
-    
+
     if self._reader is not None:
       self._reader.stop()
-      
+
     self._reader = None
     self._data_queue = Queue.Queue(1)
     self._gpu_batch = None
@@ -330,7 +311,7 @@ class ParallelDataProvider(DataProvider):
     batch_data = self._data_queue.get()
 
     timer = util.EZTimer('fill reserved data')
-    
+
     self.curr_epoch = batch_data.epoch
     batch_data.data = copy_to_gpu(batch_data.data)
     batch_data.labels = copy_to_gpu(batch_data.labels)
@@ -346,15 +327,15 @@ class ParallelDataProvider(DataProvider):
     height, width = self._gpu_batch.data.shape
     gpu_data = self._gpu_batch.data
     gpu_labels = self._gpu_batch.labels
-    
+
     if self.index + batch_size >=  width:
       width = width - self.index
       labels = gpu_labels[self.index:self.index + batch_size]
-      
+
       #data = gpu_data[:, self.index:self.index + batch_size]
       data = gpuarray.zeros((height, width), dtype = np.float32)
       gpu_partial_copy_to(gpu_data, data, 0, height, self.index, self.index + width)
-      
+
       self.index = 0
       self._fill_reserved_data()
     else:
@@ -364,10 +345,8 @@ class ParallelDataProvider(DataProvider):
       gpu_partial_copy_to(gpu_data, data, 0, height, self.index, self.index + batch_size)
       #labels = gpu_labels[self.index:self.index + batch_size]
       self.index += batch_size
-    
     return BatchData(data, labels, self._gpu_batch.epoch)
 
-  
 dp_dict = {}
 def register_data_provider(name, _class):
   if name in dp_dict:
@@ -391,4 +370,3 @@ register_data_provider('cifar10', CifarDataProvider)
 register_data_provider('imagenet', ImageNetDataProvider)
 register_data_provider('intermediate', IntermediateDataProvider)
 register_data_provider('memory', MemoryDataProvider)
-
