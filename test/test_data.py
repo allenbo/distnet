@@ -4,7 +4,7 @@ import numpy as np
 import time
 
 def test_imagenet_loader():
-  df = data.DataProvider.get_by_name('imagenet')(
+  df = data.get_by_name('imagenet')(
                                  '/ssd/nn-data/imagenet/', 
                                  batch_range=range(1000), 
                                  batch_size=256)
@@ -21,7 +21,7 @@ def test_imagenet_loader():
 
 def test_cifar_loader():
   data_dir = '/ssd/nn-data/cifar-10.old/'
-  dp = data.DataProvider.get_by_name('cifar10')(data_dir, [1])
+  dp = data.get_by_name('cifar10')(data_dir, [1])
   batch_size = 128
   
   data_list = []
