@@ -172,8 +172,8 @@ class ConvLayer(WeightedLayer):
     self.biasShape = (self.numFilter, 1)
     WeightedLayer.__init__(self, name, 'conv', epsW, epsB, initW, initB, momW, momB, wc, weight,
         bias, weightIncr, biasIncr, self.weightShape, self.biasShape, disableBprop)
-    util.log('num_filter:%d padding:%d stride:%d initW:%s initB:%s, epsW:%s epsB:%s, momW:%s \
-    momB:%s wc:%s', self.numFilter, self.padding, self.stride, self.initW, self.initB, self.epsW,
+    util.log('num_filter:%d padding:%d stride:%d initW:%s initB:%s, epsW:%s epsB:%s, momW:%s momB:%s wc:%s',
+    self.numFilter, self.padding, self.stride, self.initW, self.initB, self.epsW,
     self.epsB, self.momW, self.momB, self.wc)
 
 
@@ -231,6 +231,7 @@ class MaxPoolLayer(Layer):
     self.numColor, self.imgSize, _, self.batchSize= image_shape
 
     self.outputSize = divup(self.imgSize - self.poolSize - self.start, self.stride) + 1
+    util.log("pool_size:%s stride:%s start:%s", self.poolSize, self.stride, self.start)
 
   def get_output_shape(self):
     self.outputShape = (self.numColor, self.outputSize, self.outputSize, self.batchSize)
@@ -261,6 +262,7 @@ class AvgPoolLayer(Layer):
     self.numColor, self.imgSize, _, self.batchSize= image_shape
 
     self.outputSize = divup(self.imgSize - self.poolSize - self.start, self.stride) + 1
+    util.log("pool_size:%s stride:%s start:%s", self.poolSize, self.stride, self.start)
 
   def get_output_shape(self):
     self.outputShape = (self.numColor, self.outputSize, self.outputSize, self.batchSize)
@@ -289,6 +291,7 @@ class ResponseNormLayer(Layer):
     self.scale = scale
     self.scaler = self.scale / self.size ** 2
     self.denom = None
+    util.log("pow:%s size:%s scale:%s scaler:%s", self.pow, self.size, self.scale, self.scaler)
 
   def get_output_shape(self):
     self.outputShape = (self.numColor, self.imgSize, self.imgSize, self.batchSize)
@@ -321,6 +324,8 @@ class CrossMapResponseNormLayer(ResponseNormLayer):
     self.type = 'cmrnorm'
     self.scaler = self.scale / self.size
     self.blocked = blocked
+
+    util.log("pow:%s size:%s, scale:%s scaler:%s", self.pow, self.size, self.scale, self.scaler)
 
   def get_cross_width(self): return self.size - 1
 
@@ -355,9 +360,12 @@ class FCLayer(WeightedLayer):
     self.biasShape = (self.outputSize, 1)
     WeightedLayer.__init__(self, name, 'fc', epsW, epsB, initW, initB, momW, momB, wc, weight,
         bias, weightIncr, biasIncr, self.weightShape, self.biasShape, disableBprop)
-    util.log('%s dropRate: %s', self.name, self.dropRate)
+    util.log('output_size:%s epsW:%s epsB:%s initW:%s initB:%s momW:%s momB:%s wc:%s dropRate:%s',
+        self.outputSize, self.epsW, self.epsB, self.initW, self.initB, self.momW, self.momB,
+        self.wc, self.dropRate)
 
 
+  def get_input_size(self): return self.inputSize
   def dump(self):
     d = WeightedLayer.dump(self)
     '''
