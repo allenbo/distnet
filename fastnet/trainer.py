@@ -154,12 +154,12 @@ class CheckpointDumper(object):
     checkpoint_file = sorted(cp_files, key=os.path.getmtime)[-1]
     util.log('Loading from checkpoint file: %s', checkpoint_file)
     dict = {}
-    
+
     with zipfile.ZipFile(checkpoint_file, mode='r') as zip_in:
       for fname in zip_in.namelist():
         with zip_in.open(fname, mode='r') as entry_f: 
           dict[fname] = cPickle.load(entry_f)
-    
+
     return dict
 
   def dump(self, checkpoint, suffix):
@@ -169,11 +169,11 @@ class CheckpointDumper(object):
     checkpoint_filename = "test%d-%d" % (self.test_id, suffix)
     self.checkpoint_file = os.path.join(self.checkpoint_dir, checkpoint_filename)
     print >> sys.stderr,  self.checkpoint_file
-    
+
     with zipfile.ZipFile(self.checkpoint_file, mode='w') as output:
       for k, v in checkpoint.iteritems():
         output.writestr(k, cPickle.dumps(v, protocol=-1)) 
-          
+
 
     util.log('save file finished')
 
@@ -254,7 +254,7 @@ class Trainer:
 
     input, label = test_data.data, test_data.labels
     self.net.train_batch(input, label, TEST)
-    self._capture_test_data()
+    self._capture_test_data(label)
 
     cost , correct, numCase, = self.net.get_batch_information()
     self.test_outputs += [({'logprob': [cost, 1 - correct]}, numCase, self.elapsed())]
@@ -292,17 +292,17 @@ class Trainer:
   def should_capture_training_data(self):
     return self.curr_epoch == self.num_epoch
 
-  def _capture_training_data(self):
+  def _capture_training_data(self, label):
     if not self.train_dumper:
       return
 
-    self.train_dumper.add({'labels' : self.net.label.get(),
+    self.train_dumper.add({'labels' : label.get(),
                            'fc' : self.net.outputs[-3].get().transpose() })
 
-  def _capture_test_data(self):
+  def _capture_test_data(self, label):
     if not self.test_dumper:
       return
-    self.test_dumper.add({'labels' : self.net.label.get(),
+    self.test_dumper.add({'labels' : label.get(),
                            'fc' : self.net.outputs[-3].get().transpose() })
 
   def train(self):
@@ -313,11 +313,11 @@ class Trainer:
       train_data = self.train_dp.get_next_batch(self.batch_size)
       self.curr_epoch = train_data.epoch
       self.curr_batch += 1
-      
+
       input, label = train_data.data, train_data.labels
       self.net.train_batch(input, label)
       if self.should_capture_training_data():
-        self._capture_training_data()
+        self._capture_training_data(label)
 
       cost , correct, numCase = self.net.get_batch_information()
       self.train_outputs += [({'logprob': [cost, 1 - correct]}, numCase, self.elapsed())]
@@ -459,40 +459,43 @@ class AutoStopTrainer(Trainer):
 
 
 class ImageNetLayerwisedTrainer(Trainer):
-  def _finish_init(self):
-    self.curr_model = []
-    self.complete_model = self.init_model
+  def divide_layers_to_stack(self):
     self.fc_params = []
     self.conv_params = []
-    self.final_num_epoch = self.num_epoch
-
     conv = True
     for ld in self.init_model:
       if ld['type'] in ['conv', 'rnorm', 'pool', 'neuron'] and conv:
         #self.conv_params.append(ld)
-        self.curr_model.append(ld)
+        self.conv_params.append(ld)
       elif ld['type'] == 'fc' or (not conv and ld['type'] == 'neuron'):
         self.fc_params.append(ld)
         conv = False
       else:
         self.softmax_param = ld
 
-    #self.conv_stack = FastNet.split_conv_to_stack(self.conv_params)
-    #for i in range(3):
-    #  self.curr_model.extend(self.conv_stack[i])
+  def initialize_model(self):
+    self.curr_model.extend(self.conv_stack['conv1'])
+    self.curr_model.extend(self.conv_stack['conv2'])
+    self.curr_model.extend(self.conv_stack['conv3'])
+    self.curr_model.extend(self.conv_stack['conv4'])
+    self.curr_model.extend(self.conv_stack['conv5'])
+    self.curr_model.extend(self.fc_tmp)
 
+  def _finish_init(self):
+    self.final_num_epoch = self.num_epoch
+    self.curr_model = []
+    self.divide_layers_to_stack()
+    self.conv_stack = FastNet.split_conv_to_stack(self.conv_params)
     self.fc_stack = FastNet.split_fc_to_stack(self.fc_params)
-    #tmp = self.conv_stack[3:]
-    #tmp.extend(self.fc_stack)
-    #self.stack = tmp
+
+
+    self.fc_tmp = [self.fc_stack['fc8'][0], self.softmax_param]
+    del self.fc_stack['fc8']
     self.stack = self.fc_stack
 
-    self.curr_model.append(self.stack[-1][0])
-    self.curr_model.append(self.softmax_param)
-    del self.stack[-1]
+    self.initialize_model()
     pprint.pprint(self.stack)
 
-    self.layerwised = True
     self.num_epoch = self.frag_epoch
     self.net = FastNet(self.learning_rate, self.image_shape, self.curr_model)
 
@@ -500,11 +503,9 @@ class ImageNetLayerwisedTrainer(Trainer):
     pass
 
   def should_continue_training(self):
-    #if self.layerwised and self.curr_epoch == 2:
-    #  self.net.enable_bprop()
     return self.curr_epoch <= self.num_epoch
 
-  def init_subnet_data_provider(self):
+  def init_replaynet_data_provider(self):
     if self.output_method == 'disk':
       dp = data.get_by_name('intermediate')
       count = self.train_dumper.get_count()
@@ -516,71 +517,53 @@ class ImageNetLayerwisedTrainer(Trainer):
       self.train_dp = dp(self.train_dumper)
       self.test_dp = dp(self.test_dumper)
 
+  def train_replaynet(self, stack):
+    self.curr_batch = self.curr_epoch = 0
+    self.fullnet_train_dp = self.train_dp
+    self.fullnet_test_dp = self.test_dp
+    self.init_replaynet_data_provider()
+
+    model = []
+    model.extend(stack)
+    model.extend(self.fc_tmp)
+
+    self.train_dumper = None
+    self.test_dumper = None
+
+    self.fullnet = self.net
+
+    size = self.net['fc8'].get_input_size()
+    image_shape = (size, 1, 1, self.batch_size)
+    print image_shape
+    self.replaynet = FastNet(self.learning_rate, image_shape, model)
+    self.net = self.replaynet
+    self.num_epoch = self.replaynet_epoch
+    Trainer.train(self)
+
+    self.train_dp = self.fullnet_train_dp
+    self.test_dp = self.fullnet_test_dp
+
+  def reset_trainer(self, i):
+    if i == len(self.stack) - 1:
+      self.num_epoch = self.final_num_epoch
+    else:
+      self.num_epoch = self.frag_epoch
+
+    self.curr_batch = self.curr_epoch = 0
+    self.init_output_dumper()
+    self.init_data_provider()
+    self.net = self.fullnet
+
   def train(self):
     Trainer.train(self)
-    for i, stack in enumerate(self.stack):
-      pprint.pprint(stack)
-      self.curr_model = self.checkpoint_dumper.get_checkpoint()
-      self.curr_batch = self.curr_epoch =  0
+    for i, stack in enumerate(self.stack.values()):
+      self.train_replaynet(stack)
+      self.reset_trainer(i)
 
-      l = self.curr_model['layers'][-2]
-      assert l['type'] == 'fc'
+      self.net.drop_layer_from('fc8')
 
-      l['weight'] = None
-      l['bias'] = None
-      l['weightIncr'] = None
-      l['biasIncr'] = None
-
-      if i == len(self.stack) - 1:
-        self.num_epoch = self.final_num_epoch
-
-      layers = self.curr_model['layers']
-      stack[0]['epsW'] *= self.learning_rate
-      stack[0]['epsB'] *= self.learning_rate
-      model = [stack[0], stack[1], layers[-2], layers[-1]]
-
-      train_dp_old = self.train_dp
-      test_dp_old = self.test_dp
-      self.init_subnet_data_provider()
-
-      self.train_dumper = None
-      self.test_dumper = None
-
-      image_shape_old = self.image_shape
-      shape = self.curr_model['layers'][-3]['outputShape']
-      size= shape[0] * shape[1] * shape[2]
-      self.image_shape = (size, 1, 1, self.batch_size)
-      self.net = FastNet(1.0, self.image_shape, init_model = model)
-
-      old_num_epoch = self.num_epoch
-      self.num_epoch = self.subnet_epoch
-      Trainer.train(self)
-
-      self.curr_batch = self.curr_epoch = 0
-
-      self.num_epoch = old_num_epoch
-
-      self.image_shape = image_shape_old
-      del layers[-1]
-      del layers[-1]
-
-      layers.extend(self.net.get_dumped_layers())
-
-      self.train_dp = train_dp_old
-      self.test_dp = test_dp_old
-
-      #for layer in self.curr_model['layers'][:-2]:
-      #  layer['disableBprop'] = True
-
-      #stack[0]['epsW'] *= self.learning_rate
-      #stack[0]['epsB'] *= self.learning_rate
-      #self.curr_model['layers'].insert(-2, stack[0])
-      #self.curr_model['layers'].insert(-2, stack[1])
-
-
-      self.init_output_dumper()
-      self.init_data_provider()
-      self.net = FastNet(self.learning_rate, self.image_shape,  init_model = self.curr_model)
+      for layer in self.replaynet:
+        self.net.append_layer(layer)
       Trainer.train(self)
 
 
@@ -719,7 +702,7 @@ if __name__ == '__main__':
   parser.add_argument('--num_batch', help = 'The number of minibatch you want to train')
   parser.add_argument('--output_dir', help = 'The directory where to dumper input for last fc layer while training', default='')
   parser.add_argument('--output_method', help = 'The method to hold the intermediate output', choices = ['memory', 'disk'], default = 'disk')
-  parser.add_argument('--subnet_epoch', help = 'The #epoch that subnet(layerwised trainer) will train', default = 1, type = int)
+  parser.add_argument('--replaynet_epoch', help = 'The #epoch that replaynet(layerwised trainer) will train', default = 1, type = int)
   parser.add_argument('--frag_epoch', help = 'The #epoch that incomplete(layerwised trainer) will train', default = 1, type = int)
 
   args = parser.parse_args()
@@ -792,8 +775,8 @@ if __name__ == '__main__':
   param_dict['num_caterange_list'] = util.string_to_int_list(args.num_caterange_list)
   param_dict['output_dir'] = args.output_dir
   param_dict['output_method'] = args.output_method
-  param_dict['subnet_epoch'] = args.subnet_epoch
-  param_dict['frag_epoch'] = args.subnet_epoch
+  param_dict['replaynet_epoch'] = args.replaynet_epoch
+  param_dict['frag_epoch'] = args.frag_epoch
 
 
   trainer = Trainer.get_trainer_by_name(trainer, param_dict)
