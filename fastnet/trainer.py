@@ -194,6 +194,7 @@ def cache_outputs(net, layer_name, dp, dumper):
     # dumper.add({ 'labels' : labels, 'fc' : layer.output })
     dumper.add({ 'labels' : labels,
                  'fc' : net.get_output_by_name(layer_name)})
+    batch = dp.get_next_batch(128)
 
 
 # Trainer should take: (training dp, test dp, fastnet, checkpoint dir)
