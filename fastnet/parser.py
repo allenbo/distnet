@@ -1,5 +1,6 @@
 from fastnet.layer import ConvLayer, MaxPoolLayer, AvgPoolLayer, \
-  CrossMapResponseNormLayer, SoftmaxLayer, NeuronLayer, ResponseNormLayer, FCLayer
+  CrossMapResponseNormLayer, SoftmaxLayer, NeuronLayer, ResponseNormLayer, FCLayer, \
+  DataLayer
 from fastnet.util import isfloat
 import numpy as np
 import os
@@ -46,9 +47,6 @@ class Builder(object):
       Builder.valid_dic = {}
 
   def make_layer(self, net, ld):
-    ld['imgShape'] = net.imgShapes[-1]
-    ld['inputShape'] = net.inputShapes[-1]
-
     if ld['type'] == 'conv': return self.conv_layer(ld)
     elif ld['type'] == 'pool': return self.pool_layer(ld)
     elif ld['type'] == 'neuron': return self.neuron_layer(ld)
@@ -65,7 +63,6 @@ class FastNetBuilder(Builder):
   def conv_layer(self, ld):
     numFilter = Builder.set_val(ld, 'numFilter')
     filterSize = Builder.set_val(ld, 'filterSize')
-    numColor = Builder.set_val(ld, 'numColor')
     padding = Builder.set_val(ld, 'padding')
     stride = Builder.set_val(ld, 'stride')
     initW = Builder.set_val(ld, 'initW', 0.01)
@@ -82,10 +79,8 @@ class FastNetBuilder(Builder):
     weightIncr = Builder.set_val(ld, 'weightIncr')
     biasIncr = Builder.set_val(ld, 'biasIncr')
     name = Builder.set_val(ld, 'name')
-    img_shape = Builder.set_val(ld, 'imgShape')
-    filter_shape = (numFilter, numColor, filterSize, filterSize)
     disableBprop = Builder.set_val(ld, 'disableBprop', default = False)
-    cv = ConvLayer(name, filter_shape, img_shape, padding, stride, initW, initB,
+    cv = ConvLayer(name, numFilter, (filterSize, filterSize), padding, stride, initW, initB,
         partialSum,sharedBiases, epsW, epsB, momW, momB, wc, bias, weight,
         weightIncr = weightIncr, biasIncr = biasIncr, disableBprop = disableBprop)
     return cv
@@ -94,44 +89,40 @@ class FastNetBuilder(Builder):
     stride = Builder.set_val(ld, 'stride')
     start = Builder.set_val(ld, 'start')
     poolSize = Builder.set_val(ld, 'poolSize')
-    img_shape = Builder.set_val(ld, 'imgShape')
     name = Builder.set_val(ld, 'name')
     pool = Builder.set_val(ld, 'pool', default = 'max')
     disableBprop = Builder.set_val(ld, 'disableBprop', default = False)
     if pool == 'max':
-      return MaxPoolLayer(name, img_shape, poolSize, stride, start, disableBprop = disableBprop)
+      return MaxPoolLayer(name, poolSize, stride, start, disableBprop = disableBprop)
     elif pool == 'avg':
-      return AvgPoolLayer(name, img_shape, poolSize, stride, start, disableBprop = disableBprop)
+      return AvgPoolLayer(name, poolSize, stride, start, disableBprop = disableBprop)
 
   def crm_layer(self, ld):
     name = Builder.set_val(ld, 'name')
     pow = Builder.set_val(ld, 'pow')
     size = Builder.set_val(ld, 'size')
     scale = Builder.set_val(ld, 'scale')
-    image_shape = Builder.set_val(ld, 'imgShape')
     blocked = bool(Builder.set_val(ld, 'blocked', default = 0))
     disableBprop = Builder.set_val(ld, 'disableBprop', default = False)
-    return CrossMapResponseNormLayer(name, image_shape, pow, size, scale, blocked, disableBprop =
+    return CrossMapResponseNormLayer(name, pow, size, scale, blocked, disableBprop =
         disableBprop)
 
   def softmax_layer(self, ld):
     name = Builder.set_val(ld, 'name')
-    input_shape = Builder.set_val(ld, 'inputShape')
     disableBprop = Builder.set_val(ld, 'disableBprop', default = False)
-    return SoftmaxLayer(name, input_shape, disableBprop = disableBprop)
+    return SoftmaxLayer(name, disableBprop = disableBprop)
 
   def neuron_layer(self, ld):
     name = Builder.set_val(ld, 'name')
-    img_shape = Builder.set_val(ld, 'imgShape')
     disableBprop = Builder.set_val(ld, 'disableBprop', default = False)
     if ld['neuron'] == 'relu':
       e = Builder.set_val(ld, 'e')
-      return NeuronLayer(name, img_shape, type='relu', e=e, disableBprop = disableBprop)
+      return NeuronLayer(name, type='relu', e=e, disableBprop = disableBprop)
 
     if ld['neuron'] == 'tanh':
       a = Builder.set_val(ld, 'a')
       b = Builder.set_val(ld, 'b')
-      return NeuronLayer(name, img_shape, type='tanh', a=a, b=b, disableBprop = disableBprop)
+      return NeuronLayer(name, type='tanh', a=a, b=b, disableBprop = disableBprop)
 
     assert False, 'No implementation for the neuron type' + ld['neuron']['type']
 
@@ -140,9 +131,8 @@ class FastNetBuilder(Builder):
     pow = Builder.set_val(ld,'pow')
     size = Builder.set_val(ld, 'size')
     scale = Builder.set_val(ld, 'scale')
-    image_shape = Builder.set_val(ld, 'imgShape')
     disableBprop = Builder.set_val(ld, 'disableBprop', default = False)
-    return ResponseNormLayer(name, image_shape, pow, size, scale, disableBprop = disableBprop)
+    return ResponseNormLayer(name, pow, size, scale, disableBprop = disableBprop)
 
 
   def fc_layer(self, ld):
@@ -164,9 +154,8 @@ class FastNetBuilder(Builder):
     weightIncr = Builder.set_val(ld, 'weightIncr')
     biasIncr = Builder.set_val(ld, 'biasIncr')
     name = Builder.set_val(ld, 'name')
-    input_shape = Builder.set_val(ld, 'inputShape')
     disableBprop = Builder.set_val(ld, 'disableBprop', default = False)
-    return FCLayer(name, input_shape, n_out, epsW, epsB, initW, initB, momW, momB, wc, dropRate,
+    return FCLayer(name, n_out, epsW, epsB, initW, initB, momW, momB, wc, dropRate,
         weight, bias, weightIncr = weightIncr, biasIncr = biasIncr, disableBprop = disableBprop)
 
 
@@ -176,7 +165,6 @@ class CudaconvNetBuilder(FastNetBuilder):
   def conv_layer(self, ld):
     numFilter = ld['filters']
     filterSize = ld['filterSize']
-    numColor = ld['channels']
     padding = ld['padding']
     stride = ld['stride']
     initW = ld['initW']
@@ -193,36 +181,31 @@ class CudaconvNetBuilder(FastNetBuilder):
     bias = ld.get('biases', None)
     weight = ld.get('weights', None)
 
-    filter_shape = (numFilter, numColor, filterSize, filterSize)
-    img_shape = ld['imgShape']
-    return ConvLayer(name, filter_shape, img_shape, padding, stride, initW, initB, 0, 0, epsW, epsB, momW
+    return ConvLayer(name, numFilter, (filterSize, filterSize), padding, stride, initW, initB, 0, 0, epsW, epsB, momW
         = momW, momB = momB, wc = wc, bias = bias, weight = weight)
 
   def pool_layer(self, ld):
     stride = ld['stride']
     start = ld['start']
     poolSize = ld['sizeX']
-    img_shape = ld['imgShape']
     name = ld['name']
     pool = ld['pool']
     if pool == 'max':
-      return MaxPoolLayer(name, img_shape, poolSize, stride, start)
+      return MaxPoolLayer(name, poolSize, stride, start)
     else:
-      return AvgPoolLayer(name, img_shape, poolSize, stride, start)
+      return AvgPoolLayer(name, poolSize, stride, start)
 
 
   def neuron_layer(self, ld):
     if ld['neuron']['type'] == 'relu':
-      img_shape = ld['imgShape']
       name = ld['name']
       #e = ld['neuron']['e']
-      return NeuronLayer(name, img_shape, type='relu')
+      return NeuronLayer(name, type='relu')
     if ld['neuron']['type'] == 'tanh':
       name = ld['name']
-      img_shape = ld['imgShape']
       a = ld['neuron']['a']
       b = ld['neuron']['b']
-      return NeuronLayer(name, img_shape, 'tanh', a=a, b=b)
+      return NeuronLayer(name, 'tanh', a=a, b=b)
 
     assert False, 'No implementation for the neuron type' + ld['neuron']['type']
 
@@ -250,8 +233,7 @@ class CudaconvNetBuilder(FastNetBuilder):
       weight = np.require(weight, dtype = np.float32, requirements = 'C')
 
     name = ld['name']
-    input_shape = ld['inputShape']
-    return FCLayer(name, input_shape, n_out, epsW, epsB, initW, initB, momW = momW, momB = momB, wc
+    return FCLayer(name, n_out, epsW, epsB, initW, initB, momW = momW, momB = momB, wc
         = wc, dropRate = dropRate, weight = weight, bias = bias)
 
   def rnorm_layer(self, ld):
@@ -260,8 +242,7 @@ class CudaconvNetBuilder(FastNetBuilder):
     size = Builder.set_val(ld, 'size')
     scale = Builder.set_val(ld, 'scale')
     scale = scale * size ** 2
-    image_shape = Builder.set_val(ld, 'imgShape')
-    return ResponseNormLayer(name, image_shape, pow, size, scale)
+    return ResponseNormLayer(name, pow, size, scale)
 
   def crm_layer(self, ld):
     name = Builder.set_val(ld, 'name')
@@ -269,12 +250,12 @@ class CudaconvNetBuilder(FastNetBuilder):
     size = Builder.set_val(ld, 'size')
     scale = Builder.set_val(ld, 'scale')
     scale = scale * size
-    image_shape = Builder.set_val(ld, 'imgShape')
     blocked = bool(Builder.set_val(ld, 'blocked', default = 0))
-    return CrossMapResponseNormLayer(name, image_shape, pow, size, scale, blocked)
+    return CrossMapResponseNormLayer(name, pow, size, scale, blocked)
   
   
 def add_layers(builder, net, model):
+  net.append_layer(DataLayer('data0', net.imgShapes[0]))
   for layer in model:
     l = builder.make_layer(net, layer)
     if l is not None:

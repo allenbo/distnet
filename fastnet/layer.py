@@ -1,12 +1,10 @@
 from cuda_kernel import *
-from pycuda import cumath, gpuarray, driver as cuda
+from fastnet import util
 from fastnet.util import *
+from pycuda import cumath, gpuarray, driver as cuda
 import cudaconv2
 import numpy as np
 import sys
-
-from fastnet import util
-
 
 PFout = False
 PBout = False
@@ -49,10 +47,31 @@ def randn(shape, dtype):
   np.random.seed(0)
   return np.require(np.random.randn(*shape), dtype=dtype, requirements='C')
   #return np.random.randn(*shape).astype(dtype)
+  
+
+class DataLayer(Layer):
+  def __init__(self, name, image_shape):
+    Layer.__init__(self, name, 'data', True)
+    self.name = name
+    self.image_shape = image_shape
+    self.batchSize = image_shape[-1]
+  
+  def attach(self, prev):
+    assert False, 'Must be first layer!'
+    
+  def fprop(self, input, output, train=TRAIN):
+    gpu_copy_to(input, output)
+  
+  def bprop(self, grad, input, output, outGrad):
+    pass
+  
+  def get_output_shape(self):
+    return tuple(list(self.image_shape[:3]) + [self.batchSize]) 
+  
 
 class WeightedLayer(Layer):
   def __init__(self, name, type, epsW, epsB, initW, initB, momW, momB, wc, weight, bias,
-      weightIncr , biasIncr, weightShape, biasShape, disableBprop = False):
+      weightIncr , biasIncr, disableBprop = False):
     Layer.__init__(self, name, type, disableBprop)
 
     self.epsW = F(epsW)
@@ -63,33 +82,52 @@ class WeightedLayer(Layer):
     self.momB = F(momB)
     self.wc = F(wc)
 
-    if weight is None:
-      self.weight = gpuarray.to_gpu(randn(weightShape, np.float32) * self.initW)
-    else:
+    if weight is not None:
       self.weight = gpuarray.to_gpu(weight)#.astype(np.float32)
-
-    if bias is None:
-      if self.initB > 0.0:
-        self.bias = gpuarray.to_gpu((np.ones(biasShape, dtype=np.float32) * self.initB))
-      else:
-        self.bias = gpuarray.zeros(biasShape, dtype=np.float32)
     else:
-      self.bias = gpuarray.to_gpu(bias).astype(np.float32)
+      self.weight = None
 
+    if bias is not None:
+      self.bias = gpuarray.to_gpu(bias).astype(np.float32)
+    else:
+      self.bias = None
+
+    if self.momW > 0.0:
+      if weightIncr is not None:
+        self.weightIncr = gpuarray.to_gpu(weightIncr)
+      else:
+        self.weightIncr = None
+      
+      if biasIncr is not None:
+        self.biasIncr = gpuarray.to_gpu(biasIncr)
+      else:
+        self.biasIncr = None
+
+  def _init_weights(self, weight_shape, bias_shape):
+    if self.weight is None:
+      self.weight = gpuarray.to_gpu(randn(weight_shape, np.float32) * self.initW)
+
+    if self.bias is None:
+      if self.initB > 0.0:
+        self.bias = gpuarray.to_gpu((np.ones(bias_shape, dtype=np.float32) * self.initB))
+      else:
+        self.bias = gpuarray.zeros(bias_shape, dtype=np.float32)
+
+    Assert.eq(self.weight.shape, weight_shape) 
+    Assert.eq(self.bias.shape, bias_shape) 
+    
     self.weightGrad = gpuarray.zeros_like(self.weight)
     self.biasGrad = gpuarray.zeros_like(self.bias)
+    
     if self.momW > 0.0:
-      if weightIncr is None:
+      if self.weightIncr is None:
         self.weightIncr = gpuarray.zeros_like(self.weight)
-      else:
-        self.weightIncr = gpuarray.to_gpu(weightIncr)
-    if self.momW > 0.0:
-      if biasIncr is None:
+      if self.biasIncr is None:
         self.biasIncr = gpuarray.zeros_like(self.bias)
-      else:
-        self.biasIncr = gpuarray.to_gpu(biasIncr)
-
-
+      
+      Assert.eq(self.weightIncr.shape, weight_shape) 
+      Assert.eq(self.biasIncr.shape, bias_shape)
+         
   def clear_weight_incr(self):
     self.weightIncr.fill(0)
 
@@ -101,11 +139,13 @@ class WeightedLayer(Layer):
     self.clear_bias_incr()
 
   def update(self, weightGrad = None, biasGrad = None):
-
     if weightGrad is not None:
       self.weightGrad = weightGrad
+    
     if biasGrad is not None:
       self.biasGrad = biasGrad
+      
+    assert self.weightGrad.shape == self.weight.shape, (self.weightGrad.shape, self.weight.shape)
 
     if self.momW > 0.0:
       matrix_add(self.weightIncr, self.weightGrad, alpha=self.momW, beta=self.epsW / F(self.batchSize))
@@ -150,32 +190,36 @@ class WeightedLayer(Layer):
     return d
 
 class ConvLayer(WeightedLayer):
-  def __init__(self , name, filter_shape, image_shape, padding=2, stride=1, initW=0.01, initB=
+  def __init__(self, name, num_filters, filter_shape, padding=2, stride=1, initW=0.01, initB=
       0.0, partialSum = 0, sharedBiases = 0, epsW=0.001, epsB=0.002, momW=0.0, momB=0.0, wc=0.0,
       bias=None, weight=None, weightIncr = None, biasIncr = None, disableBprop = False):
 
-    self.filterSize = filter_shape[2]
-    self.numFilter = filter_shape[0]
-    self.imgShape = image_shape
-
-    self.numColor, self.imgSize, _, self.batchSize = image_shape
+    self.numFilter = num_filters
+    
+    assert filter_shape[0] == filter_shape[1], 'Non-square filters not yet supported.'
+    self.filterSize = filter_shape[0]
     self.padding = padding
     self.stride = stride
 
     self.partialSum = partialSum
     self.sharedBiases = sharedBiases
 
-    self.outputSize = 1 + divup(2 * self.padding + self.imgSize - self.filterSize, self.stride)
-    self.modules = self.outputSize ** 2
-
-    self.weightShape = (self.filterSize * self.filterSize * self.numColor, self.numFilter)
-    self.biasShape = (self.numFilter, 1)
     WeightedLayer.__init__(self, name, 'conv', epsW, epsB, initW, initB, momW, momB, wc, weight,
-        bias, weightIncr, biasIncr, self.weightShape, self.biasShape, disableBprop)
+        bias, weightIncr, biasIncr, disableBprop)
     util.log('num_filter:%d padding:%d stride:%d initW:%s initB:%s, epsW:%s epsB:%s, momW:%s momB:%s wc:%s',
     self.numFilter, self.padding, self.stride, self.initW, self.initB, self.epsW,
     self.epsB, self.momW, self.momB, self.wc)
 
+  def attach(self, prev_layer):
+    self.imgShape = prev_layer.get_output_shape()
+    self.numColor, self.imgSize, _, self.batchSize = self.imgShape
+    self.outputSize = 1 + divup(2 * self.padding + self.imgSize - self.filterSize, self.stride)
+    self.modules = self.outputSize ** 2
+
+    weight_shape = (self.filterSize * self.filterSize * self.numColor, self.numFilter)
+    bias_shape = (self.numFilter, 1)
+    
+    self._init_weights(weight_shape, bias_shape)
 
   def dump(self):
     d = WeightedLayer.dump(self)
@@ -183,7 +227,8 @@ class ConvLayer(WeightedLayer):
       del d['tmp']
     return d
 
-  def get_cross_width(self):return self.filterSize - 1
+  def get_cross_width(self): 
+    return self.filterSize - 1
 
   def get_single_img_size(self):
     return self.modules * self.numFilter
@@ -220,25 +265,26 @@ class ConvLayer(WeightedLayer):
 
 
 class MaxPoolLayer(Layer):
-  def __init__(self, name, image_shape, poolSize=2, stride=2, start=0, disableBprop = False):
+  def __init__(self, name, poolSize=2, stride=2, start=0, disableBprop = False):
     Layer.__init__(self, name, 'pool', disableBprop)
     self.pool = 'max'
     self.poolSize = poolSize
     self.stride = stride
     self.start = start
-    self.imgShape = image_shape
-
-    self.numColor, self.imgSize, _, self.batchSize= image_shape
-
-    self.outputSize = divup(self.imgSize - self.poolSize - self.start, self.stride) + 1
     util.log("pool_size:%s stride:%s start:%s", self.poolSize, self.stride, self.start)
 
+  def attach(self, prev):
+    image_shape = prev.get_output_shape()
+    self.imgShape = image_shape
+    self.numColor, self.imgSize, _, self.batchSize= image_shape
+    self.outputSize = divup(self.imgSize - self.poolSize - self.start, self.stride) + 1
+  
   def get_output_shape(self):
     self.outputShape = (self.numColor, self.outputSize, self.outputSize, self.batchSize)
     return self.outputShape
 
-
-  def get_cross_width(self): return self.poolSize - 1
+  def get_cross_width(self): 
+    return self.poolSize - 1
 
   def fprop(self, input, output, train=TRAIN):
     cudaconv2.convLocalMaxPool(input, output, self.numColor, self.poolSize, self.start, self.stride,
@@ -251,18 +297,19 @@ class MaxPoolLayer(Layer):
         self.start, self.stride, self.outputSize, 0.0, 1.0)
 
 class AvgPoolLayer(Layer):
-  def __init__(self, name, image_shape, poolSize=2, stride=2, start=0, disableBprop = False):
+  def __init__(self, name, poolSize=2, stride=2, start=0, disableBprop = False):
     Layer.__init__(self, name, 'pool', disableBprop)
     self.pool = 'avg'
     self.poolSize = poolSize
     self.stride = stride
     self.start = start
-    self.imgShape = image_shape
-
-    self.numColor, self.imgSize, _, self.batchSize= image_shape
-
-    self.outputSize = divup(self.imgSize - self.poolSize - self.start, self.stride) + 1
     util.log("pool_size:%s stride:%s start:%s", self.poolSize, self.stride, self.start)
+    
+  def attach(self, prev):
+    image_shape = prev.get_output_shape()
+    self.imgShape = image_shape
+    self.numColor, self.imgSize, _, self.batchSize= image_shape
+    self.outputSize = divup(self.imgSize - self.poolSize - self.start, self.stride) + 1
 
   def get_output_shape(self):
     self.outputShape = (self.numColor, self.outputSize, self.outputSize, self.batchSize)
@@ -281,17 +328,20 @@ class AvgPoolLayer(Layer):
         self.start, self.stride, self.outputSize, self.imgSize, 0.0, 1.0)
 
 class ResponseNormLayer(Layer):
-  def __init__(self, name, image_shape, pow=0.75, size=9, scale=0.001, disableBprop = False):
+  def __init__(self, name, pow=0.75, size=9, scale=0.001, disableBprop = False):
     Layer.__init__(self, name, 'rnorm', disableBprop)
-    self.numColor, self.imgSize, _, self.batchSize= image_shape
-    self.imgShape = image_shape
-
     self.pow = pow
     self.size = size
     self.scale = scale
     self.scaler = self.scale / self.size ** 2
     self.denom = None
     util.log("pow:%s size:%s scale:%s scaler:%s", self.pow, self.size, self.scale, self.scaler)
+    
+  def attach(self, prev):
+    image_shape = prev.get_output_shape()
+    self.numColor, self.imgSize, _, self.batchSize= image_shape
+    self.imgShape = image_shape
+
 
   def get_output_shape(self):
     self.outputShape = (self.numColor, self.imgSize, self.imgSize, self.batchSize)
@@ -318,7 +368,7 @@ class ResponseNormLayer(Layer):
 
 
 class CrossMapResponseNormLayer(ResponseNormLayer):
-  def __init__(self, name, image_shape, pow=0.75, size=9, scale=0.001, blocked=False, disableBprop =
+  def __init__(self, name, pow=0.75, size=9, scale=0.001, blocked=False, disableBprop =
       False):
     ResponseNormLayer.__init__(self, name, image_shape, pow, size, scale, disableBprop)
     self.type = 'cmrnorm'
@@ -347,36 +397,33 @@ class CrossMapResponseNormLayer(ResponseNormLayer):
     return d
 
 class FCLayer(WeightedLayer):
-  def __init__(self, name, input_shape, n_out, epsW=0.001, epsB=0.002, initW=0.01, initB=0.0,
+  def __init__(self, name, n_out, epsW=0.001, epsB=0.002, initW=0.01, initB=0.0,
       momW=0.0, momB=0.0, wc=0.0, dropRate=0.0, weight=None, bias=None, weightIncr = None, biasIncr
       = None, disableBprop = False):
-    self.inputShape = input_shape
-    self.inputSize, self.batchSize = input_shape
-
     self.outputSize = n_out
     self.dropRate = dropRate
 
-    self.weightShape = (self.outputSize, self.inputSize)
-    self.biasShape = (self.outputSize, 1)
     WeightedLayer.__init__(self, name, 'fc', epsW, epsB, initW, initB, momW, momB, wc, weight,
-        bias, weightIncr, biasIncr, self.weightShape, self.biasShape, disableBprop)
+        bias, weightIncr, biasIncr, disableBprop)
     util.log('output_size:%s epsW:%s epsB:%s initW:%s initB:%s momW:%s momB:%s wc:%s dropRate:%s',
         self.outputSize, self.epsW, self.epsB, self.initW, self.initB, self.momW, self.momB,
         self.wc, self.dropRate)
 
+  def attach(self, prev):
+    input_shape = prev.get_output_shape()
+    self.inputSize = np.prod(input_shape[0:3])
+    self.batchSize = input_shape[3]
+    self.weightShape = (self.outputSize, self.inputSize)
+    self.biasShape = (self.outputSize, 1)
+    util.log('%s %s %s', input_shape, self.weightShape, self.biasShape)
+    self._init_weights(self.weightShape, self.biasShape)
 
-  def get_input_size(self): return self.inputSize
+
+  def get_input_size(self): 
+    return self.inputSize
+  
   def dump(self):
     d = WeightedLayer.dump(self)
-    '''
-    weight = self.weight.get()
-    if weight.shape[1] > 96 * 26 * 26:
-      print 'weight of fc layer is too larget, split.....'
-      weights = np.split(weight, 4)
-    else:
-      weights = weight
-    d['weight'] = weights
-    '''
     if 'dropMask' in d:
       del d['dropMask']
     return d
@@ -404,7 +451,7 @@ class FCLayer(WeightedLayer):
   def bprop(self, grad, input, output, outGrad):
     if self.dropRate > 0.0:
       gpu_copy_to(grad * self.dropMask, grad)
-    #gpu_copy_to(dot(transpose(self.weight), grad), outGrad)
+    
     gpu_copy_to(transpose( dot( transpose(grad), self.weight ) ), outGrad )
     self.weightGrad = dot(grad, transpose(input))
     add_row_sum_to_vec(self.biasGrad, grad, alpha=0.0)
@@ -412,13 +459,16 @@ class FCLayer(WeightedLayer):
 
 
 class SoftmaxLayer(Layer):
-  def __init__(self, name, input_shape, disableBprop = False):
+  def __init__(self, name, disableBprop = False):
     Layer.__init__(self, name, "softmax", disableBprop)
-    self.inputShape = input_shape
-    self.inputSize, self.batchSize = input_shape
-    self.outputSize = self.inputSize
-    self.cost = gpuarray.zeros((self.batchSize, 1), dtype=np.float32)
     self.batchCorrect = 0
+    
+  def attach(self, prev_layer):
+    input_shape = prev_layer.get_output_shape()
+    self.inputSize, self.batchSize = np.prod(input_shape[0:3]), input_shape[3]
+    self.outputSize = self.inputSize
+    self.inputShape = input_shape
+    self.cost = gpuarray.zeros((self.batchSize, 1), dtype=np.float32)
 
   def get_output_shape(self):
     self.outputShape = (self.outputSize, 1, 1, self.batchSize)
@@ -503,16 +553,19 @@ class TanhNeuron(Neuron):
     return d
 
 class NeuronLayer(Layer):
-  def __init__(self, name, image_shape, type='relu', a=1.0, b=1.0, e=0.0, disableBprop = False):
+  def __init__(self, name, type='relu', a=1.0, b=1.0, e=0.0, disableBprop = False):
     Layer.__init__(self, name, 'neuron', disableBprop)
-    self.imgShape = image_shape
     if type == 'relu':
       self.neuron = ReluNeuron(e)
     elif type == 'tanh':
       self.neuron = TanhNeuron(a, b)
-    self.numColor, self.imgSize, _, self.batchSize= image_shape
+      
+  def attach(self, prev):
+    self.imgShape = prev.get_output_shape()
+    self.numColor, self.imgSize, _, self.batchSize= self.imgShape
 
-  def get_cross_width(self): return 0
+  def get_cross_width(self): 
+    return 0
 
   def get_output_shape(self):
     self.outputShape = (self.numColor, self.imgSize, self.imgSize, self.batchSize)

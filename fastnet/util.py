@@ -127,3 +127,48 @@ def abs_mean(x):
     return (gpuarray.sum(x.__abs__()) / x.size).get().item()
   if isinstance(x, np.ndarray):
     return np.mean(np.abs(x))
+  
+
+class Assert(object):
+  @staticmethod
+  def all_eq(a, b):
+    import numpy
+    if hasattr(a, 'shape') and hasattr(b, 'shape'):
+      assert a.shape == b.shape, 'Mismatched shapes: %s %s' % (a.shape, b.shape)
+      
+    assert numpy.all(a == b), 'Failed: \n%s\n ==\n%s' % (a, b)
+  
+  @staticmethod
+  def eq(a, b): assert (a == b), 'Failed: %s == %s' % (a, b)
+  
+  @staticmethod
+  def ne(a, b): assert (a == b), 'Failed: %s != %s' % (a, b)
+  
+  @staticmethod
+  def gt(a, b): assert (a > b), 'Failed: %s > %s' % (a, b)
+  
+  @staticmethod
+  def lt(a, b): assert (a < b), 'Failed: %s < %s' % (a, b)
+  
+  @staticmethod
+  def ge(a, b): assert (a >= b), 'Failed: %s >= %s' % (a, b)
+  
+  @staticmethod
+  def le(a, b): assert (a <= b), 'Failed: %s <= %s' % (a, b)
+  
+  @staticmethod
+  def true(expr): assert expr, 'Failed: %s == True' % (expr)
+  
+  @staticmethod
+  def isinstance(expr, klass): 
+    assert isinstance(expr, klass), 'Failed: isinstance(%s, %s) [type = %s]' % (expr, klass, type(expr))
+  
+  @staticmethod
+  def no_duplicates(collection):
+    d = collections.defaultdict(int)
+    for item in collection:
+      d[item] += 1
+    
+    bad = [(k,v) for k, v in d.iteritems() if v > 1]
+    assert len(bad) == 0, 'Duplicates found: %s' % bad
+  

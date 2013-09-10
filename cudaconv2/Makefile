@@ -1,7 +1,7 @@
 SRC = conv_util.cu cudaconv2_wrap.cu filter_acts.cu img_acts.cu weight_acts.cu
 OBJ = $(patsubst %.cu,%.o,${SRC})
 
-NVCC_OPTS := --pre-include undef.h #--compiler-bindir=./nvcc-bindir
+NVCC_OPTS := --pre-include undef.h
 CXX_FLAGS := --compiler-options='-fPIC -ggdb2'
 INCLUDES := -I/usr/include/python2.7 -I. -I./cutil
 

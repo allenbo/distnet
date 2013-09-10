@@ -1,4 +1,4 @@
-from fastnet import util
+from fastnet import util, layer
 from fastnet.cuda_kernel import gpu_copy_to, transpose
 from fastnet.layer import ConvLayer, NeuronLayer, MaxPoolLayer, \
   ResponseNormLayer, FCLayer, SoftmaxLayer, TRAIN, WeightedLayer, TEST
@@ -77,6 +77,9 @@ class FastNet(object):
     return FastNetIterator(self.layers)
 
   def append_layer(self, layer):
+    if self.layers:
+      layer.attach(self.layers[-1])
+    
     self.layers.append(layer)
 
     outputShape = layer.get_output_shape()
@@ -136,10 +139,16 @@ class FastNet(object):
     return stack
 
   def fprop(self, data, probs, train=TRAIN):
+    assert len(self.outputs) > 0, 'No outputs: uninitialized network!'
+    
     input = data
     for i in range(len(self.layers)):
       l = self.layers[i]
+      #if isinstance(l, layer.DataLayer):
+      #  self.outputs[i] = input
+      #else:
       l.fprop(input, self.outputs[i], train)
+      
       input = self.outputs[i]
 
     # probs.shape = self.outputs[-1].shape
@@ -264,7 +273,6 @@ class FastNet(object):
 
     return layers
 
-
   def get_save_output(self):
     if self.save_layers is None:
       assert False, 'Not specify any save layer name'
@@ -289,6 +297,20 @@ class FastNet(object):
 
   def get_learning_rate(self):
     return self.learningRate
+  
+  def get_layer_by_name(self, layer_name):
+    for l in self.layers:
+      if l.name == layer_name:
+        return l
+    
+    raise KeyError, 'Missing layer: %s' % layer_name
+
+  def get_output_by_name(self, layer_name):
+    for idx, l in enumerate(self.layers):
+      if l.name == layer_name:
+        return self.outputs[idx]
+    
+    raise KeyError, 'Missing layer: %s' % layer_name
 
   def get_summary(self):
     sum = []

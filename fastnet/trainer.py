@@ -17,7 +17,7 @@ import time
 import zipfile
 
 class DataDumper(object):
-  def __init__(self, target_path, max_mem_size = 500e5):
+  def __init__(self, target_path, max_mem_size=500e5):
     self.target_path = target_path
     dirname = os.path.dirname(self.target_path)
     if not os.path.exists(dirname):
@@ -58,12 +58,11 @@ class DataDumper(object):
     self.sz = 0
     self.count += 1
 
-  def get_count(self):return self.count
-
-
+  def get_count(self):
+    return self.count
 
 class MemoryDataHolder(object):
-  def __init__(self, single_memory_size = 50e6, total_memory_size = 4e9):
+  def __init__(self, single_memory_size=50e6, total_memory_size=4e9):
     self.single_memory_size = single_memory_size
     self.total_memory_size = total_memory_size
     self.single_data_size = 0
@@ -96,8 +95,8 @@ class MemoryDataHolder(object):
 
     dic = {}
     for k in self.data[0].keys():
-      items= [d[k] for d in self.data]
-      dic[k] = np.concatenate(items, axis = 0)
+      items = [d[k] for d in self.data]
+      dic[k] = np.concatenate(items, axis=0)
 
     self.memory_chunk.append(dic)
 
@@ -132,8 +131,6 @@ class MemoryDataHolder(object):
     return self.count
 
 
-
-
 class CheckpointDumper(object):
   def __init__(self, checkpoint_dir, test_id):
     self.checkpoint_dir = checkpoint_dir
@@ -142,11 +139,11 @@ class CheckpointDumper(object):
       os.system('mkdir -p \'%s\'' % self.checkpoint_dir)
 
     self.test_id = test_id
-    self.regex = re.compile('^test%d-(\d+)$' % self.test_id)
+    self.regex = re.compile('^%s-(\d+)$' % self.test_id)
 
 
   def get_checkpoint(self):
-    cp_pattern = self.checkpoint_dir + '/test%d-*' % self.test_id
+    cp_pattern = self.checkpoint_dir + '/%s-*' % self.test_id
     cp_files = glob.glob(cp_pattern)
     if not cp_files:
       return None
@@ -166,9 +163,9 @@ class CheckpointDumper(object):
     saved_filename = [f for f in os.listdir(self.checkpoint_dir) if self.regex.match(f)]
     for f in saved_filename:
       os.remove(os.path.join(self.checkpoint_dir, f))
-    checkpoint_filename = "test%d-%d" % (self.test_id, suffix)
+    checkpoint_filename = "%s-%d" % (self.test_id, suffix)
     self.checkpoint_file = os.path.join(self.checkpoint_dir, checkpoint_filename)
-    print >> sys.stderr,  self.checkpoint_file
+    print >> sys.stderr, self.checkpoint_file
 
     with zipfile.ZipFile(self.checkpoint_file, mode='w') as output:
       for k, v in checkpoint.iteritems():
@@ -178,16 +175,36 @@ class CheckpointDumper(object):
     util.log('save file finished')
 
 
+def cache_outputs(net, layer_name, dp, dumper):
+  '''
+  fprop ``net`` through an entire epoch, saving the output of ``layer_name`` into ``dumper``. 
+  :param net:
+  :param layer_name:
+  :param dp:
+  :param dumper:
+  '''
+  dp.reset()
+  batch = dp.get_next_batch(128)
+  epoch = batch.epoch
+  # layer = net.get_layer_by_name(layer_name)
+  
+  while epoch == batch.epoch:
+    data, labels = net.prepare_for_train(batch.data, batch.labels)
+    cost, correct = net.fprop(data, labels)
+    # dumper.add({ 'labels' : labels, 'fc' : layer.output })
+    dumper.add({ 'labels' : labels,
+                 'fc' : net.get_output_by_name(layer_name)})
+
+
 # Trainer should take: (training dp, test dp, fastnet, checkpoint dir)
 class Trainer:
-  def __init__(self, checkpoint_dumper, train_dp, test_dp, batch_size, net = None, **kw):
+  def __init__(self, checkpoint_dumper, train_dp, test_dp, batch_size, net=None, **kw):
     self.checkpoint_dumper = checkpoint_dumper
     self.train_dp = train_dp
     self.test_dp = test_dp
     self.batch_size = batch_size
     self.net = net
     self.curr_batch = self.curr_epoch = 0
-    
     self.start_time = time.time()
 
     for k, v in kw.iteritems():
@@ -201,30 +218,11 @@ class Trainer:
     else:
       self.train_outputs = []
       self.test_outputs = []
-    if self.output_dir:
-      self.train_output_filename = os.path.join(self.output_dir, 'train-data.pickle')
-      self.test_output_filename = os.path.join(self.output_dir, 'test-data.pickle')
-    else:
-      self.train_output_filename = ''
-      self.test_output_filename = ''
-    self.init_output_dumper()
+    
     self._finish_init()
 
   def _finish_init(self):
     pass
-
-  def init_output_dumper(self):
-    self.train_dumper = None
-    self.test_dumper = None
-    if self.output_method == 'disk':
-      if self.train_output_filename:
-        self.train_dumper = DataDumper(self.train_output_filename)
-      if self.test_output_filename:
-        self.test_dumper = DataDumper(self.test_output_filename)
-    elif self.output_method == 'memory':
-      self.train_dumper = MemoryDataHolder()
-      self.test_dumper = MemoryDataHolder()
-
 
   def init_data_provider(self):
     self.train_dp.reset()
@@ -237,13 +235,13 @@ class Trainer:
     model['train_outputs'] = self.train_outputs
     model['test_outputs'] = self.test_outputs
 
-    print >> sys.stderr,  '---- save checkpoint ----'
+    print >> sys.stderr, '---- save checkpoint ----'
     self.print_net_summary()
-    self.checkpoint_dumper.dump(checkpoint = model, suffix = self.curr_epoch)
+    self.checkpoint_dumper.dump(checkpoint=model, suffix=self.curr_epoch)
 
 
   def adjust_lr(self):
-    print >> sys.stderr,  '---- adjust learning rate ----'
+    print >> sys.stderr, '---- adjust learning rate ----'
     self.net.adjust_learning_rate(self.factor)
     
   def elapsed(self):
@@ -254,24 +252,20 @@ class Trainer:
 
     input, label = test_data.data, test_data.labels
     self.net.train_batch(input, label, TEST)
-    self._capture_test_data(label)
 
     cost , correct, numCase, = self.net.get_batch_information()
     self.test_outputs += [({'logprob': [cost, 1 - correct]}, numCase, self.elapsed())]
-    print >> sys.stderr,  '---- test ----'
-    print >> sys.stderr,  'error: %f logreg: %f' % (1 - correct, cost)
+    print >> sys.stderr, '---- test ----'
+    print >> sys.stderr, 'error: %f logreg: %f' % (1 - correct, cost)
 
   def print_net_summary(self):
-    print >> sys.stderr,  '--------------------------------------------------------------'
+    print >> sys.stderr, '--------------------------------------------------------------'
     for s in self.net.get_summary():
       name = s[0]
       values = s[1]
-      print >> sys.stderr,  "Layer '%s' weight: %e [%e]" % (name, values[0], values[1])
-      print >> sys.stderr,  "Layer '%s' bias: %e [%e]" % (name, values[2], values[3])
+      print >> sys.stderr, "Layer '%s' weight: %e [%e]" % (name, values[0], values[1])
+      print >> sys.stderr, "Layer '%s' bias: %e [%e]" % (name, values[2], values[3])
 
-
-  def should_continue_training(self):
-    return self.curr_epoch <= self.num_epoch
 
   def check_test_data(self):
     return self.curr_batch % self.test_freq == 0
@@ -281,34 +275,21 @@ class Trainer:
 
   def check_adjust_lr(self):
     return self.factor != 1 and self.curr_batch % self.adjust_freq == 0
-
+  
+  def should_continue_training(self):
+    return True
+  
   def _finished_training(self):
-    if self.train_dumper is not None:
-      self.train_dumper.flush()
+    pass
 
-    if self.test_dumper is not None:
-      self.test_dumper.flush()
-
-  def should_capture_training_data(self):
-    return self.curr_epoch == self.num_epoch
-
-  def _capture_training_data(self, label):
-    if not self.train_dumper:
-      return
-
-    self.train_dumper.add({'labels' : label.get(),
-                           'fc' : self.net.outputs[-3].get().transpose() })
-
-  def _capture_test_data(self, label):
-    if not self.test_dumper:
-      return
-    self.test_dumper.add({'labels' : label.get(),
-                           'fc' : self.net.outputs[-3].get().transpose() })
-
-  def train(self):
+  def train(self, num_epochs):
     self.print_net_summary()
     util.log('Starting training...')
-    while self.should_continue_training():
+    
+    start_epoch = self.curr_epoch
+    
+    while (self.curr_epoch - start_epoch <= num_epochs and 
+          self.should_continue_training()):
       batch_start = time.time()
       train_data = self.train_dp.get_next_batch(self.batch_size)
       self.curr_epoch = train_data.epoch
@@ -316,12 +297,9 @@ class Trainer:
 
       input, label = train_data.data, train_data.labels
       self.net.train_batch(input, label)
-      if self.should_capture_training_data():
-        self._capture_training_data(label)
-
       cost , correct, numCase = self.net.get_batch_information()
       self.train_outputs += [({'logprob': [cost, 1 - correct]}, numCase, self.elapsed())]
-      print >> sys.stderr,  '%d.%d: error: %f logreg: %f time: %f' % (self.curr_epoch, self.curr_batch, 1 - correct, cost, time.time() - batch_start)
+      print >> sys.stderr, '%d.%d: error: %f logreg: %f time: %f' % (self.curr_epoch, self.curr_batch, 1 - correct, cost, time.time() - batch_start)
 
       if self.check_test_data():
         self.get_test_error()
@@ -337,7 +315,7 @@ class Trainer:
     self.report()
     self._finished_training()
 
-  def predict(self, save_layers = None, filename = None):
+  def predict(self, save_layers=None, filename=None):
     self.net.save_layerouput(save_layers)
     self.print_net_summary()
     util.log('Starting predict...')
@@ -351,14 +329,14 @@ class Trainer:
       cost , correct, numCase = self.net.get_batch_information()
       self.curr_epoch = self.test_data.epoch
       self.curr_batch += 1
-      print >> sys.stderr,  '%d.%d: error: %f logreg: %f time: %f' % (self.curr_epoch, self.curr_batch, 1 - correct, cost, time.time() - start)
+      print >> sys.stderr, '%d.%d: error: %f logreg: %f time: %f' % (self.curr_epoch, self.curr_batch, 1 - correct, cost, time.time() - start)
       if save_layers is not None:
         save_output.extend(self.net.get_save_output())
 
     if save_layers is not None:
       if filename is not None:
         with open(filename, 'w') as f:
-          cPickle.dump(save_output, f, protocol = -1)
+          cPickle.dump(save_output, f, protocol=-1)
         util.log('save layer output finished')
 
 
@@ -366,11 +344,11 @@ class Trainer:
     rep = self.net.get_report()
     if rep is not None:
       print rep
-    #timer.report()
+    # timer.report()
 
   @staticmethod
   def get_trainer_by_name(name, param_dict):
-    net = FastNet(param_dict['learning_rate'], param_dict['image_shape'], init_model = None)
+    net = FastNet(param_dict['learning_rate'], param_dict['image_shape'], init_model=None)
     param_dict['net'] = net
     if name == 'layerwise':
       return ImageNetLayerwisedTrainer(**param_dict)
@@ -414,49 +392,6 @@ class AutoStopTrainer(Trainer):
   def check_save_checkpoint(self):
     return Trainer.check_save_checkpoint(self) and self.scheduler.check_save_checkpoint()
 
-# don't use recently
-#class AdaptiveLearningRateTrainer(Trainer):
-#  def __init__(self, test_id, data_dir, provider, checkpoint_dir, train_range, test_range, test_freq,
-#      save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, init_model= None, adjust_freq=10, factor=[1.0]):
-#    Trainer.__init__(self, test_id, data_dir, provider, checkpoint_dir, train_range, test_range, test_freq,
-#        save_freq, batch_size, num_epoch, image_size, image_color, learning_rate,  adjust_freq = adjust_freq,
-#        init_model = None, factor=factor)
-#    self.train_data = self.train_dp.get_next_batch()
-#    batch = self.train_data.batchnum
-#
-#    # if self.train_data.data.shape[1] > 1000:
-#    #  train_data = (self.train_data.data[:, :1000] , self.train_data.labels[:1000])
-#    # else:
-#    #  train_data = self.train_data
-#
-#    train_data = self.get_next_minibatch(0)
-#    self.train_dp.del_batch(batch)
-#
-#    _, batch, self.test_data = self.test_dp.get_next_batch()
-#    # if self.test_data['data'].shape[1] > 1000:
-#    #  test_data = (self.test_data['data'][:, :1000], self.train_data.labels[:1000])
-#    # else:
-#    #  test_data = self.test_data
-#    test_data = self.get_next_minibatch(0, TEST)
-#    self.test_dp.del_batch(batch)
-#
-#    # test_data = self.get_next_minibatch(0)
-#    # test_data = train_data
-#
-#    # train_data= self.train_data
-#    # test_data = self.test_data
-#    self.net = AdaptiveFastNet(self.learning_rate, self.image_shape, self.n_out, train_data,
-#        test_data, init_model = init_model)
-#
-#  def report(self):
-#    lis = self.net.get_report()
-#    print 'Iteration:', self.adjust_freq
-#    print 'learningRare'
-#    for l in lis:
-#      print l[0]
-#
-
-
 
 class ImageNetLayerwisedTrainer(Trainer):
   def divide_layers_to_stack(self):
@@ -465,7 +400,7 @@ class ImageNetLayerwisedTrainer(Trainer):
     conv = True
     for ld in self.init_model:
       if ld['type'] in ['conv', 'rnorm', 'pool', 'neuron'] and conv:
-        #self.conv_params.append(ld)
+        # self.conv_params.append(ld)
         self.conv_params.append(ld)
       elif ld['type'] == 'fc' or (not conv and ld['type'] == 'neuron'):
         self.fc_params.append(ld)
@@ -509,7 +444,7 @@ class ImageNetLayerwisedTrainer(Trainer):
     if self.output_method == 'disk':
       dp = data.get_by_name('intermediate')
       count = self.train_dumper.get_count()
-      self.train_dp = dp(self.train_output_filename,  range(0, count), 'fc')
+      self.train_dp = dp(self.train_output_filename, range(0, count), 'fc')
       count = self.test_dumper.get_count()
       self.test_dp = dp(self.test_output_filename, range(0, count), 'fc')
     elif self.output_method == 'memory':
@@ -570,7 +505,7 @@ class ImageNetLayerwisedTrainer(Trainer):
 class ImageNetCatewisedTrainer(MiniBatchTrainer):
   def _finish_init(self):
     assert len(self.num_caterange_list) == len(self.num_batch) and self.num_caterange_list[-1] == 1000
-    self.num_batch_list  = self.num_batch[1:]
+    self.num_batch_list = self.num_batch[1:]
     self.num_batch = self.num_batch[0]
 
     init_output = self.num_caterange_list[0]
@@ -583,14 +518,14 @@ class ImageNetCatewisedTrainer(MiniBatchTrainer):
     self.learning_rate = self.learning_rate[0]
 
     self.set_category_range(init_output)
-    self.net = FastNet(self.learning_rate, self.image_shape, init_model = self.init_model)
+    self.net = FastNet(self.learning_rate, self.image_shape, init_model=self.init_model)
     MiniBatchTrainer._finish_init(self)
 
 
   def set_category_range(self, r):
     dp = data.get_by_name(self.data_provider)
-    self.train_dp = dp(self.data_dir, self.train_range, category_range = range(r))
-    self.test_dp = dp(self.data_dir, self.test_range, category_range = range(r))
+    self.train_dp = dp(self.data_dir, self.train_range, category_range=range(r))
+    self.test_dp = dp(self.data_dir, self.test_range, category_range=range(r))
 
 
   def train(self):
@@ -609,18 +544,18 @@ class ImageNetCatewisedTrainer(MiniBatchTrainer):
       fc['bias'] = None
       fc['weightIncr'] = None
       fc['biasIncr'] = None
-      #for l in layers:
+      # for l in layers:
       #  if l['type'] == 'fc':
       #    l['weight'] = None
       #    l['bias'] = None
       #    l['weightIncr'] = None
       #    l['biasIncr'] = None
 
-      #fc = layers[-2]
+      # fc = layers[-2]
       fc['outputSize'] = cate
 
       self.learning_rate = self.learning_rate_list[i]
-      self.net = FastNet(self.learning_rate, self.image_shape, init_model = model)
+      self.net = FastNet(self.learning_rate, self.image_shape, init_model=model)
 
       self.net.clear_weight_incr()
       MiniBatchTrainer.train(self)
@@ -640,7 +575,7 @@ class ImageNetCateGroupTrainer(MiniBatchTrainer):
     self.num_group_list = self.num_group_list[1:]
 
     self.set_num_group(fc['outputSize'])
-    self.net = FastNet(self.learning_rate, self.image_shape, init_model = self.init_model)
+    self.net = FastNet(self.learning_rate, self.image_shape, init_model=self.init_model)
     MiniBatchTrainer._finish_init(self)
 
   def set_num_group(self, n):
@@ -668,7 +603,7 @@ class ImageNetCateGroupTrainer(MiniBatchTrainer):
       fc['biasIncr'] = None
 
       self.learning_rate = self.learning_rate_list[i]
-      self.net = FastNet(self.learning_rate, self.image_shape, init_model = model)
+      self.net = FastNet(self.learning_rate, self.image_shape, init_model=model)
 
       self.net.clear_weight_incr()
       MiniBatchTrainer.train(self)
@@ -679,31 +614,31 @@ class ImageNetCateGroupTrainer(MiniBatchTrainer):
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
-  parser.add_argument('--test_id', help = 'Test Id', default = None, type = int, required = True)
-  parser.add_argument('--data_dir', help = 'The directory that data stored', required = True)
-  parser.add_argument('--param_file', help = 'The param_file or checkpoint file', required = True)
-  parser.add_argument('--data_provider', help = 'The data provider', choices =['cifar10','imagenet', 'imagenetcategroup'], required = True)
-  parser.add_argument('--train_range', help = 'The range of the train set', required = True)
-  parser.add_argument('--test_range', help = 'THe range of the test set', required = True)
-  parser.add_argument('--save_freq', help = 'How often should I save the checkpoint file', default = 100, type = int, required = True)
-  parser.add_argument('--test_freq', help = 'How often should I test the model', default = 100, type = int, required = True)
-  parser.add_argument('--adjust_freq', help = 'How often should I adjust the learning rate', default = 100, type = int)
-  parser.add_argument('--factor', help = 'The factor used to adjust the learning rate', default ='1.0')
-  parser.add_argument('--learning_rate' , help = 'The scale learning rate', default = '0.1', required = True)
-  parser.add_argument('--batch_size', help = 'The size of batch', default = 128, type = int)
-  parser.add_argument('--checkpoint_dir', help = 'The directory to save checkpoint file', required = True)
+  parser.add_argument('--test_id', help='Test Id', default=None, type=int, required=True)
+  parser.add_argument('--data_dir', help='The directory that data stored', required=True)
+  parser.add_argument('--param_file', help='The param_file or checkpoint file', required=True)
+  parser.add_argument('--data_provider', help='The data provider', choices=['cifar10', 'imagenet', 'imagenetcategroup'], required=True)
+  parser.add_argument('--train_range', help='The range of the train set', required=True)
+  parser.add_argument('--test_range', help='THe range of the test set', required=True)
+  parser.add_argument('--save_freq', help='How often should I save the checkpoint file', default=100, type=int, required=True)
+  parser.add_argument('--test_freq', help='How often should I test the model', default=100, type=int, required=True)
+  parser.add_argument('--adjust_freq', help='How often should I adjust the learning rate', default=100, type=int)
+  parser.add_argument('--factor', help='The factor used to adjust the learning rate', default='1.0')
+  parser.add_argument('--learning_rate' , help='The scale learning rate', default='0.1', required=True)
+  parser.add_argument('--batch_size', help='The size of batch', default=128, type=int)
+  parser.add_argument('--checkpoint_dir', help='The directory to save checkpoint file', required=True)
 
-  parser.add_argument('--trainer', help = 'The type of the trainer', default = 'normal', choices =
-      ['normal', 'catewise', 'categroup', 'minibatch', 'layerwise'], required = True)
+  parser.add_argument('--trainer', help='The type of the trainer', default='normal', choices=
+      ['normal', 'catewise', 'categroup', 'minibatch', 'layerwise'], required=True)
 
-  parser.add_argument('--num_group_list', help = 'The list of the group you want to split the data to')
-  parser.add_argument('--num_caterange_list', help = 'The list of category range you want to train')
-  parser.add_argument('--num_epoch', help = 'The number of epoch you want to train', default = 30, type = int)
-  parser.add_argument('--num_batch', help = 'The number of minibatch you want to train')
-  parser.add_argument('--output_dir', help = 'The directory where to dumper input for last fc layer while training', default='')
-  parser.add_argument('--output_method', help = 'The method to hold the intermediate output', choices = ['memory', 'disk'], default = 'disk')
-  parser.add_argument('--replaynet_epoch', help = 'The #epoch that replaynet(layerwised trainer) will train', default = 1, type = int)
-  parser.add_argument('--frag_epoch', help = 'The #epoch that incomplete(layerwised trainer) will train', default = 1, type = int)
+  parser.add_argument('--num_group_list', help='The list of the group you want to split the data to')
+  parser.add_argument('--num_caterange_list', help='The list of category range you want to train')
+  parser.add_argument('--num_epoch', help='The number of epoch you want to train', default=30, type=int)
+  parser.add_argument('--num_batch', help='The number of minibatch you want to train')
+  parser.add_argument('--output_dir', help='The directory where to dumper input for last fc layer while training', default='')
+  parser.add_argument('--output_method', help='The method to hold the intermediate output', choices=['memory', 'disk'], default='disk')
+  parser.add_argument('--replaynet_epoch', help='The #epoch that replaynet(layerwised trainer) will train', default=1, type=int)
+  parser.add_argument('--frag_epoch', help='The #epoch that incomplete(layerwised trainer) will train', default=1, type=int)
 
   args = parser.parse_args()
 
@@ -743,19 +678,19 @@ if __name__ == '__main__':
   trainer = args.trainer
 
 
-  #create a checkpoint dumper
+  # create a checkpoint dumper
   image_shape = (param_dict['image_color'], param_dict['image_size'], param_dict['image_size'], param_dict['batch_size'])
   param_dict['image_shape'] = image_shape
   cp_dumper = CheckpointDumper(param_dict['checkpoint_dir'], param_dict['test_id'])
   param_dict['checkpoint_dumper'] = cp_dumper
 
-  #create the init_model
+  # create the init_model
   init_model = cp_dumper.get_checkpoint()
   if init_model is None:
     init_model = parse_config_file(args.param_file)
   param_dict['init_model'] = init_model
 
-  #create train dataprovider and test dataprovider
+  # create train dataprovider and test dataprovider
   dp_class = data.get_by_name(param_dict['data_provider'])
   train_dp = dp_class(param_dict['data_dir'], param_dict['train_range'])
   test_dp = dp_class(param_dict['data_dir'], param_dict['test_range'])
@@ -763,15 +698,14 @@ if __name__ == '__main__':
   param_dict['test_dp'] = test_dp
 
 
-  #get all extra information
-  param_dict['num_epoch'] = args.num_epoch
+  # get all extra information
   num_batch = util.string_to_int_list(args.num_batch)
   if len(num_batch) == 1:
     param_dict['num_batch'] = num_batch[0]
   else:
     param_dict['num_batch'] = num_batch
 
-  param_dict['num_group_list']  = util.string_to_int_list(args.num_group_list)
+  param_dict['num_group_list'] = util.string_to_int_list(args.num_group_list)
   param_dict['num_caterange_list'] = util.string_to_int_list(args.num_caterange_list)
   param_dict['output_dir'] = args.output_dir
   param_dict['output_method'] = args.output_method
@@ -781,4 +715,4 @@ if __name__ == '__main__':
 
   trainer = Trainer.get_trainer_by_name(trainer, param_dict)
   util.log('start to train...')
-  trainer.train()
+  trainer.train(args.num_epoch)
