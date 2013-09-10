@@ -95,7 +95,7 @@ class FastNet(object):
         break
     return_layers = self.layers[i:]
     self.layers = self.layers[0:i]
-    del self.inputShapes[i:]
+    del self.inputShapes[i+1:]
     del self.imgShapes[i:]
     del self.outputs[i:]
     del self.grads[i:]
@@ -219,13 +219,13 @@ class FastNet(object):
 
         self.outputs.append(gpuarray.zeros((row, col), dtype=np.float32))
         self.grads.append(gpuarray.zeros(self.inputShapes[-2], dtype=np.float32))
-  
+
     if not isinstance(data, GPUArray):
       data = gpuarray.to_gpu(data).astype(np.float32)
 
     if not isinstance(label, GPUArray):
       label = gpuarray.to_gpu(label).astype(np.float32)
-    
+
     label = label.reshape((label.size, 1))
     self.numCase += input.shape[1]
     outputShape = self.inputShapes[-1]
