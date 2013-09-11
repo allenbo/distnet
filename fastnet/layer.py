@@ -370,7 +370,7 @@ class ResponseNormLayer(Layer):
 class CrossMapResponseNormLayer(ResponseNormLayer):
   def __init__(self, name, pow=0.75, size=9, scale=0.001, blocked=False, disableBprop =
       False):
-    ResponseNormLayer.__init__(self, name, image_shape, pow, size, scale, disableBprop)
+    ResponseNormLayer.__init__(self, name, pow, size, scale, disableBprop)
     self.type = 'cmrnorm'
     self.scaler = self.scale / self.size
     self.blocked = blocked
