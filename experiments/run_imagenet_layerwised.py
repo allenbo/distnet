@@ -5,6 +5,7 @@ This test is for naive trainer to traine a full imagenet model
 
 from fastnet import data, trainer, net, parser
 import pprint
+from collections import deque
 
 test_id = 2
 
@@ -14,7 +15,7 @@ param_file = '/home/justin/fastnet/config/imagenet.cfg'
 output_dir = '/scratch1/justin/imagenet-pickle/'
 output_method = 'disk'
 
-train_range = range(101, 1301) #1,2,3,....,40
+train_range = range(101, 104) #1,2,3,....,40
 test_range = range(1, 101) #41, 42, ..., 48
 data_provider = 'imagenet'
 
@@ -33,7 +34,7 @@ adjust_freq = 100
 factor = 1
 num_epoch = 15
 frag_epoch = 1
-replay_epoch = 1
+replaynet_epoch = 1
 learning_rate = 0.1
 batch_size = 128
 image_color = 3
@@ -85,6 +86,8 @@ class ImageNetLayerwisedTrainer(trainer.Trainer):
     self.num_epoch = self.frag_epoch
     self.net = net.FastNet(self.learning_rate, self.image_shape, self.curr_model)
 
+    self.container = deque()
+
   def report(self):
     pass
 
@@ -94,40 +97,43 @@ class ImageNetLayerwisedTrainer(trainer.Trainer):
   def init_replaynet_data_provider(self):
     if self.output_method == 'disk':
       dp = data.get_by_name('intermediate')
-      count = self.train_dumper.get_count()
-      self.train_dp = dp(self.train_output_filename,  range(0, count), 'fc')
-      count = self.test_dumper.get_count()
-      self.test_dp = dp(self.test_output_filename, range(0, count), 'fc')
+      count = self.layer_output_dumper.get_count()
+      self.train_dp = dp(self.train_output_filename, range(0, count), 'fc')
     elif self.output_method == 'memory':
       dp = data.get_by_name('memory')
-      self.train_dp = dp(self.train_dumper)
-      self.test_dp = dp(self.test_dumper)
+      self.train_dp = dp(self.layer_output_dumper)
 
   def train_replaynet(self, stack):
+    self.container.append(self.save_freq)
+    self.container.append(self.test_freq)
+    self.container.append(self.train_dp)
+    self.container.append(self.test_dp)
+    self.container.append(self.layer_output_dumper)
+    self.container.append(self.net)
+
+    self.save_freq = self.curr_batch + 100
+    self.test_freq = self.curr_batch + 100
     self.curr_batch = self.curr_epoch = 0
-    self.fullnet_train_dp = self.train_dp
-    self.fullnet_test_dp = self.test_dp
     self.init_replaynet_data_provider()
 
     model = []
     model.extend(stack)
     model.extend(self.fc_tmp)
 
-    self.train_dumper = None
-    self.test_dumper = None
-
-    self.fullnet = self.net
-
+    self.layer_output_dumper = None
     size = self.net['fc8'].get_input_size()
     image_shape = (size, 1, 1, self.batch_size)
-    print image_shape
-    self.replaynet = FastNet(self.learning_rate, image_shape, model)
-    self.net = self.replaynet
+    self.net = net.FastNet(self.learning_rate, image_shape, model)
     self.num_epoch = self.replaynet_epoch
     trainer.Trainer.train(self)
 
-    self.train_dp = self.fullnet_train_dp
-    self.test_dp = self.fullnet_test_dp
+    self.net = self.container.pop()
+    self.layer_output_dumper = self.container.pop()
+    self.test_dp = self.container.pop()
+    self.train_dp = self.container.pop()
+    self.test_freq = self.container.pop()
+    self.save_freq = self.container.pop()
+
 
   def reset_trainer(self, i):
     if i == len(self.stack) - 1:
@@ -136,12 +142,10 @@ class ImageNetLayerwisedTrainer(trainer.Trainer):
       self.num_epoch = self.frag_epoch
 
     self.curr_batch = self.curr_epoch = 0
-    self.init_output_dumper()
     self.init_data_provider()
-    self.net = self.fullnet
 
-  def train(self):
-    trainer.Trainer.train(self)
+  def train(self, num_epochs):
+    trainer.Trainer.train(self, self.num_epoch)
     for i, stack in enumerate(self.stack.values()):
       self.train_replaynet(stack)
       self.reset_trainer(i)
@@ -150,8 +154,8 @@ class ImageNetLayerwisedTrainer(trainer.Trainer):
 
       for layer in self.replaynet:
         self.net.append_layer(layer)
-      trainer.Trainer.train(self)
+      trainer.Trainer.train(self, self.num_epoch)
 
 
 t = ImageNetLayerwisedTrainer(**param_dict)
-t.train()
+t.train(num_epoch)

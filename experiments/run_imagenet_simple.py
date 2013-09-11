@@ -5,7 +5,7 @@ This test is for naive trainer to traine a full imagenet model
 
 from fastnet import data, trainer, net, parser
 
-test_id = 1
+test_id = 'notest-1'
 
 data_dir = '/ssd/nn-data/imagenet/'
 checkpoint_dir = '/home/justin/fastnet/fastnet/checkpoint/'
@@ -40,6 +40,5 @@ image_shape = (image_color, image_size, image_size, batch_size)
 net = net.FastNet(learning_rate, image_shape, init_model)
 
 param_dict = globals()
-print type(param_dict)
 t = trainer.Trainer(**param_dict)
-t.train()
+t.train(num_epoch)

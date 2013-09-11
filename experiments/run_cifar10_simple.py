@@ -5,7 +5,7 @@ This test is for naive trainer to traine a full imagenet model
 
 from fastnet import data, trainer, net, parser
 
-test_id = 4
+test_id = 'cifar-test-1'
 
 data_dir = '/ssd/nn-data/cifar-10.old/'
 checkpoint_dir = '/home/justin/fastnet/fastnet/checkpoint/'
@@ -42,4 +42,4 @@ net = net.FastNet(learning_rate, image_shape, init_model)
 param_dict = globals()
 print type(param_dict)
 t = trainer.Trainer(**param_dict)
-t.train()
+t.train(num_epoch)
