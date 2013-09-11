@@ -615,7 +615,7 @@ class ImageNetCateGroupTrainer(MiniBatchTrainer):
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
-  parser.add_argument('--test_id', help='Test Id', default=None, type=int, required=True)
+  parser.add_argument('--test_id', help='Test Id', default=None, type=str, required=True)
   parser.add_argument('--data_dir', help='The directory that data stored', required=True)
   parser.add_argument('--param_file', help='The param_file or checkpoint file', required=True)
   parser.add_argument('--data_provider', help='The data provider', choices=['cifar10', 'imagenet', 'imagenetcategroup'], required=True)

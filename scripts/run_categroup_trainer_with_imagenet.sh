@@ -2,7 +2,7 @@
 
 python ~/fastnet/fastnet/trainer.py  \
   --data_dir /ssd/nn-data/imagenet/ \
-  --param_file ~/fastnet/fastnet/imagenet.cfg \
+  --param_file config/imagenet.cfg \
   --data_provider imagenetcategroup \
   --train_range 0-1200 \
   --test_range 1200-1300 \

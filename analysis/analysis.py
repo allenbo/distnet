@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import os
 import pandas
 import zipfile
+import shelve
 
 def find_latest(pattern):
     import glob
@@ -38,27 +39,52 @@ def _load_series(data, scale=1):
     prec = np.array([t[1] for t in lp])
     return pandas.DataFrame({'lp' : logprob, 'pr' : prec, 'elapsed' : elapsed, 'examples' : examples})
 
+def try_load_zip(state_f):
+  try:
+    zf = zipfile.ZipFile(state_f, 'r')
+    train_outputs = cPickle.load(zf.open('train_outputs'))
+    test_outputs = cPickle.load(zf.open('test_outputs'))
+    return train_outputs, test_outputs
+  except:
+    return None, None
+
+def try_load_pickle(state_f):
+  try:
+    data = cPickle.load(state_f)
+    train_outputs = data['train_outputs']
+    test_outputs = data['test_outputs']
+    return train_outputs, test_outputs
+  except:
+    return None, None
+
+def try_load_shelf(state_f):
+  try:
+    data = shelve.open(state_f, flag='r')
+    train_outputs = data['train_outputs']
+    test_outputs = data['test_outputs']
+    return train_outputs, test_outputs
+  except:
+    return None, None
+    
 def load_checkpoint(pattern):
-    state_f = find_latest(pattern)
-    try:
-      zf = zipfile.ZipFile(state_f, 'r')
-      train_outputs = cPickle.load(zf.open('train_outputs'))
-      test_outputs = cPickle.load(zf.open('test_outputs'))
-    except:
-      data = cPickle.load(state_f)
-      train_outputs = data['train_outputs']
-      test_outputs = data['test_outputs']
+  state_f = find_latest(pattern)
+  train_outputs, test_outputs = try_load_zip(state_f)
+  if not train_outputs:
+    train_outputs, test_outputs = try_load_pickle(state_f)
+  if not train_outputs:
+    train_outputs, test_outputs = try_load_shelf(state_f)
+    
+  assert train_outputs is not None
+
+  train_df = _load_series(train_outputs)
+  train_df['type'] = 'train'
 
 
-    train_df = _load_series(train_outputs)
-    train_df['type'] = 'train'
+  test_df = _load_series(test_outputs)
+  test_df['type'] = 'test'
 
-
-    test_df = _load_series(test_outputs)
-    test_df['type'] = 'test'
-
-    out = pandas.merge(train_df, test_df, how='outer')
-    return out
+  out = pandas.merge(train_df, test_df, how='outer')
+  return out
 
 
 def plot_df(df, x, y, save_to=None, title=None, merge=False,
