@@ -336,7 +336,7 @@ class ResponseNormLayer(Layer):
     self.scaler = self.scale / self.size ** 2
     self.denom = None
     util.log("pow:%s size:%s scale:%s scaler:%s", self.pow, self.size, self.scale, self.scaler)
-    
+
   def attach(self, prev):
     image_shape = prev.get_output_shape()
     self.numColor, self.imgSize, _, self.batchSize= image_shape
@@ -370,7 +370,7 @@ class ResponseNormLayer(Layer):
 class CrossMapResponseNormLayer(ResponseNormLayer):
   def __init__(self, name, pow=0.75, size=9, scale=0.001, blocked=False, disableBprop =
       False):
-    ResponseNormLayer.__init__(self, name, image_shape, pow, size, scale, disableBprop)
+    ResponseNormLayer.__init__(self, name, pow, size, scale, disableBprop)
     self.type = 'cmrnorm'
     self.scaler = self.scale / self.size
     self.blocked = blocked
@@ -411,7 +411,7 @@ class FCLayer(WeightedLayer):
 
   def attach(self, prev):
     input_shape = prev.get_output_shape()
-    self.inputSize = np.prod(input_shape[0:3])
+    self.inputSize = int(np.prod(input_shape[0:3]))
     self.batchSize = input_shape[3]
     self.weightShape = (self.outputSize, self.inputSize)
     self.biasShape = (self.outputSize, 1)
@@ -462,10 +462,10 @@ class SoftmaxLayer(Layer):
   def __init__(self, name, disableBprop = False):
     Layer.__init__(self, name, "softmax", disableBprop)
     self.batchCorrect = 0
-    
+
   def attach(self, prev_layer):
     input_shape = prev_layer.get_output_shape()
-    self.inputSize, self.batchSize = np.prod(input_shape[0:3]), input_shape[3]
+    self.inputSize, self.batchSize = int(np.prod(input_shape[0:3])), input_shape[3]
     self.outputSize = self.inputSize
     self.inputShape = input_shape
     self.cost = gpuarray.zeros((self.batchSize, 1), dtype=np.float32)
@@ -478,9 +478,11 @@ class SoftmaxLayer(Layer):
     max = gpuarray.zeros((1, self.batchSize), dtype=np.float32)
     col_max_reduce(max, input)
     add_vec_to_cols(input, max, output, alpha= -1)
+    print output.shape
     eltwise_exp(output)
     sum = gpuarray.zeros(max.shape, dtype=np.float32)
     add_col_sum_to_vec(sum, output, alpha=0)
+
     div_vec_to_cols(output, sum)
     if PFout:
       print_matrix(output, self.name)
