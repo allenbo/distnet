@@ -478,7 +478,6 @@ class SoftmaxLayer(Layer):
     max = gpuarray.zeros((1, self.batchSize), dtype=np.float32)
     col_max_reduce(max, input)
     add_vec_to_cols(input, max, output, alpha= -1)
-    print output.shape
     eltwise_exp(output)
     sum = gpuarray.zeros(max.shape, dtype=np.float32)
     add_col_sum_to_vec(sum, output, alpha=0)
