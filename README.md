@@ -1,4 +1,4 @@
-Striate
+Fastnet
 =========
 A [convolutional neural network](http://yann.lecun.com/exdb/lenet/) framework, building on 
 top of the convolutional kernel code from [cuda-convnet](https://code.google.com/p/cuda-convnet/).
