@@ -56,9 +56,9 @@ class EZTimer(object):
 
 def divup(x, base):
   if x / base * base == x:
-    return x / base
+    return int(x / base)
   else:
-    return x / base + 1
+    return int(x / base + 1)
 
 def load(filename):
   with open(filename, 'rb') as f:

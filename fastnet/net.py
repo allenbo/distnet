@@ -74,7 +74,7 @@ class FastNet(object):
   def append_layer(self, layer):
     if self.layers:
       layer.attach(self.layers[-1])
-    
+
     self.layers.append(layer)
 
     outputShape = layer.get_output_shape()
@@ -142,7 +142,7 @@ class FastNet(object):
 
   def fprop(self, data, probs, train=TRAIN):
     assert len(self.outputs) > 0, 'No outputs: uninitialized network!'
-    
+
     input = data
     for i in range(len(self.layers)):
       l = self.layers[i]
@@ -150,7 +150,7 @@ class FastNet(object):
       #  self.outputs[i] = input
       #else:
       l.fprop(input, self.outputs[i], train)
-      
+
       input = self.outputs[i]
 
     # probs.shape = self.outputs[-1].shape
@@ -225,7 +225,7 @@ class FastNet(object):
   def prepare_for_train(self, data, label):
     timer.start()
     input = data
-    
+
     # If data size doesn't match our expected batchsize, reshape outputs.
     if input.shape[1] != self.batchSize:
       self.batchSize = input.shape[1]
@@ -283,7 +283,7 @@ class FastNet(object):
 
     # make sure we have everything finished before returning!
     # also, synchronize properly releases the Python GIL,
-    # allowing other threads to make progress. 
+    # allowing other threads to make progress.
     driver.Context.synchronize()
 
   def get_dumped_layers(self):
@@ -317,20 +317,30 @@ class FastNet(object):
 
   def get_learning_rate(self):
     return self.learningRate
-  
+
   def get_layer_by_name(self, layer_name):
     for l in self.layers:
       if l.name == layer_name:
         return l
-    
+
     raise KeyError, 'Missing layer: %s' % layer_name
 
   def get_output_by_name(self, layer_name):
     for idx, l in enumerate(self.layers):
       if l.name == layer_name:
         return self.outputs[idx]
-    
+
     raise KeyError, 'Missing layer: %s' % layer_name
+
+  def get_output_index__by_name(self, layer_name):
+    for idx, l in enumerate(self.layers):
+      if l.name == layer_name:
+        return idx
+
+    raise KeyError, 'Missing layer: %s' % layer_name
+
+  def get_output_by_index(self, index):
+    return self.outputs[index]
 
   def get_summary(self):
     sum = []

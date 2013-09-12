@@ -16,6 +16,7 @@ import sys
 import time
 import shelve
 import zipfile
+from collections import deque
 
 class DataDumper(object):
   def __init__(self, target_path, max_mem_size=500e5):
@@ -61,6 +62,11 @@ class DataDumper(object):
 
   def get_count(self):
     return self.count
+
+  def reset(self):
+    self.data = []
+    self.sz = 0
+    self.count = 0
 
 class MemoryDataHolder(object):
   def __init__(self, single_memory_size=50e6, total_memory_size=4e9):
@@ -184,7 +190,7 @@ class CheckpointDumper(object):
     util.log('save file finished')
 
 
-def cache_outputs(net, layer_name, dp, dumper):
+def cache_outputs(net, dp, dumper, layer_name = '', index = -1):
   '''
   fprop ``net`` through an entire epoch, saving the output of ``layer_name`` into ``dumper``. 
   :param net:
@@ -193,17 +199,22 @@ def cache_outputs(net, layer_name, dp, dumper):
   :param dumper:
   '''
   dp.reset()
+  curr_batch = 0
   batch = dp.get_next_batch(128)
   epoch = batch.epoch
   # layer = net.get_layer_by_name(layer_name)
-  
+  if layer_name != '':
+    index = get_output_index_by_name(layer_name)
   while epoch == batch.epoch:
-    data, labels = net.prepare_for_train(batch.data, batch.labels)
-    cost, correct = net.fprop(data, labels)
-    # dumper.add({ 'labels' : labels, 'fc' : layer.output })
-    dumper.add({ 'labels' : labels,
-                 'fc' : net.get_output_by_name(layer_name)})
+    batch_start = time.time()
+    net.train_batch(batch.data, batch.labels, TEST)
+    cost, correct, numCase = net.get_batch_information()
+    curr_batch += 1
+    print >> sys.stderr, '%d.%d: error: %f logreg: %f time: %f' % (epoch, curr_batch, 1 - correct, cost, time.time() - batch_start)
+    dumper.add({ 'labels' : batch.labels.get(),
+                 'fc' : net.get_output_by_index(index).get().transpose()})
     batch = dp.get_next_batch(128)
+  dumper.flush()
 
 
 # Trainer should take: (training dp, test dp, fastnet, checkpoint dir)
@@ -228,7 +239,7 @@ class Trainer:
     else:
       self.train_outputs = []
       self.test_outputs = []
-    
+
     self._finish_init()
 
   def _finish_init(self):
@@ -253,7 +264,7 @@ class Trainer:
   def adjust_lr(self):
     print >> sys.stderr, '---- adjust learning rate ----'
     self.net.adjust_learning_rate(self.factor)
-    
+
   def elapsed(self):
     return time.time() - self.start_time
 
@@ -285,17 +296,21 @@ class Trainer:
 
   def check_adjust_lr(self):
     return self.factor != 1 and self.curr_batch % self.adjust_freq == 0
-  
+
   def should_continue_training(self):
     return True
-  
+
   def _finished_training(self):
-    pass
+    dumper = getattr(self, 'layer_output_dumper', None)
+    if dumper != None:
+      cache_outputs(self.net, self.train_dp, dumper, index = -3)
+    else:
+      util.log('There is no dumper for train data')
 
   def train(self, num_epochs):
     self.print_net_summary()
     util.log('Starting training...')
-    
+
     start_epoch = self.curr_epoch
     last_print_time = time.time()
     
@@ -325,7 +340,7 @@ class Trainer:
       if self.check_save_checkpoint():
         self.save_checkpoint()
 
-    self.get_test_error()
+    #self.get_test_error()
     self.save_checkpoint()
     self.report()
     self._finished_training()
@@ -449,6 +464,8 @@ class ImageNetLayerwisedTrainer(Trainer):
     self.num_epoch = self.frag_epoch
     self.net = FastNet(self.learning_rate, self.image_shape, self.curr_model)
 
+    self.container = deque()
+
   def report(self):
     pass
 
@@ -458,40 +475,44 @@ class ImageNetLayerwisedTrainer(Trainer):
   def init_replaynet_data_provider(self):
     if self.output_method == 'disk':
       dp = data.get_by_name('intermediate')
-      count = self.train_dumper.get_count()
-      self.train_dp = dp(self.train_output_filename, range(0, count), 'fc')
-      count = self.test_dumper.get_count()
-      self.test_dp = dp(self.test_output_filename, range(0, count), 'fc')
+      count = self.layer_output_dumper.get_count()
+      self.train_dp = dp(self.layer_output_path, range(0, count), 'fc')
     elif self.output_method == 'memory':
       dp = data.get_by_name('memory')
-      self.train_dp = dp(self.train_dumper)
-      self.test_dp = dp(self.test_dumper)
+      self.train_dp = dp(self.layer_output_dumper)
 
   def train_replaynet(self, stack):
+    self.container.append(self.save_freq)
+    self.container.append(self.test_freq)
+    self.container.append(self.train_dp)
+    self.container.append(self.test_dp)
+    self.container.append(self.layer_output_dumper)
+    self.container.append(self.net)
+
+    self.save_freq = self.curr_batch + 100
+    self.test_freq = self.curr_batch + 100
     self.curr_batch = self.curr_epoch = 0
-    self.fullnet_train_dp = self.train_dp
-    self.fullnet_test_dp = self.test_dp
     self.init_replaynet_data_provider()
 
     model = []
     model.extend(stack)
     model.extend(self.fc_tmp)
 
-    self.train_dumper = None
-    self.test_dumper = None
-
-    self.fullnet = self.net
-
+    self.layer_output_dumper = None
     size = self.net['fc8'].get_input_size()
     image_shape = (size, 1, 1, self.batch_size)
-    print image_shape
-    self.replaynet = FastNet(self.learning_rate, image_shape, model)
-    self.net = self.replaynet
+    self.net = FastNet(self.learning_rate, image_shape, model)
+    self.replaynet = self.net
     self.num_epoch = self.replaynet_epoch
     Trainer.train(self)
 
-    self.train_dp = self.fullnet_train_dp
-    self.test_dp = self.fullnet_test_dp
+    self.net = self.container.pop()
+    self.layer_output_dumper = self.container.pop()
+    self.layer_output_dumper.reset()
+    self.test_dp = self.container.pop()
+    self.train_dp = self.container.pop()
+    self.test_freq = self.container.pop()
+    self.save_freq = self.container.pop()
 
   def reset_trainer(self, i):
     if i == len(self.stack) - 1:
@@ -500,9 +521,7 @@ class ImageNetLayerwisedTrainer(Trainer):
       self.num_epoch = self.frag_epoch
 
     self.curr_batch = self.curr_epoch = 0
-    self.init_output_dumper()
     self.init_data_provider()
-    self.net = self.fullnet
 
   def train(self):
     Trainer.train(self)
@@ -513,7 +532,8 @@ class ImageNetLayerwisedTrainer(Trainer):
       self.net.drop_layer_from('fc8')
 
       for layer in self.replaynet:
-        self.net.append_layer(layer)
+        if layer.type != 'data':
+          self.net.append_layer(layer)
       Trainer.train(self)
 
 
@@ -661,6 +681,14 @@ if __name__ == '__main__':
   param_dict = {}
   param_dict['image_color'] = 3
   param_dict['test_id'] = args.test_id
+
+  try:
+    int(args.test_id)
+    assert False, 'Test id should probably not be an integer anymore.'
+  except:
+    pass
+
+
   param_dict['data_dir'] = args.data_dir
   param_dict['data_provider'] = args.data_provider
   if args.data_provider.startswith('imagenet'):
@@ -713,6 +741,7 @@ if __name__ == '__main__':
   param_dict['test_dp'] = test_dp
 
 
+
   # get all extra information
   num_batch = util.string_to_int_list(args.num_batch)
   if len(num_batch) == 1:
@@ -727,6 +756,15 @@ if __name__ == '__main__':
   param_dict['replaynet_epoch'] = args.replaynet_epoch
   param_dict['frag_epoch'] = args.frag_epoch
 
+  layer_output_dumper = None
+  if param_dict['output_method'] == 'disk':
+    if param_dict['output_dir'] != '':
+      layer_output_path = os.path.join(param_dict['output_dir'], 'data.pickle')
+      param_dict['layer_output_path'] = layer_output_path
+      layer_output_dumper = DataDumper(layer_output_path)
+  elif param_dict['output_method'] == 'memory':
+    layer_output_dumper = MemoryDataHolder()
+  param_dict['layer_output_dumeper'] = layer_output_dumper
 
   trainer = Trainer.get_trainer_by_name(trainer, param_dict)
   util.log('start to train...')
