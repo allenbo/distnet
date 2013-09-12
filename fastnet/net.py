@@ -11,8 +11,6 @@ import numpy as np
 import sys
 import time
 
-
-
 class FastNetIterator:
   def __init__(self, layers):
     util.log('create a iterator')
@@ -57,12 +55,9 @@ class FastNet(object):
       else:
         # FastNet config file
         add_layers(FastNetBuilder(), self, init_model)
-      self.adjust_learning_rate(self.learningRate)
-
-    util.log('Learning rates:')
-    for l in self.layers:
-      if isinstance(l, WeightedLayer):
-        util.log('%s: %s %s', l.name, getattr(l, 'epsW', 0), getattr(l, 'epsB', 0))
+      self.adjust_learning_rate(self.learningRate) 
+    
+    self.print_learning_rates()
 
   def save_layerouput(self, layers):
     self.save_layers = layers
@@ -93,9 +88,16 @@ class FastNet(object):
     print >> sys.stderr,  '%s  [%s] : %s' % (layer.name, layer.type, outputShape)
 
   def drop_layer_from(self, name):
+    found = False
     for i, layer in enumerate(self.layers):
       if layer.name == name:
+        found = True
         break
+   
+    if not found:
+      util.log('Layer: %s not found.', name)
+      return []
+     
     return_layers = self.layers[i:]
     self.layers = self.layers[0:i]
     del self.inputShapes[i+1:]
@@ -179,7 +181,25 @@ class FastNet(object):
     for layer in self.layers:
       if isinstance(layer, WeightedLayer):
         layer.scaleLearningRate(factor)
+        
+    self.print_learning_rates()        
 
+  def set_learning_rate(self, eps_w, eps_b):
+    for layer in self.layers:
+      if isinstance(layer, WeightedLayer):
+        layer.epsW = eps_w
+        layer.epsB = eps_b
+        
+    self.print_learning_rates()        
+
+  def print_learning_rates(self):
+    util.log('Learning rates:')
+    for l in self.layers:
+      if isinstance(l, WeightedLayer):
+        util.log('%s: %s %s %s', l.name, l.__class__.__name__, getattr(l, 'epsW', 0), getattr(l, 'epsB', 0))
+      else:
+        util.log('%s: %s', l.name, l.__class__.__name__)
+        
 
   def clear_weight_incr(self):
     for l in self.layers:

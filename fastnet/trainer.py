@@ -14,6 +14,7 @@ import pprint
 import re
 import sys
 import time
+import shelve
 import zipfile
 
 class DataDumper(object):
@@ -132,14 +133,15 @@ class MemoryDataHolder(object):
 
 
 class CheckpointDumper(object):
-  def __init__(self, checkpoint_dir, test_id):
+  def __init__(self, checkpoint_dir, test_id, max_cp_size=5e9):
     self.checkpoint_dir = checkpoint_dir
 
     if not os.path.exists(self.checkpoint_dir):
       os.system('mkdir -p \'%s\'' % self.checkpoint_dir)
 
     self.test_id = test_id
-    self.regex = re.compile('^%s-(\d+)$' % self.test_id)
+    self.counter = iter(xrange(10000))
+    self.max_cp_size = max_cp_size
 
 
   def get_checkpoint(self):
@@ -150,28 +152,35 @@ class CheckpointDumper(object):
     
     checkpoint_file = sorted(cp_files, key=os.path.getmtime)[-1]
     util.log('Loading from checkpoint file: %s', checkpoint_file)
-    dict = {}
-
-    with zipfile.ZipFile(checkpoint_file, mode='r') as zip_in:
-      for fname in zip_in.namelist():
-        with zip_in.open(fname, mode='r') as entry_f: 
-          dict[fname] = cPickle.load(entry_f)
-
-    return dict
+    
+    try:
+      return shelve.open(checkpoint_file, flag='r', protocol=-1, writeback=False)
+    except:
+      dict = {}
+      with zipfile.ZipFile(checkpoint_file) as zf:
+        for k in zf.namelist():
+          dict[k] = cPickle.loads(zf.read(k))
+      return dict
 
   def dump(self, checkpoint, suffix):
-    saved_filename = [f for f in os.listdir(self.checkpoint_dir) if self.regex.match(f)]
-    for f in saved_filename:
-      os.remove(os.path.join(self.checkpoint_dir, f))
-    checkpoint_filename = "%s-%d" % (self.test_id, suffix)
-    self.checkpoint_file = os.path.join(self.checkpoint_dir, checkpoint_filename)
-    print >> sys.stderr, self.checkpoint_file
+    cp_pattern = self.checkpoint_dir + '/%s-*' % self.test_id
+    cp_files = [(f, os.stat(f)) for f in glob.glob(cp_pattern)]
+    cp_files = reversed(sorted(cp_files, key=lambda f: f[1].st_mtime))
+    
+    while sum([f[1].st_size for f in cp_files]) > self.max_cp_size:
+      os.remove(cp_files.pop())
+      
+    checkpoint_filename = "%s-%d.%d" % (self.test_id, suffix, self.counter.next())
+    checkpoint_filename = os.path.join(self.checkpoint_dir, checkpoint_filename)
+    
+    util.log('Writing checkpoint to %s', checkpoint_filename)
 
-    with zipfile.ZipFile(self.checkpoint_file, mode='w') as output:
-      for k, v in checkpoint.iteritems():
-        output.writestr(k, cPickle.dumps(v, protocol=-1)) 
-
-
+    sf = shelve.open(checkpoint_filename, flag='c', protocol=-1, writeback=False)
+    for k, v in checkpoint.iteritems():
+      sf[k] = v
+    sf.sync()
+    sf.close()
+    
     util.log('save file finished')
 
 
@@ -288,6 +297,7 @@ class Trainer:
     util.log('Starting training...')
     
     start_epoch = self.curr_epoch
+    last_print_time = time.time()
     
     while (self.curr_epoch - start_epoch <= num_epochs and 
           self.should_continue_training()):
@@ -298,9 +308,13 @@ class Trainer:
 
       input, label = train_data.data, train_data.labels
       self.net.train_batch(input, label)
-      cost , correct, numCase = self.net.get_batch_information()
+      cost, correct, numCase = self.net.get_batch_information()
       self.train_outputs += [({'logprob': [cost, 1 - correct]}, numCase, self.elapsed())]
-      print >> sys.stderr, '%d.%d: error: %f logreg: %f time: %f' % (self.curr_epoch, self.curr_batch, 1 - correct, cost, time.time() - batch_start)
+      
+      if time.time() - last_print_time > 1:
+        print >> sys.stderr, '%d.%d: error: %f logreg: %f time: %f' % (
+                      self.curr_epoch, self.curr_batch, 1 - correct, cost, time.time() - batch_start)
+        last_print_time = time.time()
 
       if self.check_test_data():
         self.get_test_error()

@@ -270,10 +270,10 @@ class ReaderThread(threading.Thread):
 
   def run(self):
     while not self._stop:
-      util.log('Fetching...')
+      #util.log('Fetching...')
       self.queue.put(self.dp.get_next_batch())
-      util.log('%s', self.dp.curr_batch_index)
-      util.log('Done.')
+      #util.log('%s', self.dp.curr_batch_index)
+      #util.log('Done.')
 
     self._running = False
 
@@ -310,7 +310,7 @@ class ParallelDataProvider(DataProvider):
   def _fill_reserved_data(self):
     batch_data = self._data_queue.get()
 
-    timer = util.EZTimer('fill reserved data')
+    #timer = util.EZTimer('fill reserved data')
 
     self.curr_epoch = batch_data.epoch
     batch_data.data = copy_to_gpu(batch_data.data)

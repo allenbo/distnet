@@ -191,7 +191,7 @@ class WeightedLayer(Layer):
 
 class ConvLayer(WeightedLayer):
   def __init__(self, name, num_filters, filter_shape, padding=2, stride=1, initW=0.01, initB=
-      0.0, partialSum = 0, sharedBiases = 0, epsW=0.001, epsB=0.002, momW=0.0, momB=0.0, wc=0.0,
+      0.0, partialSum = 0, sharedBiases = 0, epsW=0.001, epsB=0.002, momW=0.9, momB=0.9, wc=0.004,
       bias=None, weight=None, weightIncr = None, biasIncr = None, disableBprop = False):
 
     self.numFilter = num_filters
@@ -398,7 +398,7 @@ class CrossMapResponseNormLayer(ResponseNormLayer):
 
 class FCLayer(WeightedLayer):
   def __init__(self, name, n_out, epsW=0.001, epsB=0.002, initW=0.01, initB=0.0,
-      momW=0.0, momB=0.0, wc=0.0, dropRate=0.0, weight=None, bias=None, weightIncr = None, biasIncr
+      momW=0.9, momB=0.9, wc=0.004, dropRate=0.0, weight=None, bias=None, weightIncr = None, biasIncr
       = None, disableBprop = False):
     self.outputSize = n_out
     self.dropRate = dropRate
