@@ -1,7 +1,6 @@
 from fastnet import util, layer
-from fastnet.cuda_kernel import gpu_copy_to, transpose
-from fastnet.layer import ConvLayer, NeuronLayer, MaxPoolLayer, \
-  ResponseNormLayer, FCLayer, SoftmaxLayer, TRAIN, WeightedLayer, TEST
+from fastnet.cuda_kernel import gpu_copy_to
+from fastnet.layer import TRAIN, WeightedLayer
 from fastnet.parser import is_cudaconvnet_config, add_layers, FastNetBuilder, \
   CudaconvNetBuilder
 from fastnet.util import timer
@@ -12,18 +11,13 @@ import sys
 import time
 
 class FastNet(object):
-  def __init__(self, learningRate, imgShape, init_model = None):
-    self.learningRate = learningRate
-    self.numColor, self.imgSize, _ , self.batchSize = imgShape
-    self.imgShapes = [imgShape]
-    self.inputShapes = [(self.numColor * (self.imgSize ** 2), self.batchSize)]
+  def __init__(self, learning_rate, imgShape, init_model = None):
+    self.learning_rate = learning_rate
+    self.image_shape = imgShape
+    self.numColor, self.imgSize, _ , self.batch_size = imgShape
     self.layers = []
-    self.outputs = []
-    self.grads = []
-    self.output = None
 
     self.numCase = self.cost = self.correct = 0.0
-
     self.numConv = 0
 
     if init_model is None:
@@ -40,8 +34,8 @@ class FastNet(object):
       else:
         # FastNet config file
         add_layers(FastNetBuilder(), self, init_model)
-      self.adjust_learning_rate(self.learningRate) 
-    
+      self.adjust_learning_rate(self.learning_rate)
+     
     self.print_learning_rates()
 
   def __getitem__(self, name):
@@ -55,18 +49,10 @@ class FastNet(object):
   def append_layer(self, layer):
     if self.layers:
       layer.attach(self.layers[-1])
-
+    layer.init_output()
+    
     self.layers.append(layer)
-
-    outputShape = layer.get_output_shape()
-    row = outputShape[0] * outputShape[1] * outputShape[2]
-    col = outputShape[3]
-    self.inputShapes.append((row, col))
-    self.imgShapes.append(outputShape)
-
-    self.outputs.append(gpuarray.zeros((row, col), dtype=np.float32))
-    self.grads.append(gpuarray.zeros(self.inputShapes[-2], dtype=np.float32))
-    print >> sys.stderr,  '%s  [%s] : %s' % (layer.name, layer.type, outputShape)
+    print >> sys.stderr,  '%s  [%s] : %s' % (layer.name, layer.type, layer.get_output_shape())
 
   def drop_layer_from(self, name):
     found = False
@@ -81,10 +67,6 @@ class FastNet(object):
      
     return_layers = self.layers[i:]
     self.layers = self.layers[0:i]
-    del self.inputShapes[i+1:]
-    del self.imgShapes[i:]
-    del self.outputs[i:]
-    del self.grads[i:]
     print 'delete layer from', name
     print 'the last layer would be', self.layers[-1].name
     return return_layers
@@ -121,65 +103,54 @@ class FastNet(object):
     stack[s[0]['name']] = s
     return stack
 
-  def fprop(self, data, probs, train=TRAIN):
-    assert len(self.outputs) > 0, 'No outputs: uninitialized network!'
+  def fprop(self, data, train=TRAIN):
+    assert len(self.layers) > 0, 'No outputs: uninitialized network!'
 
     input = data
-    for i in range(len(self.layers)):
-      l = self.layers[i]
-      #if isinstance(l, layer.DataLayer):
-      #  self.outputs[i] = input
-      #else:
-      l.fprop(input, self.outputs[i], train)
-
-      input = self.outputs[i]
-
-    # probs.shape = self.outputs[-1].shape
-    gpu_copy_to(self.outputs[-1], probs)
+    for layer in self.layers:
+      layer.fprop(input, layer.output, train)
+      input = layer.output
+    
+    return self.layers[-1].output
 
   def bprop(self, data, label, prob, train=TRAIN):
     grad = label
     for i in range(1, len(self.layers) + 1):
-      l = self.layers[-i]
-      if l.disableBprop:
-        return
-      if i == len(self.layers):
-        input = data
-      else:
-        input = self.outputs[-(i + 1)]
-      output = self.outputs[-i]
-      outGrad = self.grads[-i]
-      l.bprop(grad, input, output, outGrad)
-      grad = outGrad
+      curr = self.layers[-i]
+      if curr.disable_bprop: return
+      prev = self.layers[-(i + 1)]     
+      curr.bprop(grad, prev.output, curr.output, prev.output_grad)
+      grad = prev.output_grad
 
   def update(self):
-    for l in self.layers:
-      if l.disableBprop or not isinstance(l, WeightedLayer):
-        continue
-      l.update()
+    for layer in self.layers:
+      layer.update()
 
   def adjust_learning_rate(self, factor=1.0):
+    util.log_info('Adjusting learning rate: %s', factor)
     for layer in self.layers:
       if isinstance(layer, WeightedLayer):
-        layer.scaleLearningRate(factor)
+        layer.weight.epsilon *= factor
+        layer.bias.epsilon *= factor
         
     self.print_learning_rates()        
 
   def set_learning_rate(self, eps_w, eps_b):
     for layer in self.layers:
       if isinstance(layer, WeightedLayer):
-        layer.epsW = eps_w
-        layer.epsB = eps_b
+        layer.weight.epsilon = eps_w
+        layer.bias.epsilon = eps_w
         
     self.print_learning_rates()        
 
   def print_learning_rates(self):
     util.log('Learning rates:')
-    for l in self.layers:
-      if isinstance(l, WeightedLayer):
-        util.log('%s: %s %s %s', l.name, l.__class__.__name__, getattr(l, 'epsW', 0), getattr(l, 'epsB', 0))
+    for layer in self.layers:
+      if isinstance(layer, WeightedLayer):
+        util.log('%s: %s %s %s', layer.name, layer.__class__.__name__, 
+                 layer.weight.epsilon, layer.bias.epsilon)
       else:
-        util.log('%s: %s', l.name, l.__class__.__name__)
+        util.log('%s: %s', layer.name, layer.__class__.__name__)
         
 
   def clear_weight_incr(self):
@@ -188,9 +159,9 @@ class FastNet(object):
         l.clear_incr()
 
   def get_cost(self, label, output):
-    outputLayer = self.layers[-1]
-    outputLayer.logreg_cost(label, output)
-    return outputLayer.cost.get().sum(), outputLayer.batchCorrect
+    cost_layer = self.layers[-1]
+    cost_layer.logreg_cost(label, output)
+    return cost_layer.cost.get().sum(), cost_layer.batchCorrect
 
   def get_batch_information(self):
     cost = self.cost
@@ -206,28 +177,12 @@ class FastNet(object):
   def prepare_for_train(self, data, label):
     timer.start()
 
-    # If data size doesn't match our expected batchsize, reshape outputs.
-    if data.shape[1] != self.batchSize:
-      self.batchSize = data.shape[1]
-      for l in self.layers:
-        l.change_batch_size(self.batchSize)
-      self.inputShapes = None
-      self.imgShapes = None
-      self.outputs = []
-      self.grads = []
-
-      self.imgShapes = [(self.numColor, self.imgSize, self.imgSize, self.batchSize)]
-      self.inputShapes = [(self.numColor * (self.imgSize ** 2), self.batchSize)]
+    # If data size doesn't match our expected batch_size, reshape outputs.
+    if data.shape[1] != self.batch_size:
+      self.batch_size = data.shape[1]
       for layer in self.layers:
-        # layer.update_shape(...)
-        outputShape = layer.get_output_shape()
-        row = outputShape[0] * outputShape[1] * outputShape[2]
-        col = outputShape[3]
-        self.inputShapes.append((row, col))
-        self.imgShapes.append(outputShape)
-
-        self.outputs.append(gpuarray.zeros((row, col), dtype=np.float32))
-        self.grads.append(gpuarray.zeros(self.inputShapes[-2], dtype=np.float32))
+        layer.change_batch_size(self.batch_size)
+        layer.init_output()
 
     if not isinstance(data, GPUArray):
       data = gpuarray.to_gpu(data).astype(np.float32)
@@ -237,22 +192,18 @@ class FastNet(object):
 
     label = label.reshape((label.size, 1))
     self.numCase += data.shape[1]
-    outputShape = self.inputShapes[-1]
-
-    if self.output is None or self.output.shape != outputShape:
-      self.output = gpuarray.zeros(outputShape, dtype=np.float32)
 
     return data, label
 
   def train_batch(self, data, label, train=TRAIN):
     data, label = self.prepare_for_train(data, label)
-    self.fprop(data, self.output, train)
-    cost, correct = self.get_cost(label, self.output)
+    output = self.fprop(data, train)
+    cost, correct = self.get_cost(label, output)
     self.cost += cost
     self.correct += correct
 
     if train == TRAIN:
-      self.bprop(data, label, self.output)
+      self.bprop(data, label, output)
       self.update()
 
     # make sure we have everything finished before returning!
@@ -269,20 +220,20 @@ class FastNet(object):
 
   def disable_bprop(self):
     for l in self.layers:
-      l.disableBprop()
+      l.disable_bprop()
 
   def enable_bprop(self):
     for l in self.layers:
-      l.enableBprop()
+      l.enable_bprop()
 
   def get_report(self):
     pass
 
   def get_image_shape(self):
-    return self.imgShaps[0]
+    return self.layers[0].get_output_shape()
 
   def get_learning_rate(self):
-    return self.learningRate
+    return self.learning_rate
 
   def get_layer_by_name(self, layer_name):
     for l in self.layers:
