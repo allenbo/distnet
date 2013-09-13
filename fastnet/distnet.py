@@ -82,7 +82,7 @@ class DistFastNet(FastNet):
     fc = True
     for i in range(1, len(self.layers) + 1):
       l = self.layers[-i]
-      if l.disableBprop:
+      if l.disable_bprop:
         return
       if i == len(self.layers):
         input = data
@@ -130,7 +130,7 @@ class DistFastNet(FastNet):
 
   def update(self):
     for layer in self.layers:
-      if layer.disableBprop or not isinstance(layer, WeightedLayer):
+      if layer.disable_bprop or not isinstance(layer, WeightedLayer):
         continue
       if layer.type == 'fc':
         layer.update()
@@ -150,10 +150,10 @@ class DistFastNet(FastNet):
 
   def prepare_for_train(data, label):
     assert len(data.shape) == 4
-    if data.shape[3] != self.batchSize:
-      self.batchSize = data.shape[3]
+    if data.shape[3] != self.batch_size:
+      self.batch_size = data.shape[3]
       for l in self.layers:
-        l.change_batch_size(self.batchSize)
+        l.change_batch_size(self.batch_size)
       self.inputShapes = None
       self.imgShapes = None
       self.outputs = []
@@ -162,8 +162,8 @@ class DistFastNet(FastNet):
       self.local_grads = []
 
 
-      self.imgShapes = [(self.numColor, self.imgSize / 2, self.imgSize / 2, self.batchSize)]
-      self.inputShapes = [(self.numColr * (self.imgSize ** 2) / 4, self.batchSize)]
+      self.imgShapes = [(self.numColor, self.imgSize / 2, self.imgSize / 2, self.batch_size)]
+      self.inputShapes = [(self.numColr * (self.imgSize ** 2) / 4, self.batch_size)]
 
       fc = False
       for layer in self.layers:
@@ -193,7 +193,7 @@ class DistFastNet(FastNet):
         #  area = make_area(self.imgShapes[-2])
         #self.grads.append(virtual_array(rank, area = area))
 
-      area = make_area((self.numColor, self.imgSize / 2, self.imgSize / 2, self.batchSize))
+      area = make_area((self.numColor, self.imgSize / 2, self.imgSize / 2, self.batch_size))
       self.data = virtual_array(rank, local = gpuarray.to_gpu(data.__getitem__(area.to_slice())),
           area = area)
 
