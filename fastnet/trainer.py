@@ -1,6 +1,6 @@
 from fastnet import util, layer, data
 from fastnet.layer import TRAIN, TEST
-from fastnet.net import FastNet, AdaptiveFastNet
+from fastnet.net import FastNet
 from fastnet.parser import parse_config_file
 from fastnet.scheduler import Scheduler
 from fastnet.util import divup, timer, load

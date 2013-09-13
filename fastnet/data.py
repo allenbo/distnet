@@ -38,7 +38,7 @@ class DataProvider(object):
     if os.path.exists(self.meta_file):
       self.batch_meta = util.load(self.meta_file)
     else:
-      print 'No default meta file \'batches.meta\', using another meta file'
+      util.log_warn('Missing metadata for loader.')
 
     if batch_range is None:
       self.batch_range = self.get_batch_indexes()
@@ -121,12 +121,18 @@ class ImageNetDataProvider(DataProvider):
 
     util.log('Starting data provider with %d batches', len(self.batches))
     np.random.shuffle(self.batch_range)
-
-    imagemean = cPickle.loads(open(data_dir + "image-mean.pickle").read())
-    self.data_mean = (imagemean['data']
+    
+    if 'data_mean' in self.batch_meta:
+      data_mean = self.batch_meta['data_mean']
+    else:
+      data_mean = util.load(data_dir + 'image-mean.pickle')
+    
+    self.data_mean = (data_mean
         .astype(np.single)
         .T
-        .reshape((3, 256, 256))[:, self.border_size:self.border_size + self.inner_size, self.border_size:self.border_size + self.inner_size]
+        .reshape((3, 256, 256))[:, 
+                                self.border_size:self.border_size + self.inner_size, 
+                                self.border_size:self.border_size + self.inner_size]
         .reshape((self.get_data_dims(), 1)))
 
 
