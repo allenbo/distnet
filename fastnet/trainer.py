@@ -354,27 +354,23 @@ class Trainer:
 
   @staticmethod
   def get_trainer_by_name(name, param_dict):
-    net = FastNet(param_dict['learning_rate'], param_dict['image_shape'], init_model=None)
-    param_dict['net'] = net
     if name == 'layerwise':
+      net = FastNet(param_dict['learning_rate'], 
+                    param_dict['image_shape'], 
+                    init_model=None)
+      param_dict['net'] = net
       return ImageNetLayerwisedTrainer(**param_dict)
 
-    if name == 'catewise':
-      return ImageNetCatewisedTrainer(**param_dict)
-
-    if name == 'categroup':
-      return ImageNetCateGroupTrainer(**param_dict)
-
-
-    net = FastNet(param_dict['learning_rate'], param_dict['image_shape'], param_dict['init_model'])
+    net = FastNet(param_dict['learning_rate'], 
+                  param_dict['image_shape'], 
+                  param_dict['init_model'])
     param_dict['net'] = net
     if name == 'normal':
       return Trainer(**param_dict)
-
-    if name == 'minibatch':
+    elif name == 'minibatch':
       return MiniBatchTrainer(**param_dict)
-
-    raise Exception, 'No trainer found for name: %s' % name
+    else:
+      raise Exception, 'No trainer found for name: %s' % name
 
 
 
