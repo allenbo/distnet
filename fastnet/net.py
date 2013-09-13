@@ -11,19 +11,6 @@ import numpy as np
 import sys
 import time
 
-class FastNetIterator:
-  def __init__(self, layers):
-    util.log('create a iterator')
-    self.layers = layers
-    self.ind = 0
-  def next(self):
-    if self.ind == len(self.layers):
-      raise StopIteration
-    else:
-      layer = self.layers[self.ind]
-      self.ind += 1
-      return layer
-
 class FastNet(object):
   def __init__(self, learningRate, imgShape, init_model = None):
     self.learningRate = learningRate
@@ -34,8 +21,6 @@ class FastNet(object):
     self.outputs = []
     self.grads = []
     self.output = None
-    self.save_layers = None
-    self.save_output = []
 
     self.numCase = self.cost = self.correct = 0.0
 
@@ -59,17 +44,13 @@ class FastNet(object):
     
     self.print_learning_rates()
 
-  def save_layerouput(self, layers):
-    self.save_layers = layers
-
   def __getitem__(self, name):
     for layer in self.layers:
       if layer.name == name:
         return layer
 
   def __iter__(self):
-    util.log('get iterator')
-    return FastNetIterator(self.layers)
+    return iter(self.layers)
 
   def append_layer(self, layer):
     if self.layers:
@@ -224,11 +205,10 @@ class FastNet(object):
 
   def prepare_for_train(self, data, label):
     timer.start()
-    input = data
 
     # If data size doesn't match our expected batchsize, reshape outputs.
-    if input.shape[1] != self.batchSize:
-      self.batchSize = input.shape[1]
+    if data.shape[1] != self.batchSize:
+      self.batchSize = data.shape[1]
       for l in self.layers:
         l.change_batch_size(self.batchSize)
       self.inputShapes = None
@@ -256,7 +236,7 @@ class FastNet(object):
       label = gpuarray.to_gpu(label).astype(np.float32)
 
     label = label.reshape((label.size, 1))
-    self.numCase += input.shape[1]
+    self.numCase += data.shape[1]
     outputShape = self.inputShapes[-1]
 
     if self.output is None or self.output.shape != outputShape:
@@ -270,12 +250,6 @@ class FastNet(object):
     cost, correct = self.get_cost(label, self.output)
     self.cost += cost
     self.correct += correct
-
-    if self.save_layers is not None:
-      it = [(i, self.layers[i].name) for i in range(len(self.layers)) if self.layers[i].name in self.save_layers]
-      outputs = [transpose(o).get() for o in self.outputs]
-      label = label.get()
-      self.save_output.extend([(label[i, 0], dict([(name, outputs[j][i,:]) for j, name in it])) for i in range(self.batchSize)])
 
     if train == TRAIN:
       self.bprop(data, label, self.output)
@@ -292,14 +266,6 @@ class FastNet(object):
       layers.append(l.dump())
 
     return layers
-
-  def get_save_output(self):
-    if self.save_layers is None:
-      assert False, 'Not specify any save layer name'
-    else:
-      tmp = self.save_output
-      self.save_output = []
-      return tmp
 
   def disable_bprop(self):
     for l in self.layers:

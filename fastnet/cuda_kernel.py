@@ -13,8 +13,6 @@ import numpy as np
 import pycuda
 import sys
 import pycuda.autoinit
-#from scikits.cuda import linalg
-#linalg.init()
 
 try:
   cublas.cublasInit()

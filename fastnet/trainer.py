@@ -202,9 +202,10 @@ def cache_outputs(net, dp, dumper, layer_name = '', index = -1):
   curr_batch = 0
   batch = dp.get_next_batch(128)
   epoch = batch.epoch
-  # layer = net.get_layer_by_name(layer_name)
+  
   if layer_name != '':
-    index = get_output_index_by_name(layer_name)
+    index = net.get_output_index_by_name(layer_name)
+  
   while epoch == batch.epoch:
     batch_start = time.time()
     net.train_batch(batch.data, batch.labels, TEST)
@@ -344,31 +345,6 @@ class Trainer:
     self.save_checkpoint()
     self.report()
     self._finished_training()
-
-  def predict(self, save_layers=None, filename=None):
-    self.net.save_layerouput(save_layers)
-    self.print_net_summary()
-    util.log('Starting predict...')
-    save_output = []
-    while self.curr_epoch < 2:
-      start = time.time()
-      test_data = self.test_dp.get_next_batch(self.batch_size)
-
-      input, label = test_data.data, test_data.labels
-      self.net.train_batch(input, label, TEST)
-      cost , correct, numCase = self.net.get_batch_information()
-      self.curr_epoch = self.test_data.epoch
-      self.curr_batch += 1
-      print >> sys.stderr, '%d.%d: error: %f logreg: %f time: %f' % (self.curr_epoch, self.curr_batch, 1 - correct, cost, time.time() - start)
-      if save_layers is not None:
-        save_output.extend(self.net.get_save_output())
-
-    if save_layers is not None:
-      if filename is not None:
-        with open(filename, 'w') as f:
-          cPickle.dump(save_output, f, protocol=-1)
-        util.log('save layer output finished')
-
 
   def report(self):
     rep = self.net.get_report()
