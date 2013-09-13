@@ -21,14 +21,16 @@ def to_gpu(obj):
     return obj
   
   assert obj.dtype == np.float32
-  return gpuarray.to_gpu(obj)
+  result = gpuarray.to_gpu(obj).astype(np.float32)
+  assert result.dtype == np.float32
+  return result
 
 
 def col_rand(shape, dtype):
   return np.require(np.random.rand(*shape), dtype=dtype, requirements='C')  
 
 def col_randn(shape, dtype):
-  return np.require(np.random.rand(*shape), dtype=dtype, requirements='C')
+  return np.require(np.random.randn(*shape), dtype=dtype, requirements='C')
 
 
 class Weight(object):
@@ -50,8 +52,12 @@ class Weight(object):
   def update(self, grad, batch_size):
     #assert self.incr.get().mean() < 1
     #a, b, c, = self.incr.get().mean(), self.wt.get().mean(), (grad.get() * self.epsilon / batch_size).mean()
-    #util.log_info('%s %s %s %s', self.name, a, b, c)
+    #util.log_info('%s %s %s %s %s', self.name, a, b, c, grad.get().mean())
     Assert.eq(grad.shape, self.wt.shape)
+    
+    assert(grad.dtype == np.float32)
+    assert(self.wt.dtype == np.float32)
+    assert(self.incr.dtype == np.float32)
 
     if self.momentum > 0.0:
       matrix_add(self.incr, grad, alpha=self.momentum, beta=np.float32(self.epsilon / batch_size))
@@ -171,16 +177,16 @@ class WeightedLayer(Layer):
     
   def _init_weights(self, weight_shape, bias_shape):
     if self.initB is None:
-      self.initB = np.sqrt(1.0 / np.prod(bias_shape))
+      self.initB = 0.0
     
     if self.initW is None:
-      self.initW = np.sqrt(1.0 / np.prod(weight_shape))
+      self.initW = 1.0 / np.sqrt(np.prod(weight_shape))
      
     self.bias.shape = bias_shape
     self.weight.shape = weight_shape
      
     if self.weight.wt is None:
-      self.weight.set_weight(to_gpu(col_randn(weight_shape, np.float32)) * self.initW)
+      self.weight.set_weight(to_gpu(col_randn(weight_shape, np.float32) * self.initW))
 
     if self.bias.wt is None:
       self.bias.set_weight(to_gpu((np.ones(bias_shape, dtype=np.float32) * self.initB)))
@@ -275,11 +281,16 @@ class ConvLayer(WeightedLayer):
 
 
   def fprop(self, input, output, train=TRAIN):
+    #np.save('input.arr', input.get())
+    #np.save('weight.arr', self.weight.wt.get())
     cudaconv2.convFilterActs(input, self.weight.wt, output, self.imgSize, self.outputSize,
         self.outputSize, -self.padding, self.stride, self.numColor, 1)
-    self.tmp = gpuarray.empty((self.numFilter,
+    
+    #util.log_info('%s', output.get().mean())
+    self.tmp = gpuarray.empty((self.numFilter, 
                                self.get_single_img_size() * self.batch_size / self.numFilter),
-                              dtype=np.float32)
+                                dtype=np.float32)
+    
     gpu_copy_to(output, self.tmp)
     add_vec_to_rows(self.tmp, self.bias.wt)
     gpu_copy_to(self.tmp, output)

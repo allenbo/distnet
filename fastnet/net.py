@@ -158,9 +158,10 @@ class FastNet(object):
       if isinstance(l, WeightedLayer):
         l.clear_incr()
 
-  def get_cost(self, label, output):
+  def get_cost(self, label, prediction):
     cost_layer = self.layers[-1]
-    cost_layer.logreg_cost(label, output)
+    assert not np.any(np.isnan(prediction.get()))
+    cost_layer.logreg_cost(label, prediction)
     return cost_layer.cost.get().sum(), cost_layer.batchCorrect
 
   def get_batch_information(self):
@@ -171,8 +172,7 @@ class FastNet(object):
     return cost / numCase , correct / numCase, int(numCase)
 
   def get_correct(self):
-    outputLayer = self.layers[-1]
-    return outputLayer.get_correct()
+    return self.layers[-1].get_correct()
 
   def prepare_for_train(self, data, label):
     timer.start()
@@ -197,13 +197,13 @@ class FastNet(object):
 
   def train_batch(self, data, label, train=TRAIN):
     data, label = self.prepare_for_train(data, label)
-    output = self.fprop(data, train)
-    cost, correct = self.get_cost(label, output)
+    prediction = self.fprop(data, train)
+    cost, correct = self.get_cost(label, prediction)
     self.cost += cost
     self.correct += correct
 
     if train == TRAIN:
-      self.bprop(data, label, output)
+      self.bprop(data, label, prediction)
       self.update()
 
     # make sure we have everything finished before returning!
