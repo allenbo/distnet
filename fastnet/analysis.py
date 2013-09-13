@@ -3,17 +3,18 @@
 '''Functions for analyzing the output of fastnet checkpoint files.'''
 
 import cPickle
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 import os
 import pandas
-import zipfile
 import shelve
+import zipfile
 
 def find_latest(pattern):
     import glob
     files = glob.glob(pattern)
-    ftimes = sorted((os.stat(f).st_mtime, f) for f in files)
+    ftimes = sorted((os.stat(f).st_ctime, f) for f in files)
+    
     if ftimes:
       return ftimes[-1][1]
 

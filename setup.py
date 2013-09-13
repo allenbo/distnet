@@ -34,6 +34,7 @@ setup(
     },
     requires=[
       'pycuda', 
-      'numpy', 
+      'numpy',
+      'scikits.cuda',
     ],
     ext_modules = extension_modules)
