@@ -6,9 +6,23 @@ import time
 import traceback
 import numpy as np
 
+DEBUG = 0
+INFO = 1
+WARN = 2
+ERROR = 3
+FATAL = 4
+
+level_to_char = { DEBUG : 'D',
+                  INFO : 'I',
+                  WARN : 'W',
+                  ERROR : 'E',
+                  FATAL : 'F', 
+                  }
+
 program_start = time.time()
 log_mutex = threading.Lock()
 def log(msg, *args, **kw):
+  level = kw.get('level', INFO)
   with log_mutex:
     caller = sys._getframe(1)
     filename = caller.f_code.co_filename
@@ -18,10 +32,15 @@ def log(msg, *args, **kw):
       exc = ''.join(traceback.format_exc())
     else:
       exc = None
-    print >> sys.stderr, '%.3f:%s:%d: %s' % (now, os.path.basename(filename), lineno, msg % args)
+    print >> sys.stderr, '%s %.3f:%s:%d: %s' % (level_to_char[level], now, os.path.basename(filename), lineno, msg % args)
     if exc:
       print >> sys.stderr, exc
 
+def log_debug(msg, *args, **kw): log(msg, *args, level=DEBUG)
+def log_info(msg, *args, **kw): log(msg, *args, level=INFO)
+def log_warn(msg, *args, **kw): log(msg, *args, level=WARN)
+def log_error(msg, *args, **kw): log(msg, *args, level=ERROR)
+def log_fatal(msg, *args, **kw): log(msg, *args, level=FATAL)
 
 class Timer:
   def __init__(self):
