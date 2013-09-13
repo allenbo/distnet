@@ -43,11 +43,11 @@ class Layer(object):
         d[att] = getattr(self, att)
     return d
 
-def randn(shape, dtype):
-  np.random.seed(0)
-  return np.require(np.random.randn(*shape), dtype=dtype, requirements='C')
-  #return np.random.randn(*shape).astype(dtype)
+def rand(shape, dtype):
+  return np.require(np.random.rand(*shape), dtype=dtype, requirements='C')
   
+def randn(shape, dtype):
+  return np.require(np.random.rand(*shape), dtype=dtype, requirements='C')
 
 class DataLayer(Layer):
   def __init__(self, name, image_shape):
@@ -104,6 +104,12 @@ class WeightedLayer(Layer):
         self.biasIncr = None
 
   def _init_weights(self, weight_shape, bias_shape):
+    if self.initB is None:
+      self.initB = np.sqrt(1.0 / np.prod(bias_shape))
+    
+    if self.initW is None:
+      self.initW = np.sqrt(1.0 / np.prod(weight_shape))
+      
     if self.weight is None:
       self.weight = gpuarray.to_gpu(randn(weight_shape, np.float32) * self.initW)
 
@@ -190,8 +196,8 @@ class WeightedLayer(Layer):
     return d
 
 class ConvLayer(WeightedLayer):
-  def __init__(self, name, num_filters, filter_shape, padding=2, stride=1, initW=0.01, initB=
-      0.0, partialSum = 0, sharedBiases = 0, epsW=0.001, epsB=0.002, momW=0.9, momB=0.9, wc=0.004,
+  def __init__(self, name, num_filters, filter_shape, padding=2, stride=1, initW=None, 
+               initB=None, partialSum = 0, sharedBiases = 0, epsW=0.001, epsB=0.002, momW=0.9, momB=0.9, wc=0.004,
       bias=None, weight=None, weightIncr = None, biasIncr = None, disableBprop = False):
 
     self.numFilter = num_filters
@@ -397,7 +403,7 @@ class CrossMapResponseNormLayer(ResponseNormLayer):
     return d
 
 class FCLayer(WeightedLayer):
-  def __init__(self, name, n_out, epsW=0.001, epsB=0.002, initW=0.01, initB=0.0,
+  def __init__(self, name, n_out, epsW=0.001, epsB=0.002, initW=None, initB=None,
       momW=0.9, momB=0.9, wc=0.004, dropRate=0.0, weight=None, bias=None, weightIncr = None, biasIncr
       = None, disableBprop = False):
     self.outputSize = n_out
