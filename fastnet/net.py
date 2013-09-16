@@ -59,10 +59,8 @@ class FastNet(object):
         add_layers(FastNetBuilder(), self, init_model)
       self.adjust_learning_rate(self.learningRate)
 
-    util.log('Learning rates:')
-    for l in self.layers:
-      if isinstance(l, WeightedLayer):
-        util.log('%s: %s %s', l.name, getattr(l, 'epsW', 0), getattr(l, 'epsB', 0))
+    self.print_learning_rate()
+
 
   def save_layerouput(self, layers):
     self.save_layers = layers
@@ -179,6 +177,12 @@ class FastNet(object):
     for layer in self.layers:
       if isinstance(layer, WeightedLayer):
         layer.scaleLearningRate(factor)
+
+  def print_learning_rate(self):
+    util.log('Learning rates:')
+    for l in self.layers:
+      if isinstance(l, WeightedLayer):
+        util.log('%s: %s %s', l.name, getattr(l, 'epsW', 0), getattr(l, 'epsB', 0))
 
 
   def clear_weight_incr(self):
