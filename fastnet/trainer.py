@@ -43,7 +43,7 @@ class DataDumper(object):
 
   def flush(self):
     if self.sz == 0:
-      return
+      return  
 
     out = {}
     for k in self.data[0].keys():
@@ -66,6 +66,12 @@ class DataDumper(object):
     self.data = []
     self.sz = 0
     self.count = 0
+
+  def get_dir_count(self):
+    lis = glob.glob(self.target_path + '.*')
+    if lis:
+      return len(lis)
+    return 0
 
 class MemoryDataHolder(object):
   def __init__(self, single_memory_size=50e6, total_memory_size=4e9):
@@ -150,10 +156,11 @@ class CheckpointDumper(object):
 
   def get_checkpoint(self):
     cp_pattern = self.checkpoint_dir + '/%s-*' % self.test_id
+    print cp_pattern
     cp_files = glob.glob(cp_pattern)
     if not cp_files:
       return None
-    
+
     checkpoint_file = sorted(cp_files, key=os.path.getmtime)[-1]
     util.log('Loading from checkpoint file: %s', checkpoint_file)
     dict = {}
@@ -227,9 +234,11 @@ class Trainer:
     if checkpoint:
       self.train_outputs = checkpoint['train_outputs']
       self.test_outputs = checkpoint['test_outputs']
+      self.base_time = self.train_outputs[-1][-1]
     else:
       self.train_outputs = []
       self.test_outputs = []
+      self.base_time = 0
 
     self._finish_init()
 
@@ -240,6 +249,10 @@ class Trainer:
     self.train_dp.reset()
     self.test_dp.reset()
 
+
+  def annealing(self):
+    self.net.adjust_learning_rate(0.1)
+    self.net.print_learning_rate()
 
   def save_checkpoint(self):
     model = {}
@@ -257,7 +270,7 @@ class Trainer:
     self.net.adjust_learning_rate(self.factor)
 
   def elapsed(self):
-    return time.time() - self.start_time
+    return time.time() - self.start_time + self.base_time
 
   def get_test_error(self):
     test_data = self.test_dp.get_next_batch(self.batch_size)
@@ -292,11 +305,16 @@ class Trainer:
     return True
 
   def _finished_training(self):
-    dumper = getattr(self, 'layer_output_dumper', None)
+    dumper = getattr(self, 'train_layer_output_dumper', None)
     if dumper != None:
       cache_outputs(self.net, self.train_dp, dumper, index = -3)
     else:
       util.log('There is no dumper for train data')
+    dumper = getattr(self, 'test_layer_output_dumper', None)
+    if dumper != None:
+      cache_outputs(self.net, self.test_dp, dumper, index = -3)
+    else:
+      util.log('There is no dumper for test data')
 
   def train(self, num_epochs):
     self.print_net_summary()
@@ -461,18 +479,22 @@ class ImageNetLayerwisedTrainer(Trainer):
   def init_replaynet_data_provider(self):
     if self.output_method == 'disk':
       dp = data.get_by_name('intermediate')
-      count = self.layer_output_dumper.get_count()
-      self.train_dp = dp(self.layer_output_path, range(0, count), 'fc')
+      count = self.train_layer_output_dumper.get_count()
+      self.train_dp = dp(self.train_layer_output_path, range(0, count), 'fc')
+      count = self.test_layer_output_dumper.get_count()
+      self.test_dp = dp(self.test_layer_output_path, range(count), 'fc')
     elif self.output_method == 'memory':
       dp = data.get_by_name('memory')
-      self.train_dp = dp(self.layer_output_dumper)
+      self.train_dp = dp(self.train_layer_output_dumper)
+      self.test_dp = dp(self.test_layer_output_dumper)
 
   def train_replaynet(self, stack):
     self.container.append(self.save_freq)
     self.container.append(self.test_freq)
     self.container.append(self.train_dp)
     self.container.append(self.test_dp)
-    self.container.append(self.layer_output_dumper)
+    self.container.append(self.train_layer_output_dumper)
+    self.container.append(self.test_layer_output_dumper)
     self.container.append(self.net)
 
     self.save_freq = self.curr_batch + 100
@@ -484,7 +506,8 @@ class ImageNetLayerwisedTrainer(Trainer):
     model.extend(stack)
     model.extend(self.fc_tmp)
 
-    self.layer_output_dumper = None
+    self.train_layer_output_dumper = None
+    self.test_layer_output_dumper = None
     size = self.net['fc8'].get_input_size()
     image_shape = (size, 1, 1, self.batch_size)
     self.net = FastNet(self.learning_rate, image_shape, model)
@@ -493,8 +516,10 @@ class ImageNetLayerwisedTrainer(Trainer):
     Trainer.train(self)
 
     self.net = self.container.pop()
-    self.layer_output_dumper = self.container.pop()
-    self.layer_output_dumper.reset()
+    self.test_layer_output_dumper = self.container.pop()
+    self.test_layer_output_dumper.reset()
+    self.train_layer_output_dumper = self.container.pop()
+    self.train_layer_output_dumper.reset()
     self.test_dp = self.container.pop()
     self.train_dp = self.container.pop()
     self.test_freq = self.container.pop()
@@ -742,15 +767,21 @@ if __name__ == '__main__':
   param_dict['replaynet_epoch'] = args.replaynet_epoch
   param_dict['frag_epoch'] = args.frag_epoch
 
-  layer_output_dumper = None
+  train_layer_output_dumper = None
+  test_layer_output_dumper = None
   if param_dict['output_method'] == 'disk':
     if param_dict['output_dir'] != '':
-      layer_output_path = os.path.join(param_dict['output_dir'], 'data.pickle')
-      param_dict['layer_output_path'] = layer_output_path
-      layer_output_dumper = DataDumper(layer_output_path)
+      train_layer_output_path = os.path.join(param_dict['output_dir'], 'train_data.pickle')
+      param_dict['train_layer_output_path'] = train_layer_output_path
+      train_layer_output_dumper = DataDumper(train_layer_output_path)
+      test_layer_output_path = os.path.join(param_dict['output_dir'], 'test_data.pickle')
+      param_dict['test_layer_output_path'] = test_layer_output_path
+      test_layer_output_dumper = DataDumper(test_layer_output_path)
   elif param_dict['output_method'] == 'memory':
-    layer_output_dumper = MemoryDataHolder()
-  param_dict['layer_output_dumeper'] = layer_output_dumper
+    train_layer_output_dumper = MemoryDataHolder()
+    test_layer_output_dumper = MemoryDataHolder()
+  param_dict['train_layer_output_dumeper'] = train_layer_output_dumper
+  param_dict['test_layer_output_dumeper'] = test_layer_output_dumper
 
   trainer = Trainer.get_trainer_by_name(trainer, param_dict)
   util.log('start to train...')
