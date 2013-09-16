@@ -5,16 +5,22 @@ from setuptools import setup, Extension
 import os
 import sys
 from distutils.spawn import find_executable
+from distutils import sysconfig
 
 def log(str):
   print >>sys.stderr, str
 
 if find_executable('nvcc') is None:
-  log('nvcc not in path; build will fail.')
+  log('nvcc not in path; aborting')
+  sys.exit(1)
 
 log('About to build cudaconv2 extension.')
-if os.system('cd cudaconv2 && make -j8') != 0:
+cmd = 'cd cudaconv2 && make -j8 PYTHON_INCLUDE="%s"' % sysconfig.get_python_inc()
+
+log(cmd)
+if os.system(cmd) != 0:
   log('Failed to build extension')
+  sys.exit(1)
 
 
 extension_modules = []
