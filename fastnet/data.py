@@ -125,7 +125,7 @@ class ImageNetDataProvider(DataProvider):
     if 'data_mean' in self.batch_meta:
       data_mean = self.batch_meta['data_mean']
     else:
-      data_mean = util.load(data_dir + 'image-mean.pickle')
+      data_mean = util.load(data_dir + 'image-mean.pickle')['data']
     
     self.data_mean = (data_mean
         .astype(np.single)

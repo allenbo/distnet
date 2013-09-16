@@ -12,7 +12,6 @@ import cudaconv2
 import numpy as np
 import pycuda
 import sys
-import pycuda.autoinit
 
 try:
   cublas.cublasInit()

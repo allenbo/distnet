@@ -4,8 +4,10 @@ from fastnet.net import FastNet
 from fastnet.parser import parse_config_file
 from fastnet.scheduler import Scheduler
 from fastnet.util import divup, timer, load
+from fastnet import argparse
+
 from pycuda import gpuarray, driver
-import argparse
+import optparse
 import cPickle
 import glob
 import numpy as np
@@ -341,7 +343,7 @@ class Trainer:
       if self.check_save_checkpoint():
         self.save_checkpoint()
 
-    #self.get_test_error()
+    self.get_test_error()
     self.save_checkpoint()
     self.report()
     self._finished_training()
