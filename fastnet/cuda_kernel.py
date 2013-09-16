@@ -13,8 +13,6 @@ import numpy as np
 import pycuda
 import sys
 import pycuda.autoinit
-#from scikits.cuda import linalg
-#linalg.init()
 
 try:
   cublas.cublasInit()
@@ -803,7 +801,6 @@ def logreg_cost_col_reduce(mat, label, cost):
     log('%s ==> %s', mat.shape, label.shape)
     assert False
 
-
   block = (mw, 1, 1)
   grid = (1, 1)
   _logreg_cost_col_reduce_(mat, label, cost, np.int32(mat.strides[0] / 4), block=block, grid=grid)
@@ -891,37 +888,13 @@ def gpu_partial_copy_to(x, y, row_from, row_to, col_from, col_to):
 def dot(x, y):
   timer.start()
   if isinstance(x, GPUArray):
-    assert isinstance(y, GPUArray)
-    if x.shape == (1,):
-      assert y.shape[0] == 1
-      y *= scalar(x)
-      return y.ravel()
-    elif y.shape == (1,):
-      assert x.shape[1] == 1
-      x *= scalar(y)
-      return x.ravel()
-    elif len(x.shape) == 1 and len(y.shape) == 1:
-      return scalar(pycuda.gpuarray.dot(x, y))
-    else:
-      needs_ravel = False
-      if len(x.shape) == 1:
-        needs_ravel = True
-        x = x.reshape((1,) + x.shape)
-      if len(y.shape) == 1:
-        needs_ravel = True
-        y = y.reshape(y.shape + (1,))
-      #result = linalg.dot(x, y)
-      result = GPUArray((y.shape[1], x.shape[0]), dtype=x.dtype)
-      sgemm('t', 't', x.shape[0], y.shape[1], x.shape[1], 1.0,
-            x.gpudata, x.shape[1], y.gpudata, y.shape[1], 0.0,
-            result.gpudata, result.shape[1])
-      result = transpose(result)
-
-      if needs_ravel:
-        assert result.shape[1] == 1 or result.shape[0] == 1
-        result = result.ravel()
-      timer.end('dot')
-      return result
+    result = GPUArray((y.shape[1], x.shape[0]), dtype=x.dtype)
+    sgemm('t', 't', x.shape[0], y.shape[1], x.shape[1], 1.0,
+          x.gpudata, x.shape[1], y.gpudata, y.shape[1], 0.0,
+          result.gpudata, result.shape[1])
+    result = transpose(result)
+    timer.end('dot')
+    return result
   else:
     return np.dot(x, y)
 
@@ -952,8 +925,8 @@ def matrix_add(src, v, dest=None, alpha=1.0, beta=1.0):
   leading = src.strides[0] / 4
   if dest is None:
     dest = src
-  _matrix_add_(src, v, dest, F(alpha), F(beta), I(leading), I(sh), I(sw), block=block , grid=
-      grid)
+  _matrix_add_(src, v, dest, F(alpha), F(beta), I(leading), I(sh), I(sw), 
+               block=block , grid=grid)
 
 
 def bigger_than_scaler(src, scaler, dest=None):

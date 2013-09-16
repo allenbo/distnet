@@ -3,7 +3,8 @@ OBJ = $(patsubst %.cu,%.o,${SRC})
 
 NVCC_OPTS := --pre-include undef.h
 CXX_FLAGS := --compiler-options='-fPIC -ggdb2'
-INCLUDES := -I/usr/include/python2.7 -I. -I./cutil
+PYTHON_INCLUDE := /usr/include/python2.7
+INCLUDES := -I${PYTHON_INCLUDE} -I. -I./cutil
 
 all: _cudaconv2.so
 

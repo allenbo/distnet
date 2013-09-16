@@ -1,6 +1,6 @@
 from fastnet import util, layer, data
 from fastnet.layer import TRAIN, TEST
-from fastnet.net import FastNet, AdaptiveFastNet
+from fastnet.net import FastNet
 from fastnet.parser import parse_config_file
 from fastnet.scheduler import Scheduler
 from fastnet.util import divup, timer, load
@@ -14,6 +14,7 @@ import pprint
 import re
 import sys
 import time
+import shelve
 import zipfile
 from collections import deque
 
@@ -144,14 +145,15 @@ class MemoryDataHolder(object):
 
 
 class CheckpointDumper(object):
-  def __init__(self, checkpoint_dir, test_id):
+  def __init__(self, checkpoint_dir, test_id, max_cp_size=5e9):
     self.checkpoint_dir = checkpoint_dir
 
     if not os.path.exists(self.checkpoint_dir):
       os.system('mkdir -p \'%s\'' % self.checkpoint_dir)
 
     self.test_id = test_id
-    self.regex = re.compile('^%s-(\d+)$' % self.test_id)
+    self.counter = iter(xrange(10000))
+    self.max_cp_size = max_cp_size
 
 
   def get_checkpoint(self):
@@ -163,28 +165,35 @@ class CheckpointDumper(object):
 
     checkpoint_file = sorted(cp_files, key=os.path.getmtime)[-1]
     util.log('Loading from checkpoint file: %s', checkpoint_file)
-    dict = {}
-
-    with zipfile.ZipFile(checkpoint_file, mode='r') as zip_in:
-      for fname in zip_in.namelist():
-        with zip_in.open(fname, mode='r') as entry_f: 
-          dict[fname] = cPickle.load(entry_f)
-
-    return dict
+    
+    try:
+      return shelve.open(checkpoint_file, flag='r', protocol=-1, writeback=False)
+    except:
+      dict = {}
+      with zipfile.ZipFile(checkpoint_file) as zf:
+        for k in zf.namelist():
+          dict[k] = cPickle.loads(zf.read(k))
+      return dict
 
   def dump(self, checkpoint, suffix):
-    saved_filename = [f for f in os.listdir(self.checkpoint_dir) if self.regex.match(f)]
-    for f in saved_filename:
-      os.remove(os.path.join(self.checkpoint_dir, f))
-    checkpoint_filename = "%s-%d" % (self.test_id, suffix)
-    self.checkpoint_file = os.path.join(self.checkpoint_dir, checkpoint_filename)
-    print >> sys.stderr, self.checkpoint_file
+    cp_pattern = self.checkpoint_dir + '/%s-*' % self.test_id
+    cp_files = [(f, os.stat(f)) for f in glob.glob(cp_pattern)]
+    cp_files = reversed(sorted(cp_files, key=lambda f: f[1].st_mtime))
+    
+    while sum([f[1].st_size for f in cp_files]) > self.max_cp_size:
+      os.remove(cp_files.pop())
+      
+    checkpoint_filename = "%s-%d.%d" % (self.test_id, suffix, self.counter.next())
+    checkpoint_filename = os.path.join(self.checkpoint_dir, checkpoint_filename)
+    
+    util.log('Writing checkpoint to %s', checkpoint_filename)
 
-    with zipfile.ZipFile(self.checkpoint_file, mode='w') as output:
-      for k, v in checkpoint.iteritems():
-        output.writestr(k, cPickle.dumps(v, protocol=-1)) 
-
-
+    sf = shelve.open(checkpoint_filename, flag='c', protocol=-1, writeback=False)
+    for k, v in checkpoint.iteritems():
+      sf[k] = v
+    sf.sync()
+    sf.close()
+    
     util.log('save file finished')
 
 
@@ -200,9 +209,10 @@ def cache_outputs(net, dp, dumper, layer_name = '', index = -1):
   curr_batch = 0
   batch = dp.get_next_batch(128)
   epoch = batch.epoch
-  # layer = net.get_layer_by_name(layer_name)
+  
   if layer_name != '':
-    index = get_output_index_by_name(layer_name)
+    index = net.get_output_index_by_name(layer_name)
+  
   while epoch == batch.epoch:
     batch_start = time.time()
     net.train_batch(batch.data, batch.labels, TEST)
@@ -321,7 +331,8 @@ class Trainer:
     util.log('Starting training...')
 
     start_epoch = self.curr_epoch
-
+    last_print_time = time.time()
+    
     while (self.curr_epoch - start_epoch <= num_epochs and 
           self.should_continue_training()):
       batch_start = time.time()
@@ -331,9 +342,13 @@ class Trainer:
 
       input, label = train_data.data, train_data.labels
       self.net.train_batch(input, label)
-      cost , correct, numCase = self.net.get_batch_information()
+      cost, correct, numCase = self.net.get_batch_information()
       self.train_outputs += [({'logprob': [cost, 1 - correct]}, numCase, self.elapsed())]
-      print >> sys.stderr, '%d.%d: error: %f logreg: %f time: %f' % (self.curr_epoch, self.curr_batch, 1 - correct, cost, time.time() - batch_start)
+      
+      if time.time() - last_print_time > 1:
+        print >> sys.stderr, '%d.%d: error: %f logreg: %f time: %f' % (
+                      self.curr_epoch, self.curr_batch, 1 - correct, cost, time.time() - batch_start)
+        last_print_time = time.time()
 
       if self.check_test_data():
         self.get_test_error()
@@ -349,31 +364,6 @@ class Trainer:
     self.report()
     self._finished_training()
 
-  def predict(self, save_layers=None, filename=None):
-    self.net.save_layerouput(save_layers)
-    self.print_net_summary()
-    util.log('Starting predict...')
-    save_output = []
-    while self.curr_epoch < 2:
-      start = time.time()
-      test_data = self.test_dp.get_next_batch(self.batch_size)
-
-      input, label = test_data.data, test_data.labels
-      self.net.train_batch(input, label, TEST)
-      cost , correct, numCase = self.net.get_batch_information()
-      self.curr_epoch = self.test_data.epoch
-      self.curr_batch += 1
-      print >> sys.stderr, '%d.%d: error: %f logreg: %f time: %f' % (self.curr_epoch, self.curr_batch, 1 - correct, cost, time.time() - start)
-      if save_layers is not None:
-        save_output.extend(self.net.get_save_output())
-
-    if save_layers is not None:
-      if filename is not None:
-        with open(filename, 'w') as f:
-          cPickle.dump(save_output, f, protocol=-1)
-        util.log('save layer output finished')
-
-
   def report(self):
     rep = self.net.get_report()
     if rep is not None:
@@ -382,27 +372,23 @@ class Trainer:
 
   @staticmethod
   def get_trainer_by_name(name, param_dict):
-    net = FastNet(param_dict['learning_rate'], param_dict['image_shape'], init_model=None)
-    param_dict['net'] = net
     if name == 'layerwise':
+      net = FastNet(param_dict['learning_rate'], 
+                    param_dict['image_shape'], 
+                    init_model=None)
+      param_dict['net'] = net
       return ImageNetLayerwisedTrainer(**param_dict)
 
-    if name == 'catewise':
-      return ImageNetCatewisedTrainer(**param_dict)
-
-    if name == 'categroup':
-      return ImageNetCateGroupTrainer(**param_dict)
-
-
-    net = FastNet(param_dict['learning_rate'], param_dict['image_shape'], param_dict['init_model'])
+    net = FastNet(param_dict['learning_rate'], 
+                  param_dict['image_shape'], 
+                  param_dict['init_model'])
     param_dict['net'] = net
     if name == 'normal':
       return Trainer(**param_dict)
-
-    if name == 'minibatch':
+    elif name == 'minibatch':
       return MiniBatchTrainer(**param_dict)
-
-    raise Exception, 'No trainer found for name: %s' % name
+    else:
+      raise Exception, 'No trainer found for name: %s' % name
 
 
 
