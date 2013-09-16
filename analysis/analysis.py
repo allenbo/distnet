@@ -42,8 +42,8 @@ def _load_series(data, scale=1):
 def try_load_zip(state_f):
   try:
     zf = zipfile.ZipFile(state_f, 'r')
-    train_outputs = cPickle.load(zf.open('train_outputs'))
-    test_outputs = cPickle.load(zf.open('test_outputs'))
+    train_outputs = cPickle.loads(zf.read('train_outputs'))
+    test_outputs = cPickle.loads(zf.read('test_outputs'))
     return train_outputs, test_outputs
   except:
     return None, None
@@ -83,7 +83,8 @@ def load_checkpoint(pattern):
   test_df = _load_series(test_outputs)
   test_df['type'] = 'test'
 
-  out = pandas.merge(train_df, test_df, how='outer')
+  #return train_df, test_df
+  out = pandas.concat([train_df, test_df])
   return out
 
 
