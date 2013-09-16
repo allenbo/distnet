@@ -34,7 +34,7 @@ class FastNet(object):
       else:
         # FastNet config file
         add_layers(FastNetBuilder(), self, init_model)
-      self.adjust_learning_rate(self.learningRate)
+      self.adjust_learning_rate(self.learning_rate)
 
     self.print_learning_rates()
 
