@@ -11,6 +11,8 @@ import numpy as np
 import pycuda
 import sys
 
+from fastnet import init_cuda
+
 try:
   cublas.cublasInit()
   sgemm = cublas.cublasSgemm
