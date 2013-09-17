@@ -12,6 +12,7 @@ import pycuda
 import sys
 
 from fastnet import init_cuda
+init_cuda.init()
 
 try:
   cublas.cublasInit()
