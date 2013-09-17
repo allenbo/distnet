@@ -53,6 +53,7 @@ class FastNet(object):
     
     self.layers.append(layer)
     print >> sys.stderr,  '%s  [%s] : %s' % (layer.name, layer.type, layer.get_output_shape())
+    return layer
 
   def drop_layer_from(self, name):
     found = False
@@ -113,7 +114,7 @@ class FastNet(object):
     
     return self.layers[-1].output
 
-  def bprop(self, data, label, prob, train=TRAIN):
+  def bprop(self, label, train=TRAIN):
     grad = label
     for i in range(1, len(self.layers) + 1):
       curr = self.layers[-i]
@@ -203,7 +204,7 @@ class FastNet(object):
     self.correct += correct
 
     if train == TRAIN:
-      self.bprop(data, label, prediction)
+      self.bprop(label)
       self.update()
 
     # make sure we have everything finished before returning!

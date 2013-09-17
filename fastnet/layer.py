@@ -68,8 +68,15 @@ class Weight(object):
     
     #a2, b2, c2, = self.incr.get().mean(), self.wt.get().mean(), grad.get().mean()
   
-  @staticmethod
-  def empty(name, epsilon=0.01, momentum=0.9, decay=0.005):
+
+class WeightManager(object):
+  def __init__(self):
+    self._weights = []
+    
+  def __iter__(self):
+    return iter(self._weights)
+    
+  def empty(self, name, epsilon, momentum, decay):
     w = Weight()
     w.name = name
     w.shape = None
@@ -77,21 +84,13 @@ class Weight(object):
     w.epsilon = np.float32(epsilon)
     w.momentum = np.float32(momentum)
     w.grad = w.wt = w.incr = None
+    self._weights.append(w)
     return w
-    
-
-class WeightManager(object):
-  def __init__(self):
-    self._weights = []
-    
-  def allocate(self, shape, dtype=np.float32):
-    self._weights.append(Weight.allocate(shape, dtype))
-    return self._weights[-1]
   
-  def to_gpu(self, cpu):
-    res = to_gpu(cpu)
-    self._weights.append(res)
-    return res
+  def update(self, batch_size):
+    for w in self._weights:
+      w.update(w.grad, batch_size)
+    
     
 WEIGHTS = WeightManager()
 
@@ -162,8 +161,8 @@ class WeightedLayer(Layer):
     self.initW = initW
     self.initB = initB
     
-    self.weight = Weight.empty('weight.' + self.name, epsW, momW, wc)
-    self.bias = Weight.empty('bias.' + self.name, epsB, momB, 0.0)
+    self.weight = WEIGHTS.empty('weight.' + self.name, epsW, momW, wc)
+    self.bias = WEIGHTS.empty('bias.' + self.name, epsB, momB, 0.0)
    
     if weight is not None:
       self.weight.set_weight(weight) 
@@ -301,7 +300,7 @@ class ConvLayer(WeightedLayer):
   def bprop(self, grad, input, output, outGrad):
     self.weight.grad.fill(0)
     self.bias.grad.fill(0)
-    
+   
     # bprop to next layer
     cudaconv2.convImgActs(grad, self.weight.wt, outGrad, self.imgSize, self.imgSize,
         self.outputSize, -self.padding, self.stride, self.numColor, 1, 0.0, 1.0)

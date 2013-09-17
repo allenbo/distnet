@@ -301,6 +301,10 @@ class ParallelDataProvider(DataProvider):
     assert self._reader is None
     self._reader = ReaderThread(self._data_queue, self.dp)
     self._reader.start()
+    
+  @property
+  def image_shape(self):
+    return self.dp.image_shape
 
   def reset(self):
     self.dp.reset()
@@ -352,6 +356,7 @@ class ParallelDataProvider(DataProvider):
       #labels = gpu_labels[self.index:self.index + batch_size]
       self.index += batch_size
     return BatchData(data, labels, self._gpu_batch.epoch)
+
 
 dp_dict = {}
 def register_data_provider(name, _class):

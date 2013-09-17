@@ -2,11 +2,14 @@
 
 '''Functions for analyzing the output of fastnet checkpoint files.'''
 
+from fastnet import util
+from matplotlib.pyplot import gcf
 import cPickle
 import matplotlib.pyplot as plt
 import numpy as np
 import os
 import pandas
+import pylab
 import shelve
 import zipfile
 
@@ -130,3 +133,82 @@ def plot_series(frame, groupby, x, y, **kw):
     kw['y_label'] = y
     plot_df(df, x, y, **kw)
 
+def build_image(array):
+  if len(array.shape) == 4:
+    filter_size = array.shape[1]
+  else:
+    filter_size = array.shape[0]
+  
+  num_filters = array.shape[-1]
+  num_cols = util.divup(80, filter_size)
+  num_rows = util.divup(num_filters, num_cols)
+
+  if len(array.shape) == 4:
+    big_pic = np.zeros((3, (filter_size + 1) * num_rows, (filter_size + 1) * num_cols))
+  else:
+    big_pic = np.zeros((filter_size * num_rows, filter_size * num_cols))
+  
+  for i in range(num_rows):
+    for j in range(num_cols):
+      idx = i * num_cols + j
+      if idx >= num_filters: break
+      x = i*(filter_size + 1)
+      y = j*(filter_size + 1)
+      if len(array.shape) == 4:
+        big_pic[:, x:x+filter_size, y:y+filter_size] = array[:, :, :, idx]
+      else:
+        big_pic[x:x+filter_size, y:y+filter_size] = array[:, :, idx]
+  
+  if len(array.shape) == 4:
+    return big_pic.transpose(1, 2, 0)
+  return big_pic
+
+def load_layer(f, layer_id=1):
+  cp = find_latest(f)
+  try:
+    sf = shelve.open(cp, flag='r')
+    layer = sf['layers'][layer_id]
+    imgs = layer['weight']
+    filters = layer['numFilter']
+    filter_size = layer['filterSize']
+  except:
+    zf = zipfile.ZipFile(cp)
+    layer = cPickle.loads(zf.read('layers'))[layer_id]
+    imgs = layer['weight']
+    filters = layer['numFilter']
+    filter_size = layer['filterSize']
+  
+  imgs = imgs.reshape(3, filter_size, filter_size, filters)
+  return imgs
+
+def plot_filters(imgs):
+  imgs = imgs - imgs.min()
+  imgs = imgs / imgs.max()
+  fig = pylab.gcf()
+  fig.set_size_inches(12, 8)
+  
+  ax = fig.add_subplot(111)
+  big_pic = build_image(imgs)
+  ax.imshow(big_pic, interpolation='nearest')
+  return imgs
+
+def plot_file(f, layer_id=1):
+  return plot_filters(load_layer(f, layer_id))
+  
+  
+def diff_files(a, b):
+  f_a = load_layer(a)
+  f_b = load_layer(b)
+  fig = pylab.gcf()
+  fig.set_size_inches(12, 8)
+  
+  ax = fig.add_subplot(111)
+  diff = np.abs(f_a - f_b)
+  #diff = diff - diff.min()
+  #diff = diff / diff.max()
+  #big_pic = build_image(diff)
+  #print diff[0, :, :, 0]
+  #print f_a[0, :, :, 0]
+  #print f_b[0, :, :, 0]
+  diff = diff / max(np.max(f_a), np.max(f_b))
+  ax.imshow(build_image(diff))
