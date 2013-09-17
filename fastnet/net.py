@@ -35,8 +35,12 @@ class FastNet(object):
         # FastNet config file
         add_layers(FastNetBuilder(), self, init_model)
       self.adjust_learning_rate(self.learning_rate)
-     
+
     self.print_learning_rates()
+
+
+  def save_layerouput(self, layers):
+    self.save_layers = layers
 
   def __getitem__(self, name):
     for layer in self.layers:
@@ -50,7 +54,7 @@ class FastNet(object):
     if self.layers:
       layer.attach(self.layers[-1])
     layer.init_output()
-    
+
     self.layers.append(layer)
     print >> sys.stderr,  '%s  [%s] : %s' % (layer.name, layer.type, layer.get_output_shape())
     return layer
@@ -61,11 +65,11 @@ class FastNet(object):
       if layer.name == name:
         found = True
         break
-   
+
     if not found:
       util.log('Layer: %s not found.', name)
       return []
-     
+
     return_layers = self.layers[i:]
     self.layers = self.layers[0:i]
     print 'delete layer from', name
@@ -133,16 +137,15 @@ class FastNet(object):
       if isinstance(layer, WeightedLayer):
         layer.weight.epsilon *= factor
         layer.bias.epsilon *= factor
-        
-    self.print_learning_rates()        
+
+    self.print_learning_rates()
 
   def set_learning_rate(self, eps_w, eps_b):
     for layer in self.layers:
       if isinstance(layer, WeightedLayer):
         layer.weight.epsilon = eps_w
         layer.bias.epsilon = eps_w
-        
-    self.print_learning_rates()        
+    self.print_learning_rates()
 
   def print_learning_rates(self):
     util.log('Learning rates:')
@@ -152,7 +155,6 @@ class FastNet(object):
                  layer.weight.epsilon, layer.bias.epsilon)
       else:
         util.log('%s: %s', layer.name, layer.__class__.__name__)
-        
 
   def clear_weight_incr(self):
     for l in self.layers:
@@ -266,5 +268,3 @@ class FastNet(object):
       if isinstance(l, WeightedLayer):
         sum.append(l.get_summary())
     return sum
-
-

@@ -16,7 +16,7 @@ param_file = '/home/justin/fastnet/config/imagenet.cfg'
 output_dir = '/scratch1/justin/imagenet-pickle/'
 output_method = 'disk'
 
-train_range = range(101, 104) #1,2,3,....,40
+train_range = range(101, 1301) #1,2,3,....,40
 test_range = range(1, 101) #41, 42, ..., 48
 data_provider = 'imagenet'
 
@@ -42,13 +42,17 @@ image_color = 3
 image_size = 224
 image_shape = (image_color, image_size, image_size, batch_size)
 
-layer_output_dumper = None
+train_layer_output_dumper = None
+test_layer_output_dumper = None
 if output_method == 'disk':
   if output_dir != '':
-    layer_output_path = os.path.join(output_dir, 'data.pickle')
-    layer_output_dumper = trainer.DataDumper(layer_output_path)
+    train_layer_output_path = os.path.join(output_dir, 'train_data.pickle')
+    train_layer_output_dumper = trainer.DataDumper(train_layer_output_path)
+    test_layer_output_path = os.path.join(output_dir, 'test_data.pickle')
+    test_layer_output_dumper = trainer.DataDumper(test_layer_output_path)
 elif output_method == 'memory':
-  layer_output_dumper = trainer.MemoryDataHolder()
+  train_layer_output_dumper = trainer.MemoryDataHolder()
+  test_layer_output_dumper = trainer.MemoryDataHolder()
 
 mynet = net.FastNet(learning_rate, image_shape, None)
 
@@ -106,18 +110,22 @@ class ImageNetLayerwisedTrainer(trainer.Trainer):
   def init_replaynet_data_provider(self):
     if self.output_method == 'disk':
       dp = data.get_by_name('intermediate')
-      count = self.layer_output_dumper.get_count()
-      self.train_dp = dp(self.layer_output_path, range(0, count), 'fc')
+      count = self.train_layer_output_dumper.get_count()
+      self.train_dp = dp(self.train_layer_output_path, range(0, count), 'fc')
+      count = self.test_layer_output_dumper.get_count()
+      self.test_dp = dp(self.test_layer_output_path, range(0, count), 'fc')
     elif self.output_method == 'memory':
       dp = data.get_by_name('memory')
-      self.train_dp = dp(self.layer_output_dumper)
+      self.train_dp = dp(self.train_layer_output_dumper)
+      self.test_dp = dp(self.test_layer_output_dumper)
 
   def train_replaynet(self, stack):
     self.container.append(self.save_freq)
     self.container.append(self.test_freq)
     self.container.append(self.train_dp)
     self.container.append(self.test_dp)
-    self.container.append(self.layer_output_dumper)
+    self.container.append(self.train_layer_output_dumper)
+    self.container.append(self.test_layer_output_dumper)
     self.container.append(self.net)
 
     self.save_freq = self.curr_batch + 100
@@ -130,7 +138,8 @@ class ImageNetLayerwisedTrainer(trainer.Trainer):
     model.extend(stack)
     model.extend(self.fc_tmp)
 
-    self.layer_output_dumper = None
+    self.train_layer_output_dumper = None
+    self.test_layer_output_dumper = None
     size = self.net['fc8'].get_input_size()
     image_shape = (size, 1, 1, self.batch_size)
     self.net = net.FastNet(self.learning_rate, image_shape, model)
@@ -139,8 +148,10 @@ class ImageNetLayerwisedTrainer(trainer.Trainer):
     trainer.Trainer.train(self, self.replaynet_epoch)
 
     self.net = self.container.pop()
-    self.layer_output_dumper = self.container.pop()
-    self.layer_output_dumper.reset()
+    self.test_layer_output_dumper = self.container.pop()
+    self.test_layer_output_dumper.reset()
+    self.train_layer_output_dumper = self.container.pop()
+    self.train_layer_output_dumper.reset()
     self.test_dp = self.container.pop()
     self.train_dp = self.container.pop()
     self.test_freq = self.container.pop()

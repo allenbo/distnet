@@ -11,7 +11,6 @@ import numpy as np
 import pycuda
 import sys
 
-
 try:
   cublas.cublasInit()
   sgemm = cublas.cublasSgemm
