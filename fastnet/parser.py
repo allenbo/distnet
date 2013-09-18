@@ -1,9 +1,9 @@
+from fastnet import net
 from fastnet.layer import ConvLayer, MaxPoolLayer, AvgPoolLayer, \
   CrossMapResponseNormLayer, SoftmaxLayer, NeuronLayer, ResponseNormLayer, FCLayer, \
   DataLayer
 from fastnet.util import isfloat
 import numpy as np
-import os
 
 def parse_config_file(parsing_file):
   rst = []
@@ -29,6 +29,28 @@ def parse_config_file(parsing_file):
         rst[-1][key] = value
   return rst
 
+def load_model(net, model):
+  if 'layers' in model:
+    # Loading from a checkpoint
+    add_layers(FastNetBuilder(), net, model['layers'])
+  else:
+    if is_cudaconvnet_config(model):
+      # AlexK config file
+      add_layers(CudaconvNetBuilder(), net, model)
+    else:
+      # FastNet config file
+      add_layers(FastNetBuilder(), net, model)
+      
+  return net
+
+def load_from_checkpoint(config, checkpoint, image_shape):
+  network = net.FastNet(image_shape)
+  if checkpoint is not None:
+    load_model(network, checkpoint)
+  else:
+    load_model(network, parse_config_file(config))
+  return network
+    
 
 class Builder(object):
   valid_dic = {}

@@ -328,7 +328,7 @@ class Trainer:
     else:
       util.log('There is no dumper for test data')
 
-  def train(self, num_epochs):
+  def train(self, num_epochs=1000):
     self.print_net_summary()
     util.log('Starting training...')
 

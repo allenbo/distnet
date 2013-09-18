@@ -24,7 +24,7 @@ log_mutex = threading.Lock()
 def log(msg, *args, **kw):
   level = kw.get('level', INFO)
   with log_mutex:
-    caller = sys._getframe(1)
+    caller = sys._getframe(kw.get('caller_frame', 1))
     filename = caller.f_code.co_filename
     lineno = caller.f_lineno
     now = time.time() - program_start
@@ -36,11 +36,11 @@ def log(msg, *args, **kw):
     if exc:
       print >> sys.stderr, exc
 
-def log_debug(msg, *args, **kw): log(msg, *args, level=DEBUG)
-def log_info(msg, *args, **kw): log(msg, *args, level=INFO)
-def log_warn(msg, *args, **kw): log(msg, *args, level=WARN)
-def log_error(msg, *args, **kw): log(msg, *args, level=ERROR)
-def log_fatal(msg, *args, **kw): log(msg, *args, level=FATAL)
+def log_debug(msg, *args, **kw): log(msg, *args, level=DEBUG, caller_frame=2)
+def log_info(msg, *args, **kw): log(msg, *args, level=INFO, caller_frame=2)
+def log_warn(msg, *args, **kw): log(msg, *args, level=WARN, caller_frame=2)
+def log_error(msg, *args, **kw): log(msg, *args, level=ERROR, caller_frame=2)
+def log_fatal(msg, *args, **kw): log(msg, *args, level=FATAL, caller_frame=2)
 
 class Timer:
   def __init__(self):

@@ -2,18 +2,15 @@
 
 '''A relatively simple distributed network implementation, using async SGD.'''
 
+from fastnet import init_cuda, net, layer, data, parser, weights
+from fastnet.util import EZTimer
 from mpi4py import MPI
-WORLD = MPI.COMM_WORLD
-
-from fastnet import init_cuda
-init_cuda.init(WORLD.Get_rank())
-
 import ctypes
 import numpy as np
 import os
+WORLD = MPI.COMM_WORLD
 
-from fastnet import net, layer, data, parser
-from fastnet.util import EZTimer
+init_cuda.init(WORLD.Get_rank())
 
 print 'CUDA', os.environ.get('MV2_USE_CUDA')
 
@@ -26,19 +23,18 @@ data_dir = '/ssd/nn-data/cifar-10.old'
 checkpoint_dir = './checkpoint'
 param_file = 'config/cifar-10-18pct.cfg'
 
-# train_range = range(101, 1301)
-# test_range = range(1, 101)
-#data_provider = 'imagenet'
+train_range = range(101, 1301)
+test_range = range(1, 101)
+data_provider = 'imagenet'
 
-data_provider = 'cifar10'
-train_range = range(1, 41)
-test_range = range(41, 49)
+#data_provider = 'cifar10'
+#train_range = range(1, 41)
+#test_range = range(41, 49)
 
 train_dp = data.get_by_name(data_provider)(data_dir,train_range)
 test_dp = data.get_by_name(data_provider)(data_dir, test_range)
 
-model = parser.parse_config_file(param_file)
-net = net.FastNet(1.0, train_dp.image_shape + (batch_size, ), model)
+net = parser.net_from_config(param_file)
 
 class Tags(object):
   GRAD_SEND = 100
@@ -71,16 +67,17 @@ class Worker(object):
     print cost, correct
     
   def send_grads(self):
-    t = EZTimer('send grads')
+    _ = EZTimer('send grads')
     sends = []
     for idx, w in enumerate(layer.WEIGHTS):
       sends.append(WORLD.Isend(tobuffer(w.grad), dest=MASTER, tag=Tags.GRAD_SEND + idx))
     wait_for_all(sends)
     
   def recv_weights(self):
-    t = EZTimer('recv weights')
+    _ = EZTimer('recv weights')
+    
     for idx, w in enumerate(layer.WEIGHTS):
-      WORLD.Bcast(tobuffer(w.wt), root=MASTER)
+      WORLD.Recv(tobuffer(w.wt), source=MASTER, tag=Tags.WEIGHT_UPDATE + idx)
       
     
   def run(self):
@@ -89,35 +86,68 @@ class Worker(object):
       self.send_grads()
       self.recv_weights()
       
+class WorkerProxy(object):
+  def __init__(self, idx, wts):
+    self.idx = idx
+    self.wts = wts
+    self.recvs = []
     
+  def start_read(self):
+    assert len(self.recvs) == 0 
+    for idx, w in enumerate(self.wts):
+      self.recvs.append(WORLD.Irecv(tobuffer(w.grad), source=self.idx, tag=Tags.GRAD_SEND + idx))
+  
+  def send_weights(self, wts):
+    for idx, w in enumerate(wts):
+      WORLD.Send(tobuffer(w.wt), dest=self.idx, tag=Tags.WEIGHT_UPDATE + idx)
+    
+  def test(self):
+    return np.all([r.Test() for r in self.recvs])
+  
+  def wait(self):
+    [r.Wait() for r in self.recvs]
+    self.recvs = []
+  
+  def try_fetch(self):
+    if len(self.recvs) == 0:
+      self.start_read()
+    
+    if not self.test():
+      return False
+    
+    self.wait()
+    self.start_read()
+    return True
+  
+      
 class Master(object):
-  def recv_grads(self, worker):
-    recvs = []
-    for idx, w in enumerate(layer.WEIGHTS):
-      recvs.append(WORLD.Irecv(tobuffer(w.grad), source=worker, tag=Tags.GRAD_SEND + idx))
-      
-    wait_for_all(recvs)
+  def __init__(self):
+    self._workers = {}
+    self._master_wts = layer.WEIGHTS
+    self._requests = []
     
-  def update(self):
-    layer.WEIGHTS.update(batch_size * len(WORKERS))
+    for w in WORKERS:
+      self._workers[w] = WorkerProxy(w, layer.WEIGHTS.clone())
       
-  def send_weights(self):
-    # sends = []
-    # for idx, w in enumerate(layer.WEIGHTS):
-    #  sends.append(WORLD.ISend(tobuffer(w.weight), dest=worker, tag=Tags.WEIGHT_UPDATE + idx))
-    # wait_for_all(sends)
-    for idx, w in enumerate(layer.WEIGHTS):
-      #print 'Sending...', idx
-      WORLD.Bcast(tobuffer(w.wt), root=MASTER)
+  def update(self, worker_wts):
+    for idx, worker_wt in enumerate(worker_wts):
+      master_wt = self._master_wts[idx]
+      weights.update(master_wt.wts(), 
+                     worker_wt.grad,
+                     master_wt.incr,
+                     master_wt.epsilon,
+                     master_wt.momentum,
+                     master_wt.decay)
     
   def run(self):
     while 1:
       #print 'Fetching gradients...'
-      for i in WORKERS:
-        self.recv_grads(i)
-        self.update()
+      for w in self._workers.values():
+        if w.try_fetch():
+          self.update(w.wts)
+          w.send_weights(self._master_wts)
+      
       #print 'Sending weight updates...'
-      self.send_weights()
       
 
 if __name__ == '__main__':

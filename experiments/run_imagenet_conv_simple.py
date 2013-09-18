@@ -20,11 +20,9 @@ data_provider = 'imagenet'
 
 train_dp = data.get_by_name(data_provider)(data_dir,train_range)
 test_dp = data.get_by_name(data_provider)(data_dir, test_range)
-checkpoint_dumper = trainer.CheckpointDumper(checkpoint_dir, test_id)
 
-init_model = checkpoint_dumper.get_checkpoint()
-if init_model is None:
-  init_model = parser.parse_config_file(param_file)
+
+checkpoint_dumper = trainer.CheckpointDumper(checkpoint_dir, test_id)
 
 save_freq = 100
 test_freq = 100
@@ -37,7 +35,9 @@ image_color = 3
 image_size = 224
 image_shape = (image_color, image_size, image_size, batch_size)
 
-net = net.FastNet(learning_rate, image_shape, init_model)
+net = parser.load_from_checkpoint(param_file, 
+                                  checkpoint_dumper.get_checkpoint(),
+                                  image_shape)
 
 param_dict = globals()
 print type(param_dict)
