@@ -130,6 +130,9 @@ class WeightedLayer(Layer):
     self.clear_bias_incr()
 
   def update(self):
+    if self.disable_bprop:
+      return
+
     self.weight.update(self.batch_size)
     self.bias.update(self.batch_size)
 

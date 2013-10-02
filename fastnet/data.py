@@ -87,6 +87,8 @@ class ImageNetDataProvider(DataProvider):
 
     self.buffer_idx = 0
 
+    assert os.path.exists(data_dir), data_dir
+
     dirs = glob.glob(data_dir + '/n*')
     synid_to_dir = {}
     for d in dirs:
@@ -109,6 +111,8 @@ class ImageNetDataProvider(DataProvider):
       self.images.extend(imgs)
 
     self.images = np.array(self.images)
+
+    assert len(self.images) > 0
 
     # build index vector into 'images' and split into groups of batch-size
     image_index = np.arange(len(self.images))
