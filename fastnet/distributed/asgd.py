@@ -19,22 +19,24 @@ WORKERS = range(1, WORLD.Get_size())
 
 batch_size = 128
 
-data_dir = '/ssd/nn-data/cifar-10.old'
+data_dir = '/ssd/nn-data/imagenet/'
+data_provider = 'imagenet'
 checkpoint_dir = './checkpoint'
-param_file = 'config/cifar-10-18pct.cfg'
+param_file = 'config/imagenet.cfg'
 
 train_range = range(101, 1301)
 test_range = range(1, 101)
-data_provider = 'imagenet'
 
-#data_provider = 'cifar10'
+data_provider = 'imagenet'
 #train_range = range(1, 41)
 #test_range = range(41, 49)
 
 train_dp = data.get_by_name(data_provider)(data_dir,train_range)
 test_dp = data.get_by_name(data_provider)(data_dir, test_range)
 
-net = parser.net_from_config(param_file)
+model = parser.parse_config_file(param_file)
+network = net.FastNet((3, 224, 224, 1))
+network = parser.load_model(network, model)
 
 class Tags(object):
   GRAD_SEND = 100
@@ -58,10 +60,10 @@ class Worker(object):
     
   def train(self):
     batch = train_dp.get_next_batch(batch_size)
-    data, labels = net.prepare_for_train(batch.data, batch.labels)
-    prediction = net.fprop(data)
-    cost, correct = net.get_cost(labels, prediction)
-    net.bprop(labels)
+    data, labels = network.prepare_for_train(batch.data, batch.labels)
+    prediction = network.fprop(data)
+    cost, correct = network.get_cost(labels, prediction)
+    network.bprop(labels)
     self.send_grads()
     self.recv_weights()
     print cost, correct
@@ -98,6 +100,7 @@ class WorkerProxy(object):
       self.recvs.append(WORLD.Irecv(tobuffer(w.grad), source=self.idx, tag=Tags.GRAD_SEND + idx))
   
   def send_weights(self, wts):
+    _ = EZTimer('send weights')
     for idx, w in enumerate(wts):
       WORLD.Send(tobuffer(w.wt), dest=self.idx, tag=Tags.WEIGHT_UPDATE + idx)
     
@@ -130,14 +133,16 @@ class Master(object):
       self._workers[w] = WorkerProxy(w, layer.WEIGHTS.clone())
       
   def update(self, worker_wts):
+    _ = EZTimer('update')
     for idx, worker_wt in enumerate(worker_wts):
       master_wt = self._master_wts[idx]
-      weights.update(master_wt.wts(), 
+      weights.update(master_wt.wt, 
                      worker_wt.grad,
                      master_wt.incr,
                      master_wt.epsilon,
                      master_wt.momentum,
-                     master_wt.decay)
+                     master_wt.decay,
+                     128)
     
   def run(self):
     while 1:
