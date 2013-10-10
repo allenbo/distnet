@@ -1,7 +1,7 @@
 from fastnet import util, layer, data
 from fastnet.layer import TRAIN, TEST
 from fastnet.net import FastNet
-from fastnet.parser import parse_config_file
+from fastnet.parser import parse_config_file, load_model
 from fastnet.scheduler import Scheduler
 from fastnet.util import divup, timer, load
 from fastnet import argparse
@@ -374,16 +374,13 @@ class Trainer:
 
   @staticmethod
   def get_trainer_by_name(name, param_dict):
+    net = FastNet(param_dict['image_shape'])
     if name == 'layerwise':
-      net = FastNet(param_dict['learning_rate'], 
-                    param_dict['image_shape'], 
-                    init_model=None)
       param_dict['net'] = net
       return ImageNetLayerwisedTrainer(**param_dict)
 
-    net = FastNet(param_dict['learning_rate'], 
-                  param_dict['image_shape'], 
-                  param_dict['init_model'])
+    net = FastNet(param_dict['image_shape'])
+    load_model(net, param_dict['init_model'])
     param_dict['net'] = net
     if name == 'normal':
       return Trainer(**param_dict)
