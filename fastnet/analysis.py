@@ -11,6 +11,7 @@ import os
 import pandas
 import pylab
 import shelve
+import sys
 import zipfile
 
 def find_latest(pattern):
@@ -42,7 +43,7 @@ def _load_series(data, scale=1):
     logprob = np.array([t[0] for t in lp])
     prec = np.array([t[1] for t in lp])
     return pandas.DataFrame({'lp' : logprob, 'pr' : prec, 'elapsed' : elapsed, 'examples' : examples})
-
+  
 def try_load_zip(state_f):
   try:
     zf = zipfile.ZipFile(state_f, 'r')
@@ -50,15 +51,17 @@ def try_load_zip(state_f):
     test_outputs = cPickle.loads(zf.read('test_outputs'))
     return train_outputs, test_outputs
   except:
+    print sys.exc_info()
     return None, None
 
 def try_load_pickle(state_f):
   try:
-    data = cPickle.load(state_f)
+    data = cPickle.loads(open(state_f).read())
     train_outputs = data['train_outputs']
     test_outputs = data['test_outputs']
     return train_outputs, test_outputs
   except:
+    print sys.exc_info()
     return None, None
 
 def try_load_shelf(state_f):
@@ -68,10 +71,13 @@ def try_load_shelf(state_f):
     test_outputs = data['test_outputs']
     return train_outputs, test_outputs
   except:
+    print sys.exc_info()
     return None, None
     
 def load_checkpoint(pattern):
   state_f = find_latest(pattern)
+  assert state_f is not None
+  
   train_outputs, test_outputs = try_load_zip(state_f)
   if not train_outputs:
     train_outputs, test_outputs = try_load_pickle(state_f)
@@ -169,17 +175,16 @@ def load_layer(f, layer_id=1):
   try:
     sf = shelve.open(cp, flag='r')
     layer = sf['layers'][layer_id]
-    imgs = layer['weight']
-    filters = layer['numFilter']
-    filter_size = layer['filterSize']
   except:
     zf = zipfile.ZipFile(cp)
     layer = cPickle.loads(zf.read('layers'))[layer_id]
-    imgs = layer['weight']
-    filters = layer['numFilter']
-    filter_size = layer['filterSize']
   
-  imgs = imgs.reshape(3, filter_size, filter_size, filters)
+  imgs = layer['weight']
+  filters = layer['numFilter']
+  filter_size = layer['filterSize']
+  colors = layer['numColor']
+  
+  imgs = imgs.reshape(colors, filter_size, filter_size, filters) + layer['bias'].reshape(1, 1, 1, filters)
   return imgs
 
 def plot_filters(imgs):
@@ -191,7 +196,6 @@ def plot_filters(imgs):
   ax = fig.add_subplot(111)
   big_pic = build_image(imgs)
   ax.imshow(big_pic, interpolation='nearest')
-  return imgs
 
 def plot_file(f, layer_id=1):
   return plot_filters(load_layer(f, layer_id))
