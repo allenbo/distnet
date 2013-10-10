@@ -30,7 +30,7 @@ if model is None:
   model = parser.parse_config_file(param_file)
   
 save_freq = 100000
-test_freq = 100000
+test_freq = 1000
 adjust_freq = 100000
 factor = 1
 num_batch = 1
