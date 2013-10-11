@@ -146,7 +146,7 @@ class MemoryDataHolder(object):
 
 class CheckpointDumper(object):
   def __init__(self, checkpoint_dir, test_id, max_cp_size=5e9):
-    self.checkpoint_dir = checkpoint_dir
+    self.checkpoint_dir = os.path.join(checkpoint_dir, test_id)
 
     if not os.path.exists(self.checkpoint_dir):
       os.system('mkdir -p \'%s\'' % self.checkpoint_dir)
@@ -157,15 +157,14 @@ class CheckpointDumper(object):
 
 
   def get_checkpoint(self):
-    cp_pattern = self.checkpoint_dir + '/%s-*' % self.test_id
-    print cp_pattern
+    cp_pattern = os.path.join(self.checkpoint_dir, "*")
     cp_files = glob.glob(cp_pattern)
     if not cp_files:
       return None
 
     checkpoint_file = sorted(cp_files, key=os.path.getmtime)[-1]
     util.log('Loading from checkpoint file: %s', checkpoint_file)
-    
+
     try:
       return shelve.open(checkpoint_file, flag='r', protocol=-1, writeback=False)
     except:
@@ -176,16 +175,16 @@ class CheckpointDumper(object):
       return dict
 
   def dump(self, checkpoint, suffix):
-    cp_pattern = self.checkpoint_dir + '/%s-*' % self.test_id
+    cp_pattern = os.path.join(self.checkpoint_dir, '*')
     cp_files = [(f, os.stat(f)) for f in glob.glob(cp_pattern)]
-    cp_files = reversed(sorted(cp_files, key=lambda f: f[1].st_mtime))
-    
-    while sum([f[1].st_size for f in cp_files]) > self.max_cp_size:
-      os.remove(cp_files.pop())
-      
-    checkpoint_filename = "%s-%d.%d" % (self.test_id, suffix, self.counter.next())
+    cp_files = list(reversed(sorted(cp_files, key=lambda f: f[1].st_mtime)))
+
+    #while sum([f[1].st_size for f in cp_files]) > self.max_cp_size:
+    #  os.remove(cp_files.pop())
+
+    checkpoint_filename = "%d" % suffix
     checkpoint_filename = os.path.join(self.checkpoint_dir, checkpoint_filename)
-    
+
     util.log('Writing checkpoint to %s', checkpoint_filename)
 
     sf = shelve.open(checkpoint_filename, flag='c', protocol=-1, writeback=False)
@@ -193,11 +192,11 @@ class CheckpointDumper(object):
       sf[k] = v
     sf.sync()
     sf.close()
-    
+
     util.log('save file finished')
 
 
-def cache_outputs(net, dp, dumper, layer_name = '', index = -1):
+def cache_outputs(net, dp, dumper, layer_name = 'pool5', index = -1):
   '''
   fprop ``net`` through an entire epoch, saving the output of ``layer_name`` into ``dumper``. 
   :param net:
@@ -234,6 +233,7 @@ class Trainer:
     self.batch_size = batch_size
     self.net = net
     self.curr_batch = self.curr_epoch = 0
+    self.annealing_factor = 10
     self.start_time = time.time()
 
     for k, v in kw.iteritems():
@@ -261,8 +261,8 @@ class Trainer:
 
 
   def annealing(self):
-    self.net.adjust_learning_rate(0.1)
-    self.net.print_learning_rate()
+    self.net.adjust_learning_rate( 1.0 / self.annealing_factor)
+    self.net.print_learning_rates()
 
   def save_checkpoint(self):
     model = {}
@@ -298,8 +298,10 @@ class Trainer:
     for s in self.net.get_summary():
       name = s[0]
       values = s[1]
-      print >> sys.stderr, "Layer '%s' weight: %e [%e]" % (name, values[0], values[1])
-      print >> sys.stderr, "Layer '%s' bias: %e [%e]" % (name, values[2], values[3])
+      print >> sys.stderr, "Layer '%s' weight: %e [%e] @ [%e]" % (name, values[0], values[1],
+          values[4])
+      print >> sys.stderr, "Layer '%s' bias: %e [%e] @ [%e]" % (name, values[2], values[3],
+          values[5])
 
 
   def check_test_data(self):
@@ -332,7 +334,7 @@ class Trainer:
 
     start_epoch = self.curr_epoch
     last_print_time = time.time()
-    
+
     while (self.curr_epoch - start_epoch <= num_epochs and 
           self.should_continue_training()):
       batch_start = time.time()
@@ -344,7 +346,7 @@ class Trainer:
       self.net.train_batch(input, label)
       cost, correct, numCase = self.net.get_batch_information()
       self.train_outputs += [({'logprob': [cost, 1 - correct]}, numCase, self.elapsed())]
-      
+
       if time.time() - last_print_time > 1:
         print >> sys.stderr, '%d.%d: error: %f logreg: %f time: %f' % (
                       self.curr_epoch, self.curr_batch, 1 - correct, cost, time.time() - batch_start)
@@ -359,7 +361,7 @@ class Trainer:
       if self.check_save_checkpoint():
         self.save_checkpoint()
 
-    #self.get_test_error()
+    self.get_test_error()
     self.save_checkpoint()
     self.report()
     self._finished_training()

@@ -1,6 +1,12 @@
 from .cudaconv2 import *
 
+CONTEXT = None
 def init():
+  global CONTEXT
+
+  if CONTEXT is not None:
+    return CONTEXT
+
   # MAGIC MAGIC
   from pycuda import driver
   driver.init()
@@ -10,4 +16,5 @@ def init():
   import atexit
   atexit.register(context.detach)
 
-  return context
+  CONTEXT = context
+  return CONTEXT

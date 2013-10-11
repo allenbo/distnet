@@ -213,7 +213,7 @@ class WeightedLayer(Layer):
     b = self.bias.wt.get()
     b = np.mean(np.abs(b))
     b_variance = np.var(np.abs(b.ravel()))
-    return self.name, (w, w_variance, b, b_variance)
+    return self.name, (w, w_variance, b, b_variance, self.weight.epsilon, self.bias.epsilon)
 
 
   def dump(self):
@@ -225,7 +225,7 @@ class WeightedLayer(Layer):
     d['momW'] = self.weight.momentum
     d['wc'] = self.weight.decay
     
-    d['epsB'] = self.bias.decay
+    d['epsB'] = self.bias.epsilon
     d['momB'] = self.bias.momentum
     
     

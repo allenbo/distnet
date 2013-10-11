@@ -34,7 +34,7 @@ class FastNet(object):
       else:
         # FastNet config file
         add_layers(FastNetBuilder(), self, init_model)
-      self.adjust_learning_rate(self.learningRate)
+      self.adjust_learning_rate(self.learning_rate)
 
     self.print_learning_rates()
 
@@ -247,11 +247,11 @@ class FastNet(object):
   def get_output_by_name(self, layer_name):
     for idx, l in enumerate(self.layers):
       if l.name == layer_name:
-        return self.outputs[idx]
+        return l.output
 
     raise KeyError, 'Missing layer: %s' % layer_name
 
-  def get_output_index__by_name(self, layer_name):
+  def get_output_index_by_name(self, layer_name):
     for idx, l in enumerate(self.layers):
       if l.name == layer_name:
         return idx
@@ -259,7 +259,7 @@ class FastNet(object):
     raise KeyError, 'Missing layer: %s' % layer_name
 
   def get_output_by_index(self, index):
-    return self.outputs[index]
+    return self.layers[index].output
 
   def get_summary(self):
     sum = []
