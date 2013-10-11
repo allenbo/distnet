@@ -1,8 +1,5 @@
 from fastnet import util, layer
-from fastnet.cuda_kernel import gpu_copy_to
 from fastnet.layer import TRAIN, WeightedLayer
-from fastnet.parser import is_cudaconvnet_config, add_layers, FastNetBuilder, \
-  CudaconvNetBuilder
 from fastnet.util import timer
 from pycuda import cumath, gpuarray, driver
 from pycuda.gpuarray import GPUArray
@@ -11,37 +8,36 @@ import sys
 import time
 
 class FastNet(object):
-  def __init__(self, learning_rate, imgShape, init_model = None):
-    self.learning_rate = learning_rate
-    self.image_shape = imgShape
-    self.numColor, self.imgSize, _ , self.batch_size = imgShape
+  def __init__(self, image_shape):
+    self.batch_size = -1
     self.layers = []
+    self.image_shape = image_shape
 
     self.numCase = self.cost = self.correct = 0.0
     self.numConv = 0
 
-    if init_model is None:
-      util.log('initial model not provided, network doesn\'t have any layer')
-      return
-
-    if 'layers' in init_model:
-      # Loading from a checkpoint
-      add_layers(FastNetBuilder(), self, init_model['layers'])
-    else:
-      if is_cudaconvnet_config(init_model):
-        # AlexK config file
-        add_layers(CudaconvNetBuilder(), self, init_model)
-      else:
-        # FastNet config file
-        add_layers(FastNetBuilder(), self, init_model)
-      self.adjust_learning_rate(self.learning_rate)
-
-    self.print_learning_rates()
-
-
-  def save_layerouput(self, layers):
-    self.save_layers = layers
-
+#    if init_model is None:
+#      util.log('initial model not provided, network doesn\'t have any layer')
+#      return
+#
+#    if 'layers' in init_model:
+#      # Loading from a checkpoint
+#      add_layers(FastNetBuilder(), self, init_model['layers'])
+#    else:
+#      if is_cudaconvnet_config(init_model):
+#        # AlexK config file
+#        add_layers(CudaconvNetBuilder(), self, init_model)
+#      else:
+#        # FastNet config file
+#        add_layers(FastNetBuilder(), self, init_model)
+#      self.adjust_learning_rate(self.learning_rate)
+#
+#    self.print_learning_rates()
+#
+#
+#  def save_layerouput(self, layers):
+#    self.save_layers = layers
+#
   def __getitem__(self, name):
     for layer in self.layers:
       if layer.name == name:
@@ -53,10 +49,10 @@ class FastNet(object):
   def append_layer(self, layer):
     if self.layers:
       layer.attach(self.layers[-1])
-    layer.init_output()
 
     self.layers.append(layer)
-    print >> sys.stderr,  '%s  [%s] : %s' % (layer.name, layer.type, layer.get_output_shape())
+    util.log_info('Append: %s  [%s] : %s', layer.name, layer.type, layer.get_output_shape())
+    return layer
 
   def drop_layer_from(self, name):
     found = False
@@ -117,7 +113,7 @@ class FastNet(object):
     
     return self.layers[-1].output
 
-  def bprop(self, data, label, prob, train=TRAIN):
+  def bprop(self, label, train=TRAIN):
     grad = label
     for i in range(1, len(self.layers) + 1):
       curr = self.layers[-i]
@@ -205,7 +201,7 @@ class FastNet(object):
     self.correct += correct
 
     if train == TRAIN:
-      self.bprop(data, label, prediction)
+      self.bprop(label)
       self.update()
 
     # make sure we have everything finished before returning!
@@ -214,11 +210,7 @@ class FastNet(object):
     driver.Context.synchronize()
 
   def get_dumped_layers(self):
-    layers = []
-    for l in self.layers:
-      layers.append(l.dump())
-
-    return layers
+    return [l.dump() for l in self.layers]
 
   def disable_bprop(self):
     for l in self.layers:

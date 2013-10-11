@@ -18,4 +18,9 @@ import cudaconv2
 # print 'Choose Device', device_info[0]
 # dev = driver.Device(device_info[0])
 
-CONTEXT = cudaconv2.init()
+CONTEXT = None
+def init(device=-1):
+  global CONTEXT
+  if CONTEXT is not None:
+    return
+  CONTEXT = cudaconv2.init(device)

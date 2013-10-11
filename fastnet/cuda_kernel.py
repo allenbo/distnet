@@ -1,5 +1,3 @@
-import init_cuda
-
 from pycuda import gpuarray
 from pycuda.compiler import SourceModule
 from pycuda.elementwise import ElementwiseKernel
@@ -13,10 +11,9 @@ import numpy as np
 import pycuda
 import sys
 
-#import pycuda.autoinit
 
-import init_cuda
-#init_cuda.init()
+from fastnet import init_cuda
+init_cuda.init()
 
 try:
   cublas.cublasInit()
@@ -611,7 +608,7 @@ def find_row_max_id(x, mat):
   timer.start()
   mh, mw = mat.shape
   vh, vw = x.shape
-  assert(vw == 1 and vh == mh or vh == 1 and vw == mh)
+  assert(vw == 1 and vh == mh or vh == 1 and vw == mh), (x.shape, mat.shape)
 
   grid = (1, mh)
   block = (mw, 1, 1)
@@ -817,7 +814,7 @@ def softmax_bprop(mat, label, grad):
   mh, mw = mat.shape
   vh, vw = label.shape
 
-  assert(vh == 1 and vw == mw or vw == 1 and vh == mw)
+  assert((vh == 1 and vw == mw) or (vw == 1 and vh == mw)), (vh, vw, mw)
 
   block = (32, 32, 1)
   grid = (divup(mw, 32), divup(mh, 32))

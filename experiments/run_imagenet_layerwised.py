@@ -97,7 +97,9 @@ class ImageNetLayerwisedTrainer(trainer.Trainer):
     pprint.pprint(self.stack)
 
     self.num_epoch = self.frag_epoch
-    self.net = net.FastNet(self.learning_rate, self.image_shape, self.curr_model)
+    net = parser.load_from_checkpoint(param_file, 
+                                      checkpoint_dumper.get_checkpoint(), 
+                                      image_shape)
 
     self.container = deque()
 

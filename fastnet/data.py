@@ -87,6 +87,8 @@ class ImageNetDataProvider(DataProvider):
 
     self.buffer_idx = 0
 
+    assert os.path.exists(data_dir), data_dir
+
     dirs = glob.glob(data_dir + '/n*')
     synid_to_dir = {}
     for d in dirs:
@@ -110,6 +112,8 @@ class ImageNetDataProvider(DataProvider):
 
     self.images = np.array(self.images)
 
+    assert len(self.images) > 0
+
     # build index vector into 'images' and split into groups of batch-size
     image_index = np.arange(len(self.images))
     np.random.shuffle(image_index)
@@ -125,7 +129,7 @@ class ImageNetDataProvider(DataProvider):
     if 'data_mean' in self.batch_meta:
       data_mean = self.batch_meta['data_mean']
     else:
-      data_mean = util.load(data_dir + 'image-mean.pickle')
+      data_mean = util.load(data_dir + 'image-mean.pickle')['data']
     
     self.data_mean = (data_mean
         .astype(np.single)
@@ -301,6 +305,10 @@ class ParallelDataProvider(DataProvider):
     assert self._reader is None
     self._reader = ReaderThread(self._data_queue, self.dp)
     self._reader.start()
+    
+  @property
+  def image_shape(self):
+    return self.dp.image_shape
 
   def reset(self):
     self.dp.reset()
@@ -352,6 +360,7 @@ class ParallelDataProvider(DataProvider):
       #labels = gpu_labels[self.index:self.index + batch_size]
       self.index += batch_size
     return BatchData(data, labels, self._gpu_batch.epoch)
+
 
 dp_dict = {}
 def register_data_provider(name, _class):
