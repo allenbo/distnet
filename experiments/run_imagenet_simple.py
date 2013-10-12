@@ -8,8 +8,8 @@ from fastnet import data, trainer, net, parser
 test_id = 'notest-1'
 
 data_dir = '/ssd/nn-data/imagenet/'
-checkpoint_dir = './checkpoint/'
-param_file = './config/imagenet.cfg'
+checkpoint_dir = '/hdfs/justin/checkpoint/'
+param_file = '/home/justin/fastnet/config/imagenet.cfg'
 output_dir = ''
 output_method = 'disk'
 
@@ -25,8 +25,8 @@ checkpoint_dumper = trainer.CheckpointDumper(checkpoint_dir, test_id)
 model = checkpoint_dumper.get_checkpoint()
 if model is None:
   model = parser.parse_config_file(param_file)
-  
-save_freq = 100
+
+save_freq = 10
 test_freq = 100
 adjust_freq = 100
 factor = 1

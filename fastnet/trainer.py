@@ -18,6 +18,10 @@ import sys
 import time
 import shelve
 import zipfile
+import shutil
+import tempfile
+import random
+import string
 from collections import deque
 
 class DataDumper(object):
@@ -168,6 +172,7 @@ class CheckpointDumper(object):
     util.log('Loading from checkpoint file: %s', checkpoint_file)
 
     try:
+      #return shelve.open(checkpoint_file, flag='r', protocol=-1, writeback=False)
       return shelve.open(checkpoint_file, flag='r', protocol=-1, writeback=False)
     except:
       dict = {}
@@ -188,12 +193,27 @@ class CheckpointDumper(object):
     checkpoint_filename = os.path.join(self.checkpoint_dir, checkpoint_filename)
 
     util.log('Writing checkpoint to %s', checkpoint_filename)
-
-    sf = shelve.open(checkpoint_filename, flag='c', protocol=-1, writeback=False)
-    for k, v in checkpoint.iteritems():
-      sf[k] = v
-    sf.sync()
-    sf.close()
+    if checkpoint_filename.startswith('/hdfs'):
+      print 'Writing to hdfs '
+      suf = ''
+      for i in range(6):
+        suf += random.choice(string.ascii_letters)
+      tempfilename = '/tmp/' + suf
+      print 'temp filename is', tempfilename
+      sf = shelve.open(tempfilename, flag = 'c', protocol=-1, writeback=False)
+      #sf = shelve.open(checkpoint_filename, flag='c', protocol=-1, writeback=False)
+      for k, v in checkpoint.iteritems():
+        sf[k] = v
+      sf.sync()
+      sf.close()
+      #shutil.copy2(tempfilename, checkpoint_filename)
+      os.system('mv %s %s' %( tempfilename, checkpoint_filename))
+    else:
+      sf = shelve.open(checkpoint_filename, flag='c', protocol=-1, writeback=False)
+      for k, v in checkpoint.iteritems():
+        sf[k] = v
+      sf.sync()
+      sf.close()
 
     util.log('save file finished')
 
