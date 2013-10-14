@@ -253,6 +253,17 @@ class FastNet(object):
   def get_output_by_index(self, index):
     return self.layers[index].output
 
+  def get_first_active_layer_name(self):
+    for layer in self.layers:
+      if layer.disable_bprop == False and isinstance(layer, WeightedLayer):
+        return layer.name
+    return ''
+
+  def get_weight_by_name(self, name):
+    for layer in self.layers:
+      if layer.name == name:
+        return layer.weight.wt.get() + layer.bias.wt.get().transpose()
+
   def get_summary(self):
     sum = []
     for l in self.layers:

@@ -152,7 +152,10 @@ class MemoryDataHolder(object):
 
 class CheckpointDumper(object):
   def __init__(self, checkpoint_dir, test_id, max_cp_size=5e9):
-    self.checkpoint_dir = os.path.join(checkpoint_dir, test_id)
+    if test_id == '':
+      self.checkpoint_dir = checkpoint_dir
+    else:
+      self.checkpoint_dir = os.path.join(checkpoint_dir, test_id)
 
     if not os.path.exists(self.checkpoint_dir):
       os.system('mkdir -p \'%s\'' % self.checkpoint_dir)
@@ -163,7 +166,10 @@ class CheckpointDumper(object):
 
 
   def get_checkpoint(self):
-    cp_pattern = os.path.join(self.checkpoint_dir, "*")
+    if self.test_id == '':
+      cp_pattern = self.checkpoint_dir
+    else:
+      cp_pattern = os.path.join(self.checkpoint_dir, "*")
     cp_files = glob.glob(cp_pattern)
     if not cp_files:
       return None
