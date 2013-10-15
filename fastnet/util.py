@@ -61,8 +61,8 @@ class Timer:
     dic = self.func_time
     for key in sorted(dic):
       print key, ':', dic[key]
-timer = Timer()
 
+timer = Timer()
 
 class EZTimer(object):
   def __init__(self, msg=''):
@@ -194,8 +194,6 @@ class Assert(object):
 
 def lazyinit(initializer_fn):
   '''
-  Function decorator.
-  
   (Lazily) call initializer_fn prior to invocation.
   '''
   def wrap(fn):
@@ -207,3 +205,16 @@ def lazyinit(initializer_fn):
   
   return wrap
 
+def timed_fn(fn):
+  '''
+  Time the execution of ``fn``.
+  '''
+  def _fn(*args, **kw):
+    timer.start()
+    result = fn(*args, **kw) 
+    timer.end(fn.__name__)
+    
+    return result
+    
+  _fn.__name__ = fn.__name__
+  return _fn
