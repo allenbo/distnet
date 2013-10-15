@@ -59,7 +59,7 @@ class Layer(object):
     d = {}
     for att in attr:
       val = getattr(self, att)
-      if np.isscalar(val):
+      if isinstance(val, tuple) or np.isscalar(val):
         d[att] = val
     return d
 

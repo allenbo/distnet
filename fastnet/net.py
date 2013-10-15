@@ -15,29 +15,7 @@ class FastNet(object):
 
     self.numCase = self.cost = self.correct = 0.0
     self.numConv = 0
-
-#    if init_model is None:
-#      util.log('initial model not provided, network doesn\'t have any layer')
-#      return
-#
-#    if 'layers' in init_model:
-#      # Loading from a checkpoint
-#      add_layers(FastNetBuilder(), self, init_model['layers'])
-#    else:
-#      if is_cudaconvnet_config(init_model):
-#        # AlexK config file
-#        add_layers(CudaconvNetBuilder(), self, init_model)
-#      else:
-#        # FastNet config file
-#        add_layers(FastNetBuilder(), self, init_model)
-#      self.adjust_learning_rate(self.learning_rate)
-#
-#    self.print_learning_rates()
-#
-#
-#  def save_layerouput(self, layers):
-#    self.save_layers = layers
-#
+  
   def __getitem__(self, name):
     for layer in self.layers:
       if layer.name == name:

@@ -2,15 +2,18 @@
 
 '''A relatively simple distributed network implementation, using async SGD.'''
 
-from fastnet import init_cuda, net, layer, data, parser, weights
+from fastnet import net, layer, data, parser, weights
 from fastnet.util import EZTimer
 from mpi4py import MPI
 import ctypes
+import cudaconv2
 import numpy as np
 import os
+
+
 WORLD = MPI.COMM_WORLD
 
-init_cuda.init(WORLD.Get_rank())
+cudaconv2.init(WORLD.Get_rank())
 
 print 'CUDA', os.environ.get('MV2_USE_CUDA')
 

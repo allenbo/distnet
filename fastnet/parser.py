@@ -1,8 +1,8 @@
-from fastnet import net
+from fastnet import net, util
 from fastnet.layer import ConvLayer, MaxPoolLayer, AvgPoolLayer, \
   CrossMapResponseNormLayer, SoftmaxLayer, NeuronLayer, ResponseNormLayer, FCLayer, \
   DataLayer
-from fastnet.util import isfloat
+import fastnet
 import numpy as np
 
 def parse_config_file(parsing_file):
@@ -23,7 +23,7 @@ def parse_config_file(parsing_file):
 
         if value.isdigit():
           value = int(value)
-        elif isfloat(value):
+        elif util.isfloat(value):
           value = float(value)
 
         rst[-1][key] = value
@@ -31,9 +31,11 @@ def parse_config_file(parsing_file):
 
 def load_model(net, model):
   if 'layers' in model:
+    util.log('Loading from checkpoint...')
     # Loading from a checkpoint
     add_layers(FastNetBuilder(), net, model['layers'])
   else:
+    net.append_layer(DataLayer('data0', net.image_shape)) 
     if is_cudaconvnet_config(model):
       # AlexK config file
       add_layers(CudaconvNetBuilder(), net, model)
@@ -76,9 +78,11 @@ class Builder(object):
     elif ld['type'] == 'softmax': return self.softmax_layer(ld)
     elif ld['type'] == 'rnorm': return self.rnorm_layer(ld)
     elif ld['type'] == 'cmrnorm': return self.crm_layer(ld)
+    elif ld['type'] == 'data':
+      print ld 
+      return DataLayer(ld['name'], ld['image_shape'])
     else:
-      return None
-      #raise Exception, 'Unknown layer %s' % ld['type']
+      raise Exception, 'Unknown layer %s' % ld['type']
 
 
 class FastNetBuilder(Builder):
@@ -279,13 +283,11 @@ class CudaconvNetBuilder(FastNetBuilder):
     blocked = bool(Builder.set_val(ld, 'blocked', default = 0))
     return CrossMapResponseNormLayer(name, pow, size, scale, blocked)
   
-  
+@util.lazyinit(fastnet.init) 
 def add_layers(builder, net, model):
-  net.append_layer(DataLayer('data0', net.image_shape))
   for layer in model:
     l = builder.make_layer(net, layer)
-    if l is not None:
-      net.append_layer(l)
+    net.append_layer(l)
 
 def is_cudaconvnet_config(model):
   for layer in model:

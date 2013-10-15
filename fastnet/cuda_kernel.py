@@ -1,10 +1,11 @@
+from fastnet import util
+from fastnet.util import timer, divup
 from pycuda import gpuarray
 from pycuda.compiler import SourceModule
 from pycuda.elementwise import ElementwiseKernel
 from pycuda.gpuarray import GPUArray
 from scikits.cuda import cublas
 from time import time
-from util import *
 import cPickle
 import cudaconv2
 import numpy as np
@@ -12,24 +13,34 @@ import pycuda
 import sys
 
 
-from fastnet import init_cuda
-init_cuda.init()
-
-try:
-  cublas.cublasInit()
-  sgemm = cublas.cublasSgemm
-except AttributeError:
-  handle = cublas.cublasCreate()
-  def sgemm(*args):
-    cublas.cublasSgemm(handle, *args)
-
+sgemm = None
+def _initialize_cublas():
+  global sgemm
+  
+  try:
+    cublas.cublasInit()
+    sgemm = cublas.cublasSgemm
+  except AttributeError:
+    handle = cublas.cublasCreate()
+    def sgemm(*args):
+      cublas.cublasSgemm(handle, *args)
+  
 class CompiledSource(object):
-  def __init__(self, src, kernel):
-    print >> sys.stderr, 'Compiling...', kernel
-    self.module = SourceModule(src)
-    self.kernel = self.module.get_function(kernel)
+  '''
+  Compile a source string with PyCuda, caching the resulting module.
+  '''
+  def __init__(self, src, kernel_name):
+    self.src = src
+    self.kernel_name = kernel_name
+    self.module = None
+    self.kernel = None
 
   def __call__(self, *args, **kw):
+    if self.module is None:
+      print >> sys.stderr, 'Compiling...', self.kernel_name
+      self.module = SourceModule(self.src)
+      self.kernel = self.module.get_function(self.kernel_name)
+      
     self.kernel(*args, **kw)
 
 
@@ -799,7 +810,7 @@ def logreg_cost_col_reduce(mat, label, cost):
   vh, vw = label.shape
   #assert(vh == 1 and vw == mw or vw == 1 and vh == mw)
   if (vh != 1 or vw != mw)  and (vw != 1 or vh != mw):
-    log('%s ==> %s', mat.shape, label.shape)
+    util.log_info('%s ==> %s', mat.shape, label.shape)
     assert False
 
   block = (mw, 1, 1)
@@ -886,6 +897,7 @@ def gpu_partial_copy_to(x, y, row_from, row_to, col_from, col_to):
   _gpu_partial_copy_to_(x, y, I(row_from), I(row_to), I(col_from), I(col_to), I(sleading), I(dleading), block=block, grid=grid)
   timer.end('gpu_partial_copy_to')
 
+@util.lazyinit(_initialize_cublas)
 def dot(x, y):
   timer.start()
   if isinstance(x, GPUArray):

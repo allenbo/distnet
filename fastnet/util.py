@@ -191,3 +191,19 @@ class Assert(object):
     bad = [(k,v) for k, v in d.iteritems() if v > 1]
     assert len(bad) == 0, 'Duplicates found: %s' % bad
   
+
+def lazyinit(initializer_fn):
+  '''
+  Function decorator.
+  
+  (Lazily) call initializer_fn prior to invocation.
+  '''
+  def wrap(fn):
+    def _fn(*args, **kw):
+      initializer_fn()
+      return fn(*args, **kw)
+    _fn.__name__ = fn.__name__
+    return _fn
+  
+  return wrap
+
