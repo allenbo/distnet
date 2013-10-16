@@ -27,7 +27,7 @@ class BatchData(object):
 
 
 class DataProvider(object):
-  def __init__(self, data_dir='.', batch_range=None):
+  def __init__(self, data_dir='.', batch_range=None, test = False):
     self.data_dir = data_dir
     self.meta_file = os.path.join(data_dir, 'batches.meta')
 
@@ -60,12 +60,12 @@ class DataProvider(object):
       random.shuffle(self.batch_range)
       self.curr_epoch += 1
       self.curr_batch_index = 1
-      
+
       self._handle_new_epoch()
-      
-      
+
+
     self.curr_batch = self.batch_range[self.curr_batch_index - 1]
-    
+
   def _handle_new_epoch(self):
     '''
     Called when a new epoch starts.
@@ -78,11 +78,11 @@ class DataProvider(object):
   @property
   def image_shape(self):
     return (3, self.inner_size, self.inner_size)
-  
+
   @property
   def data_dim(self):
     return self.inner_size ** 2 * 3
-  
+
 
 def _prepare_images(data_dir, category_range, batch_range, batch_meta):
   assert os.path.exists(data_dir), data_dir
@@ -116,29 +116,33 @@ class ImageNetDataProvider(DataProvider):
   img_size = 256
   border_size = 16
   inner_size = 224
-  
-  def __init__(self, data_dir, batch_range=None, category_range=None, batch_size=1024):
-    DataProvider.__init__(self, data_dir, batch_range)
+
+  def __init__(self, data_dir, batch_range=None, test = False, category_range=None, batch_size=1024):
+    DataProvider.__init__(self, data_dir, batch_range, test)
     self.batch_size = batch_size
+    self.test = test
+    self.multiview = test
     self.images = _prepare_images(data_dir, category_range, batch_range, self.batch_meta)
+    self.num_view = 5 * 2
+
     assert len(self.images) > 0
-    
+
     self._shuffle_batches()
-    
+
     if 'data_mean' in self.batch_meta:
       data_mean = self.batch_meta['data_mean']
     else:
       data_mean = util.load(data_dir + 'image-mean.pickle')['data']
-    
+
     self.data_mean = (data_mean
         .astype(np.single)
         .T
-        .reshape((3, 256, 256))[:, 
-                                self.border_size:self.border_size + self.inner_size, 
+        .reshape((3, 256, 256))[:,
+                                self.border_size:self.border_size + self.inner_size,
                                 self.border_size:self.border_size + self.inner_size]
         .reshape((self.data_dim, 1)))
     util.log('Starting data provider with %d batches', len(self.batches))
-    
+
   def _shuffle_batches(self):
     # build index vector into 'images' and split into groups of batch-size
     image_index = np.arange(len(self.images))
@@ -149,19 +153,29 @@ class ImageNetDataProvider(DataProvider):
 
     self.batch_range = range(len(self.batches))
     np.random.shuffle(self.batch_range)
- 
+
   def _handle_new_epoch(self):
     self._shuffle_batches(self.batch_size)
 
   def __trim_borders(self, images, target):
-    for idx, img in enumerate(images):
-      # startY, startX = np.random.randint(0, self.border_size * 2 + 1), np.random.randint(0, self.border_size * 2 + 1)
-      startY, startX = 0, 0
-      endY, endX = startY + self.inner_size, startX + self.inner_size
-      pic = img[:, startY:endY, startX:endX]
-      if np.random.randint(2) == 0:  # also flip the image with 50% probability
-        pic = pic[:, :, ::-1]
-      target[:, idx] = pic.reshape((self.data_dim,))
+    if self.test:
+      start_positions = [(0, 0), (0, self.border_size * 2), (self.border_size, self.border_size),
+                          (self.border_size *2 , 0), (self.border_size * 2 , self.border_size * 2)]
+      end_positions = [(x + self.inner_size, y + self.inner_size) for (x, y) in start_positions]
+      for i in xrange(self.num_view / 2):
+        startY , startX = start_positions[i][0], start_positions[i][1]
+        endY, endX = end_positions[i][0], end_position[i][1]
+        pic = images[:, :, startY:endY, startX:endX]
+        target[:, i * self.batch_size: (i + 1) * self.batch_size] = pic.reshape((self.data_dim, self.batch_size))
+        target[:, (self.num_view/2 +i) * self.batch_size:(self.num_view/2 +i+1)* self.batch_size] = pic[:, :, ::-1, :].reshape((self.data_dim, self.batch_size))
+    else:
+      for idx, img in enumerate(images):
+        startY, startX = np.random.randint(0, self.border_size * 2 + 1), np.random.randint(0, self.border_size * 2 + 1)
+        endY, endX = startY + self.inner_size, startX + self.inner_size
+        pic = img[:, startY:endY, startX:endX]
+        if np.random.randint(2) == 0:  # also flip the image with 50% probability
+          pic = pic[:, :, ::-1]
+        target[:, idx] = pic.reshape((self.data_dim,))
 
   def get_next_batch(self):
     self.get_next_index()
@@ -171,7 +185,10 @@ class ImageNetDataProvider(DataProvider):
     names = self.images[self.batches[batchnum]]
     num_imgs = len(names)
     labels = np.zeros((1, num_imgs))
-    cropped = np.ndarray((self.data_dim, num_imgs), dtype=np.uint8)
+    if self.test:
+        cropped = np.ndarray((self.data_dim, num_imgs * self.num_view), dtype=np.uint8)
+    else:
+        cropped = np.ndarray((self.data_dim, num_imgs), dtype = np.uint8)
     # _load in parallel for training
     st = time.time()
     images = []
@@ -217,7 +234,7 @@ class CifarDataProvider(DataProvider):
   img_size = 32
   border_size = 0
   inner_size = 32
-  
+
   BATCH_REGEX = re.compile('^data_batch_(\d+)$')
   def get_next_batch(self):
     self.get_next_index()
@@ -308,7 +325,7 @@ class ParallelDataProvider(DataProvider):
     assert self._reader is None
     self._reader = ReaderThread(self._data_queue, self.dp)
     self._reader.start()
-    
+
   @property
   def image_shape(self):
     return self.dp.image_shape
@@ -349,7 +366,6 @@ class ParallelDataProvider(DataProvider):
       width = width - self.index
       labels = gpu_labels[self.index:self.index + batch_size]
 
-      #data = gpu_data[:, self.index:self.index + batch_size]
       data = gpuarray.zeros((height, width), dtype = np.float32)
       gpu_partial_copy_to(gpu_data, data, 0, height, self.index, self.index + width)
 
@@ -357,10 +373,8 @@ class ParallelDataProvider(DataProvider):
       self._fill_reserved_data()
     else:
       labels = gpu_labels[self.index:self.index + batch_size]
-      #data = gpu_data[:, self.index:self.index + batch_size]
       data = gpuarray.zeros((height, batch_size), dtype = np.float32)
       gpu_partial_copy_to(gpu_data, data, 0, height, self.index, self.index + batch_size)
-      #labels = gpu_labels[self.index:self.index + batch_size]
       self.index += batch_size
     return BatchData(data, labels, self._gpu_batch.epoch)
 

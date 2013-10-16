@@ -99,12 +99,23 @@ class Trainer:
     return time.time() - self.start_time + self.base_time
 
   def get_test_error(self):
-    test_data = self.test_dp.get_next_batch(self.batch_size)
+    batch_size = self.batch_size
+    multiview = False
+    num_view = 1
+    if self.test_dp.multiview:
+      multiview = True
+      num_view = self.test_dp.num_view
+      batch_size *= num_view
+    test_data = self.test_dp.get_next_batch(batch_size)
 
     input, label = test_data.data, test_data.labels
-    self.net.train_batch(input, label, TEST)
+    if multiview:
+      self.net.test_batch_multiview(input, label, num_view)
+      cost , correct, numCase = self.net.get_batch_information_multiview(nuw_view)
+    else:
+      self.net.train_batch(input, label, TEST)
+      cost , correct, numCase, = self.net.get_batch_information()
 
-    cost , correct, numCase, = self.net.get_batch_information()
     self.test_outputs += [({'logprob': [cost, 1 - correct]}, numCase, self.elapsed())]
     print >> sys.stderr, '---- test ----'
     print >> sys.stderr, 'error: %f logreg: %f' % (1 - correct, cost)
@@ -548,7 +559,7 @@ if __name__ == '__main__':
   # create train dataprovider and test dataprovider
   dp_class = data.get_by_name(param_dict['data_provider'])
   train_dp = dp_class(param_dict['data_dir'], param_dict['train_range'])
-  test_dp = dp_class(param_dict['data_dir'], param_dict['test_range'])
+  test_dp = dp_class(param_dict['data_dir'], param_dict['test_range'], test = True)
   param_dict['train_dp'] = train_dp
   param_dict['test_dp'] = test_dp
 

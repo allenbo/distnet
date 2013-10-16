@@ -450,6 +450,14 @@ class SoftmaxLayer(Layer):
     self.batchCorrect = same_reduce(label , maxid)
     logreg_cost_col_reduce(output, label, self.cost)
 
+  def logreg_cost_multiview(self, label, output, num_view):
+    if self.cost.shape[0] != self.batch_size:
+      self.cost = gpuarray.zeros((self.batch_size, 1), dtype = np.float32)
+    maxid = gpuarray.zeros((self.batch_size, 1), dtype = np.float32)
+    find_col_max_id(maxid, output)
+    self.batchCorrect = same_reduce_multiview(label, maxid, num_view)
+    logreg_cost_col_reduce(output, label, self.cost)
+
   def bprop(self, label, input, output, outGrad):
     softmax_bprop(output, label, outGrad)
 
