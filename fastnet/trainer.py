@@ -10,6 +10,7 @@ import os
 import pprint
 import sys
 import time
+import math
 
 
 def cache_outputs(net, dp, dumper, layer_name = 'pool5', index = -1):
@@ -105,13 +106,14 @@ class Trainer:
     if self.test_dp.multiview:
       multiview = True
       num_view = self.test_dp.num_view
-      batch_size *= num_view
-    test_data = self.test_dp.get_next_batch(batch_size)
+      batch_size  = pow(2, int(math.log(batch_size / 10, 2))) * num_view
+    test_data = self.test_dp.get_next_batch(batch_size, num_view)
 
     input, label = test_data.data, test_data.labels
+    print input.shape, label.shape
     if multiview:
       self.net.test_batch_multiview(input, label, num_view)
-      cost , correct, numCase = self.net.get_batch_information_multiview(nuw_view)
+      cost , correct, numCase = self.net.get_batch_information_multiview(num_view)
     else:
       self.net.train_batch(input, label, TEST)
       cost , correct, numCase, = self.net.get_batch_information()

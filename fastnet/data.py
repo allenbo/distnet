@@ -164,10 +164,11 @@ class ImageNetDataProvider(DataProvider):
       end_positions = [(x + self.inner_size, y + self.inner_size) for (x, y) in start_positions]
       for i in xrange(self.num_view / 2):
         startY , startX = start_positions[i][0], start_positions[i][1]
-        endY, endX = end_positions[i][0], end_position[i][1]
-        pic = images[:, :, startY:endY, startX:endX]
-        target[:, i * self.batch_size: (i + 1) * self.batch_size] = pic.reshape((self.data_dim, self.batch_size))
-        target[:, (self.num_view/2 +i) * self.batch_size:(self.num_view/2 +i+1)* self.batch_size] = pic[:, :, ::-1, :].reshape((self.data_dim, self.batch_size))
+        endY, endX = end_positions[i][0], end_positions[i][1]
+        num_image = len(images)
+        pic = np.array([img[:, startY:endY, startX:endX]  for img in images])
+        target[:, i * num_image: (i + 1) * num_image] = pic.reshape((self.data_dim, num_image))
+        target[:, (self.num_view/2 +i) * num_image:(self.num_view/2 +i+1)* num_image] = pic[:, :, ::-1, :].reshape((self.data_dim, num_image))
     else:
       for idx, img in enumerate(images):
         startY, startX = np.random.randint(0, self.border_size * 2 + 1), np.random.randint(0, self.border_size * 2 + 1)
@@ -220,7 +221,7 @@ class ImageNetDataProvider(DataProvider):
     align_time = time.time() - st
 
     labels = np.array(labels)
-    labels = labels.reshape(cropped.shape[1],)
+    labels = labels.reshape(labels.size,)
     labels = np.require(labels, dtype=np.single, requirements='C')
 
     # util.log("Loaded %d images in %.2f seconds (%.2f _load, %.2f align)",
@@ -330,6 +331,20 @@ class ParallelDataProvider(DataProvider):
   def image_shape(self):
     return self.dp.image_shape
 
+  @property
+  def multiview(self):
+    if hasattr(self.dp, 'multiview'):
+      return self.dp.multiview
+    else:
+      return False
+
+  @property
+  def num_view(self):
+    if hasattr(self.dp, 'num_view'):
+      return self.dp.num_view
+    else:
+      assert 'Doesn\'t have num_view attr'
+
   def reset(self):
     self.dp.reset()
 
@@ -351,7 +366,7 @@ class ParallelDataProvider(DataProvider):
     batch_data.labels = copy_to_gpu(batch_data.labels)
     self._gpu_batch = batch_data
 
-  def get_next_batch(self, batch_size):
+  def get_next_batch(self, batch_size, num_view = 1):
     if self._reader is None:
       self._start_read()
 
@@ -364,7 +379,7 @@ class ParallelDataProvider(DataProvider):
 
     if self.index + batch_size >=  width:
       width = width - self.index
-      labels = gpu_labels[self.index:self.index + batch_size]
+      labels = gpu_labels[self.index/num_view:(self.index + batch_size) / num_view]
 
       data = gpuarray.zeros((height, width), dtype = np.float32)
       gpu_partial_copy_to(gpu_data, data, 0, height, self.index, self.index + width)
@@ -372,7 +387,7 @@ class ParallelDataProvider(DataProvider):
       self.index = 0
       self._fill_reserved_data()
     else:
-      labels = gpu_labels[self.index:self.index + batch_size]
+      labels = gpu_labels[self.index/ num_view:(self.index + batch_size) / num_view]
       data = gpuarray.zeros((height, batch_size), dtype = np.float32)
       gpu_partial_copy_to(gpu_data, data, 0, height, self.index, self.index + batch_size)
       self.index += batch_size

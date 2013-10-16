@@ -1,5 +1,5 @@
 from fastnet import util, layer
-from fastnet.layer import TRAIN, WeightedLayer
+from fastnet.layer import TRAIN, WeightedLayer, TEST
 from fastnet.util import timer
 from pycuda import cumath, gpuarray, driver
 from pycuda.gpuarray import GPUArray
@@ -203,7 +203,7 @@ class FastNet(object):
 
   def test_batch_multiview(self, data, label, num_view):
     data, label = self.prepare_for_train(data, label)
-    prediction = self.fprop(data, train)
+    prediction = self.fprop(data, TEST)
 
     cost, correct = self.get_cost_multiview(label, prediction, num_view)
     self.cost += cost

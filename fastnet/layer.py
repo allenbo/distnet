@@ -3,7 +3,7 @@ from fastnet.cuda_kernel import gpu_copy_to, add_vec_to_rows, add_row_sum_to_vec
   dot, bigger_than_scaler, transpose, col_max_reduce, add_vec_to_cols, eltwise_exp, \
   add_col_sum_to_vec, div_vec_to_cols, find_col_max_id, same_reduce, \
   logreg_cost_col_reduce, softmax_bprop, relu_activate, relu_compute_grad, \
-  tanh_activate, tanh_compute_grad
+  tanh_activate, tanh_compute_grad, same_reduce_multiview, gpu_partial_copy_to
 from fastnet.util import divup, print_matrix
 from fastnet.weights import WEIGHTS, to_gpu
 from pycuda import cumath, gpuarray, driver
@@ -451,12 +451,15 @@ class SoftmaxLayer(Layer):
     logreg_cost_col_reduce(output, label, self.cost)
 
   def logreg_cost_multiview(self, label, output, num_view):
-    if self.cost.shape[0] != self.batch_size:
-      self.cost = gpuarray.zeros((self.batch_size, 1), dtype = np.float32)
+    unit = self.batch_size / num_view
+    if self.cost.shape[0] != unit:
+      self.cost = gpuarray.zeros((unit, 1), dtype = np.float32)
     maxid = gpuarray.zeros((self.batch_size, 1), dtype = np.float32)
     find_col_max_id(maxid, output)
     self.batchCorrect = same_reduce_multiview(label, maxid, num_view)
-    logreg_cost_col_reduce(output, label, self.cost)
+    tmp = gpuarray.zeros((output.shape[0], unit), dtype = np.float32)
+    gpu_partial_copy_to(output, tmp, 0, output.shape[0], 0, unit)
+    logreg_cost_col_reduce(tmp, label, self.cost)
 
   def bprop(self, label, input, output, outGrad):
     softmax_bprop(output, label, outGrad)

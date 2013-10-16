@@ -830,7 +830,6 @@ def same_reduce_multiview(target, vec, num_view):
   grid = (1, 1)
   tmp = gpuarray.zeros_like(target)
   _same_reduce_multiview_(target, vec, tmp, I(num_view), block = block , grid = grid)
-  print tmp
   tmp = tmp.reshape((1, tmp.size))
   res = gpuarray.to_gpu(np.zeros((1, 1)).astype(np.float32))
   add_row_sum_to_vec(res, tmp)
