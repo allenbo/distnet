@@ -35,7 +35,7 @@ def load_model(net, model):
     # Loading from a checkpoint
     add_layers(FastNetBuilder(), net, model['layers'])
   else:
-    net.append_layer(DataLayer('data0', net.image_shape)) 
+    #net.append_layer(DataLayer('data0', net.image_shape)) 
     if is_cudaconvnet_config(model):
       # AlexK config file
       add_layers(CudaconvNetBuilder(), net, model)
@@ -303,14 +303,19 @@ def add_layers(builder, net, model):
   # have to handle the data layer specially, as it is not saved properly 
   # in some checkpoints
   data_layer = model[0]
-  if data_layer['type'] == 'data' and 'image_shape' in data_layer:
-    net.append_layer(builder.make_layer(net, data_layer))
-  else:
+  #if data_layer['type'] == 'data' and 'image_shape' in data_layer:
+  #  net.append_layer(builder.make_layer(net, data_layer))
+  #else:
+  #  net.append_layer(DataLayer('data0', net.image_shape))
+  if data_layer['type'] != 'data':
     net.append_layer(DataLayer('data0', net.image_shape))
-    
-  for layer in model[1:]:
+  elif 'image_shape' not in data_layer:
+    data_layer['image_shape'] = net.image_shape
+
+  for layer in model:
     l = builder.make_layer(net, layer)
-    net.append_layer(l)
+    if l is not None:
+      net.append_layer(l)
 
 def is_cudaconvnet_config(model):
   for layer in model:

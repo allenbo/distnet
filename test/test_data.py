@@ -1,6 +1,5 @@
 from fastnet import data, util
 from fastnet.util import print_matrix
-from fastnet.data import ImageNetDataProvider
 import numpy as np
 import time
 
@@ -13,7 +12,7 @@ def test_imagenet_loader():
   
   for i in range(32):
     st = time.time()
-    batch = df.get_next_batch(128 * 10)
+    batch = df.get_next_batch(8 * 10)
     print time.time() - st
     print batch.labels
     print batch.data.shape

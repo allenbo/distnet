@@ -106,12 +106,17 @@ class Trainer:
     if self.test_dp.multiview:
       multiview = True
       num_view = self.test_dp.num_view
-      batch_size  = pow(2, int(math.log(batch_size / 10, 2))) * num_view
+      batch_size  = pow(2, int(math.log(batch_size / num_view, 2))) * num_view
     test_data = self.test_dp.get_next_batch(batch_size, num_view)
 
     input, label = test_data.data, test_data.labels
-    print input.shape, label.shape
     if multiview:
+      #import numpy as np
+      #np.set_printoptions(threshold = np.nan)
+      #first = input.get()[:, 0]
+      #second = input.get()[:, 8]
+      #print first.shape, first
+      #print second.shape, second
       self.net.test_batch_multiview(input, label, num_view)
       cost , correct, numCase = self.net.get_batch_information_multiview(num_view)
     else:

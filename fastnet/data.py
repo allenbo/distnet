@@ -166,9 +166,10 @@ class ImageNetDataProvider(DataProvider):
         startY , startX = start_positions[i][0], start_positions[i][1]
         endY, endX = end_positions[i][0], end_positions[i][1]
         num_image = len(images)
-        pic = np.array([img[:, startY:endY, startX:endX]  for img in images])
-        target[:, i * num_image: (i + 1) * num_image] = pic.reshape((self.data_dim, num_image))
-        target[:, (self.num_view/2 +i) * num_image:(self.num_view/2 +i+1)* num_image] = pic[:, :, ::-1, :].reshape((self.data_dim, num_image))
+        for idx, img in enumerate(images):
+          pic = img[:, startY:endY, startX:endX]
+          target[:, i * num_image + idx] = pic.reshape((self.data_dim, ))
+          target[:, (self.num_view/2 +i) * num_image + idx] = pic[:, :, ::-1].reshape((self.data_dim, ))
     else:
       for idx, img in enumerate(images):
         startY, startX = np.random.randint(0, self.border_size * 2 + 1), np.random.randint(0, self.border_size * 2 + 1)
@@ -202,6 +203,10 @@ class ImageNetDataProvider(DataProvider):
       images.append(img)
 
     self.__trim_borders(images, cropped)
+    #if self.test:
+    #  np.set_printoptions(threshold = np.nan)
+    #  print cropped[:, 0]
+    #  print cropped[:, num_imgs]
 
     load_time = time.time() - st
 

@@ -380,12 +380,12 @@ _same_reduce_ = CompiledSource('''
 
 _same_reduce_multiview_ = CompiledSource('''
     __global__
-    void same(float* tgt, float* vec, float* tmp, int num_view) {
+    void same(float* tgt, float* vec, float* tmp, float* ids, int num_view) {
       int id = threadIdx.x;
       int j;
       int i;
       float ret[10];
-      int num_ret[10] = {0};
+      int num_ret[10];
       int k = 0;
       for(i = 0; i < num_view; i ++ ) {
         for(j = 0; j < k; j ++ ) {
@@ -395,6 +395,7 @@ _same_reduce_multiview_ = CompiledSource('''
           }
         }
         if( j == k ) {
+          num_ret[k] = 1;
           ret[k++] = vec[id+blockDim.x*i];
         }
       }
@@ -402,9 +403,11 @@ _same_reduce_multiview_ = CompiledSource('''
       float value = 0;
       for(i = 0; i < k; i ++ ) {
         if( max < num_ret[i] ) {
+          max = num_ret[i];
           value = ret[i];
         }
       }
+      ids[id] = value;
 
       if( tgt[id] == value ) {
         tmp[id] = 1;
@@ -826,10 +829,12 @@ def same_reduce(target, vec):
 
 @util.timed_fn
 def same_reduce_multiview(target, vec, num_view):
+  print target.size
   block = (target.size, 1, 1)
   grid = (1, 1)
   tmp = gpuarray.zeros_like(target)
-  _same_reduce_multiview_(target, vec, tmp, I(num_view), block = block , grid = grid)
+  ids = gpuarray.zeros_like(target)
+  _same_reduce_multiview_(target, vec, tmp, ids, I(num_view), block = block , grid = grid)
   tmp = tmp.reshape((1, tmp.size))
   res = gpuarray.to_gpu(np.zeros((1, 1)).astype(np.float32))
   add_row_sum_to_vec(res, tmp)
