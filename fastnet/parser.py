@@ -3,6 +3,7 @@ from fastnet.layer import ConvLayer, MaxPoolLayer, AvgPoolLayer, \
   CrossMapResponseNormLayer, SoftmaxLayer, NeuronLayer, ResponseNormLayer, FCLayer, \
   DataLayer
 import fastnet
+from fastnet.util import isfloat
 import numpy as np
 
 def parse_config_file(parsing_file):
@@ -23,7 +24,7 @@ def parse_config_file(parsing_file):
 
         if value.isdigit():
           value = int(value)
-        elif util.isfloat(value):
+        elif isfloat(value):
           value = float(value)
 
         rst[-1][key] = value
@@ -31,11 +32,9 @@ def parse_config_file(parsing_file):
 
 def load_model(net, model):
   if 'layers' in model:
-    util.log('Loading from checkpoint...')
     # Loading from a checkpoint
     add_layers(FastNetBuilder(), net, model['layers'])
   else:
-    #net.append_layer(DataLayer('data0', net.image_shape)) 
     if is_cudaconvnet_config(model):
       # AlexK config file
       add_layers(CudaconvNetBuilder(), net, model)
@@ -52,30 +51,24 @@ def load_from_checkpoint(config, checkpoint, image_shape):
   else:
     load_model(network, parse_config_file(config))
   return network
-
-class OptHelper():
-  '''
-  Builds up a list of valid option names, which are checked on deletion.
-  '''
-  def __init__(self, load_dict):
-    self.load_dict = {}
-    self.valid_dic = {}
-  
-  def get(self, ld, name, default = None):
-    if default is not None:
-      val = ld.get(name, default)
-    else:
-      val = ld.get(name)
-      
-    self.valid_dic[name] = 1
-    return val
-  
-  def __del__(self):
-    for k in self.load_dict.keys():
-      assert k in self.valid_dic, 'Unknown key: %s' % k
-  
+    
 
 class Builder(object):
+  valid_dic = {}
+  @staticmethod
+  def set_val(ld, name, default = None):
+    val  = ld.get(name, default)
+    Builder.valid_dic[name] = 1
+    return val
+
+  @staticmethod
+  def check_opts(ld):
+    for k in Builder.valid_dic:
+      if k not in ld:
+        raise Exception, 'Unknown key %s' % k
+    else:
+      Builder.valid_dic = {}
+
   def make_layer(self, net, ld):
     if ld['type'] == 'conv': return self.conv_layer(ld)
     elif ld['type'] == 'pool': return self.pool_layer(ld)
@@ -84,120 +77,111 @@ class Builder(object):
     elif ld['type'] == 'softmax': return self.softmax_layer(ld)
     elif ld['type'] == 'rnorm': return self.rnorm_layer(ld)
     elif ld['type'] == 'cmrnorm': return self.crm_layer(ld)
-    elif ld['type'] == 'data':
-      return DataLayer(ld['name'], ld['image_shape'])
     else:
-      raise Exception, 'Unknown layer %s' % ld['type']
+      return None
+      #raise Exception, 'Unknown layer %s' % ld['type']
 
 
 class FastNetBuilder(Builder):
   def conv_layer(self, ld):
-    opts = OptHelper(ld)
-    
-    numFilter = opts.get(ld, 'numFilter')
-    filterSize = opts.get(ld, 'filterSize')
-    padding = opts.get(ld, 'padding')
-    stride = opts.get(ld, 'stride')
-    initW = opts.get(ld, 'initW', 0.01)
-    initB = opts.get(ld, 'initB', 0.00)
-    epsW = opts.get(ld, 'epsW', 0.001)
-    epsB = opts.get(ld, 'epsB', 0.002)
+    numFilter = Builder.set_val(ld, 'numFilter')
+    filterSize = Builder.set_val(ld, 'filterSize')
+    padding = Builder.set_val(ld, 'padding')
+    stride = Builder.set_val(ld, 'stride')
+    initW = Builder.set_val(ld, 'initW', 0.01)
+    initB = Builder.set_val(ld, 'initB', 0.00)
+    epsW = Builder.set_val(ld, 'epsW', 0.001)
+    epsB = Builder.set_val(ld, 'epsB', 0.002)
     if epsB == 0:
       epsB = 0.002
-    momW = opts.get(ld, 'momW', 0.0)
-    momB = opts.get(ld, 'momB', 0.0)
-    sharedBiases = opts.get(ld, 'sharedBiases', default = 1)
-    partialSum = opts.get(ld, 'partialSum', default = 0)
-    wc = opts.get(ld, 'wc', 0.0)
-    bias = opts.get(ld, 'bias')
-    weight = opts.get(ld, 'weight')
-    weightIncr = opts.get(ld, 'weightIncr')
-    biasIncr = opts.get(ld, 'biasIncr')
-    name = opts.get(ld, 'name')
-    disable_bprop = opts.get(ld, 'disable_bprop', default = False)
+    momW = Builder.set_val(ld, 'momW', 0.0)
+    momB = Builder.set_val(ld, 'momB', 0.0)
+    sharedBiases = Builder.set_val(ld, 'sharedBiases', default = 1)
+    partialSum = Builder.set_val(ld, 'partialSum', default = 0)
+    wc = Builder.set_val(ld, 'wc', 0.0)
+    bias = Builder.set_val(ld, 'bias')
+    weight = Builder.set_val(ld, 'weight')
+    weightIncr = Builder.set_val(ld, 'weightIncr')
+    biasIncr = Builder.set_val(ld, 'biasIncr')
+    name = Builder.set_val(ld, 'name')
+    disable_bprop = Builder.set_val(ld, 'disable_bprop', default = False)
     cv = ConvLayer(name, numFilter, (filterSize, filterSize), padding, stride, initW, initB,
         partialSum,sharedBiases, epsW, epsB, momW, momB, wc, bias, weight,
         weightIncr = weightIncr, biasIncr = biasIncr, disable_bprop = disable_bprop)
     return cv
 
   def pool_layer(self, ld):
-    opts = OptHelper(ld)
-    stride = opts.get(ld, 'stride')
-    start = opts.get(ld, 'start')
-    poolSize = opts.get(ld, 'poolSize')
-    name = opts.get(ld, 'name')
-    pool = opts.get(ld, 'pool', default = 'max')
-    disable_bprop = opts.get(ld, 'disable_bprop', default = False)
+    stride = Builder.set_val(ld, 'stride')
+    start = Builder.set_val(ld, 'start')
+    poolSize = Builder.set_val(ld, 'poolSize')
+    name = Builder.set_val(ld, 'name')
+    pool = Builder.set_val(ld, 'pool', default = 'max')
+    disable_bprop = Builder.set_val(ld, 'disable_bprop', default = False)
     if pool == 'max':
       return MaxPoolLayer(name, poolSize, stride, start, disable_bprop = disable_bprop)
     elif pool == 'avg':
       return AvgPoolLayer(name, poolSize, stride, start, disable_bprop = disable_bprop)
 
   def crm_layer(self, ld):
-    opts = OptHelper(ld)
-    name = opts.get(ld, 'name')
-    pow = opts.get(ld, 'pow')
-    size = opts.get(ld, 'size')
-    scale = opts.get(ld, 'scale')
-    blocked = bool(opts.get(ld, 'blocked', default = 0))
-    disable_bprop = opts.get(ld, 'disable_bprop', default = False)
+    name = Builder.set_val(ld, 'name')
+    pow = Builder.set_val(ld, 'pow')
+    size = Builder.set_val(ld, 'size')
+    scale = Builder.set_val(ld, 'scale')
+    blocked = bool(Builder.set_val(ld, 'blocked', default = 0))
+    disable_bprop = Builder.set_val(ld, 'disable_bprop', default = False)
     return CrossMapResponseNormLayer(name, pow, size, scale, blocked, disable_bprop =
         disable_bprop)
 
   def softmax_layer(self, ld):
-    opts = OptHelper(ld)
-    name = opts.get(ld, 'name')
-    disable_bprop = opts.get(ld, 'disable_bprop', default = False)
+    name = Builder.set_val(ld, 'name')
+    disable_bprop = Builder.set_val(ld, 'disable_bprop', default = False)
     return SoftmaxLayer(name, disable_bprop = disable_bprop)
 
   def neuron_layer(self, ld):
-    opts = OptHelper(ld)
-    name = opts.get(ld, 'name')
-    disable_bprop = opts.get(ld, 'disable_bprop', default = False)
+    name = Builder.set_val(ld, 'name')
+    disable_bprop = Builder.set_val(ld, 'disable_bprop', default = False)
     if ld['neuron'] == 'relu':
-      e = opts.get(ld, 'e')
+      e = Builder.set_val(ld, 'e')
       return NeuronLayer(name, type='relu', e=e, disable_bprop = disable_bprop)
 
     if ld['neuron'] == 'tanh':
-      a = opts.get(ld, 'a')
-      b = opts.get(ld, 'b')
+      a = Builder.set_val(ld, 'a')
+      b = Builder.set_val(ld, 'b')
       return NeuronLayer(name, type='tanh', a=a, b=b, disable_bprop = disable_bprop)
 
     assert False, 'No implementation for the neuron type' + ld['neuron']['type']
 
   def rnorm_layer(self, ld):
-    opts = OptHelper(ld)
-    name = opts.get(ld, 'name')
-    pow = opts.get(ld,'pow')
-    size = opts.get(ld, 'size')
-    scale = opts.get(ld, 'scale')
-    disable_bprop = opts.get(ld, 'disable_bprop', default = False)
+    name = Builder.set_val(ld, 'name')
+    pow = Builder.set_val(ld,'pow')
+    size = Builder.set_val(ld, 'size')
+    scale = Builder.set_val(ld, 'scale')
+    disable_bprop = Builder.set_val(ld, 'disable_bprop', default = False)
     return ResponseNormLayer(name, pow, size, scale, disable_bprop = disable_bprop)
 
 
   def fc_layer(self, ld):
-    opts = OptHelper(ld)
-    epsB = opts.get(ld, 'epsB', 0.002)
+    epsB = Builder.set_val(ld, 'epsB', 0.002)
     if epsB == 0:
       epsB = 0.002
-    epsW = opts.get(ld ,'epsW', 0.001)
-    initB = opts.get(ld, 'initB', 0.00)
-    initW = opts.get(ld, 'initW', 0.01)
-    momB = opts.get(ld, 'momB', 0.0)
-    momW = opts.get(ld, 'momW', 0.0)
-    wc = opts.get(ld, 'wc', 0.0)
-    dropRate = opts.get(ld, 'dropRate', 0.0)
+    epsW = Builder.set_val(ld ,'epsW', 0.001)
+    initB = Builder.set_val(ld, 'initB', 0.00)
+    initW = Builder.set_val(ld, 'initW', 0.01)
+    momB = Builder.set_val(ld, 'momB', 0.0)
+    momW = Builder.set_val(ld, 'momW', 0.0)
+    wc = Builder.set_val(ld, 'wc', 0.0)
+    dropRate = Builder.set_val(ld, 'dropRate', 0.0)
 
-    n_out = opts.get(ld , 'outputSize')
-    bias = opts.get(ld, 'bias')
-    weight = opts.get(ld, 'weight')
+    n_out = Builder.set_val(ld , 'outputSize')
+    bias = Builder.set_val(ld, 'bias')
+    weight = Builder.set_val(ld, 'weight')
     #if isinstance(weight, list):
     #  weight = np.concatenate(weight)
 
-    weightIncr = opts.get(ld, 'weightIncr')
-    biasIncr = opts.get(ld, 'biasIncr')
-    name = opts.get(ld, 'name')
-    disable_bprop = opts.get(ld, 'disable_bprop', default = False)
+    weightIncr = Builder.set_val(ld, 'weightIncr')
+    biasIncr = Builder.set_val(ld, 'biasIncr')
+    name = Builder.set_val(ld, 'name')
+    disable_bprop = Builder.set_val(ld, 'disable_bprop', default = False)
     return FCLayer(name, n_out, epsW, epsB, initW, initB, momW, momB, wc, dropRate,
         weight, bias, weightIncr = weightIncr, biasIncr = biasIncr, disable_bprop = disable_bprop)
 
@@ -280,38 +264,25 @@ class CudaconvNetBuilder(FastNetBuilder):
         = wc, dropRate = dropRate, weight = weight, bias = bias)
 
   def rnorm_layer(self, ld):
-    opts = OptHelper(ld)
-    name = opts.get(ld, 'name')
-    pow = opts.get(ld,'pow')
-    size = opts.get(ld, 'size')
-    scale = opts.get(ld, 'scale')
+    name = Builder.set_val(ld, 'name')
+    pow = Builder.set_val(ld,'pow')
+    size = Builder.set_val(ld, 'size')
+    scale = Builder.set_val(ld, 'scale')
     scale = scale * size ** 2
     return ResponseNormLayer(name, pow, size, scale)
 
   def crm_layer(self, ld):
-    opts = OptHelper(ld)
-    name = opts.get(ld, 'name')
-    pow = opts.get(ld, 'pow')
-    size = opts.get(ld, 'size')
-    scale = opts.get(ld, 'scale')
+    name = Builder.set_val(ld, 'name')
+    pow = Builder.set_val(ld, 'pow')
+    size = Builder.set_val(ld, 'size')
+    scale = Builder.set_val(ld, 'scale')
     scale = scale * size
-    blocked = bool(opts.get(ld, 'blocked', default = 0))
+    blocked = bool(Builder.set_val(ld, 'blocked', default = 0))
     return CrossMapResponseNormLayer(name, pow, size, scale, blocked)
   
-@util.lazyinit(fastnet.init) 
+#@util.lazyinit(fastnet.init)
 def add_layers(builder, net, model):
-  # have to handle the data layer specially, as it is not saved properly 
-  # in some checkpoints
-  data_layer = model[0]
-  #if data_layer['type'] == 'data' and 'image_shape' in data_layer:
-  #  net.append_layer(builder.make_layer(net, data_layer))
-  #else:
-  #  net.append_layer(DataLayer('data0', net.image_shape))
-  if data_layer['type'] != 'data':
-    net.append_layer(DataLayer('data0', net.image_shape))
-  elif 'image_shape' not in data_layer:
-    data_layer['image_shape'] = net.image_shape
-
+  net.append_layer(DataLayer('data0', net.image_shape))
   for layer in model:
     l = builder.make_layer(net, layer)
     if l is not None:

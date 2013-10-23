@@ -1,3 +1,4 @@
+import fastnet
 from fastnet import util
 from fastnet.util import timer, divup
 from pycuda import gpuarray
@@ -16,7 +17,7 @@ import sys
 sgemm = None
 def _initialize_cublas():
   global sgemm
-  
+
   try:
     cublas.cublasInit()
     sgemm = cublas.cublasSgemm
@@ -24,7 +25,8 @@ def _initialize_cublas():
     handle = cublas.cublasCreate()
     def sgemm(*args):
       cublas.cublasSgemm(handle, *args)
-  
+_initialize_cublas()
+fastnet.init()
 class CompiledSource(object):
   '''
   Compile a source string with PyCuda, caching the resulting module.
@@ -829,7 +831,6 @@ def same_reduce(target, vec):
 
 @util.timed_fn
 def same_reduce_multiview(target, vec, num_view):
-  print target.size
   block = (target.size, 1, 1)
   grid = (1, 1)
   tmp = gpuarray.zeros_like(target)
@@ -946,7 +947,7 @@ def gpu_partial_copy_to(x, y, row_from, row_to, col_from, col_to):
   _gpu_partial_copy_to_(x, y, I(row_from), I(row_to), I(col_from), I(col_to), I(sleading), I(dleading), block=block, grid=grid)
   
 
-@util.lazyinit(_initialize_cublas)
+#@util.lazyinit(_initialize_cublas)
 @util.timed_fn
 def dot(x, y):
   if isinstance(x, GPUArray):
