@@ -27,7 +27,7 @@ class BatchData(object):
 
 
 class DataProvider(object):
-  def __init__(self, data_dir='.', batch_range=None, test = False):
+  def __init__(self, data_dir='.', batch_range=None):
     self.data_dir = data_dir
     self.meta_file = os.path.join(data_dir, 'batches.meta')
 
@@ -117,13 +117,14 @@ class ImageNetDataProvider(DataProvider):
   border_size = 16
   inner_size = 224
 
-  def __init__(self, data_dir, batch_range=None, test = False, category_range=None, batch_size=1024):
-    DataProvider.__init__(self, data_dir, batch_range, test)
+  def __init__(self, data_dir, batch_range=None, multiview = False, category_range=None, batch_size=1024):
+    DataProvider.__init__(self, data_dir, batch_range)
+    self.multiview = multiview
     self.batch_size = batch_size
-    self.test = test
-    self.multiview = test
+    if self.multiview:
+      self.batch_size = 12
     self.images = _prepare_images(data_dir, category_range, batch_range, self.batch_meta)
-    self.num_view = 5 * 2
+    self.num_view = 5 * 2 if self.multiview else 1
 
     assert len(self.images) > 0
 
@@ -155,10 +156,10 @@ class ImageNetDataProvider(DataProvider):
     np.random.shuffle(self.batch_range)
 
   def _handle_new_epoch(self):
-    self._shuffle_batches(self.batch_size)
+    self._shuffle_batches()
 
   def __trim_borders(self, images, target):
-    if self.test:
+    if self.multiview:
       start_positions = [(0, 0), (0, self.border_size * 2), (self.border_size, self.border_size),
                           (self.border_size *2 , 0), (self.border_size * 2 , self.border_size * 2)]
       end_positions = [(x + self.inner_size, y + self.inner_size) for (x, y) in start_positions]
@@ -187,10 +188,7 @@ class ImageNetDataProvider(DataProvider):
     names = self.images[self.batches[batchnum]]
     num_imgs = len(names)
     labels = np.zeros((1, num_imgs))
-    if self.test:
-        cropped = np.ndarray((self.data_dim, num_imgs * self.num_view), dtype=np.uint8)
-    else:
-        cropped = np.ndarray((self.data_dim, num_imgs), dtype = np.uint8)
+    cropped = np.ndarray((self.data_dim, num_imgs * self.num_view), dtype=np.uint8)
     # _load in parallel for training
     st = time.time()
     images = []
@@ -344,11 +342,18 @@ class ParallelDataProvider(DataProvider):
       return False
 
   @property
+  def batch_size(self):
+    if hasattr(self.dp, 'batch_size'):
+      return self.dp.batch_size
+    else:
+      return 0
+
+  @property
   def num_view(self):
     if hasattr(self.dp, 'num_view'):
       return self.dp.num_view
     else:
-      assert 'Doesn\'t have num_view attr'
+      return 1
 
   def reset(self):
     self.dp.reset()
@@ -371,7 +376,7 @@ class ParallelDataProvider(DataProvider):
     batch_data.labels = copy_to_gpu(batch_data.labels)
     self._gpu_batch = batch_data
 
-  def get_next_batch(self, batch_size, num_view = 1):
+  def get_next_batch(self, batch_size):
     if self._reader is None:
       self._start_read()
 
@@ -381,10 +386,12 @@ class ParallelDataProvider(DataProvider):
     height, width = self._gpu_batch.data.shape
     gpu_data = self._gpu_batch.data
     gpu_labels = self._gpu_batch.labels
-
+    if self.multiview:
+      batch_size = self.dp.batch_size * self.num_view
+      print 'The batch size is', batch_size
     if self.index + batch_size >=  width:
       width = width - self.index
-      labels = gpu_labels[self.index/num_view:(self.index + batch_size) / num_view]
+      labels = gpu_labels[self.index/self.num_view:(self.index + batch_size) / self.num_view]
 
       data = gpuarray.zeros((height, width), dtype = np.float32)
       gpu_partial_copy_to(gpu_data, data, 0, height, self.index, self.index + width)
@@ -392,10 +399,11 @@ class ParallelDataProvider(DataProvider):
       self.index = 0
       self._fill_reserved_data()
     else:
-      labels = gpu_labels[self.index/ num_view:(self.index + batch_size) / num_view]
+      labels = gpu_labels[self.index/ self.num_view:(self.index + batch_size) / self.num_view]
       data = gpuarray.zeros((height, batch_size), dtype = np.float32)
       gpu_partial_copy_to(gpu_data, data, 0, height, self.index, self.index + batch_size)
       self.index += batch_size
+    print 'The batch size is', batch_size
     return BatchData(data, labels, self._gpu_batch.epoch)
 
 

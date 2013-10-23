@@ -101,22 +101,11 @@ class Trainer:
 
   def get_test_error(self):
     batch_size = self.batch_size
-    multiview = False
-    num_view = 1
-    if self.test_dp.multiview:
-      multiview = True
-      num_view = self.test_dp.num_view
-      batch_size  = pow(2, int(math.log(batch_size / num_view, 2))) * num_view
-    test_data = self.test_dp.get_next_batch(batch_size, num_view)
+    test_data = self.test_dp.get_next_batch(batch_size)
 
     input, label = test_data.data, test_data.labels
-    if multiview:
-      #import numpy as np
-      #np.set_printoptions(threshold = np.nan)
-      #first = input.get()[:, 0]
-      #second = input.get()[:, 8]
-      #print first.shape, first
-      #print second.shape, second
+    if self.multiview:
+      num_view = self.test_dp.num_view
       self.net.test_batch_multiview(input, label, num_view)
       cost , correct, numCase = self.net.get_batch_information_multiview(num_view)
     else:
@@ -504,6 +493,7 @@ if __name__ == '__main__':
   parser.add_argument('--output_method', help='The method to hold the intermediate output', choices=['memory', 'disk'], default='disk')
   parser.add_argument('--replaynet_epoch', help='The #epoch that replaynet(layerwised trainer) will train', default=1, type=int)
   parser.add_argument('--frag_epoch', help='The #epoch that incomplete(layerwised trainer) will train', default=1, type=int)
+  parser.add_argument('--multiview', help='Whether use multiview to strenghen the test result', action = 'store_true')
 
   args = parser.parse_args()
 
@@ -533,6 +523,7 @@ if __name__ == '__main__':
   param_dict['save_freq'] = args.save_freq
   param_dict['test_freq'] = args.test_freq
   param_dict['adjust_freq'] = args.adjust_freq
+  param_dict['multiview'] = args.multiview
   factor = util.string_to_float_list(args.factor)
   if len(factor) == 1:
     param_dict['factor'] = factor[0]
@@ -566,10 +557,9 @@ if __name__ == '__main__':
   # create train dataprovider and test dataprovider
   dp_class = data.get_by_name(param_dict['data_provider'])
   train_dp = dp_class(param_dict['data_dir'], param_dict['train_range'])
-  test_dp = dp_class(param_dict['data_dir'], param_dict['test_range'], test = True)
+  test_dp = dp_class(param_dict['data_dir'], param_dict['test_range'], multiview = param_dict['multiview'])
   param_dict['train_dp'] = train_dp
   param_dict['test_dp'] = test_dp
-
 
 
   # get all extra information

@@ -185,7 +185,7 @@ class FastNet(object):
 
     return data, label
 
-  def train_batch(self, data, label, train=TRAIN):
+  def train_batch(self, data, label, train=TRAIN, ):
     data, label = self.prepare_for_train(data, label)
     prediction = self.fprop(data, train)
     cost, correct = self.get_cost(label, prediction)
@@ -204,10 +204,10 @@ class FastNet(object):
   def test_batch_multiview(self, data, label, num_view):
     data, label = self.prepare_for_train(data, label)
     prediction = self.fprop(data, TEST)
-
     cost, correct = self.get_cost_multiview(label, prediction, num_view)
     self.cost += cost
     self.correct += correct
+    driver.Context.synchronize()
 
   def get_dumped_layers(self):
     return [l.dump() for l in self.layers]
