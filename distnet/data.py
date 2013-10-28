@@ -1,8 +1,8 @@
 from PIL import Image
 from pycuda import gpuarray, driver
-from fastnet.cuda_kernel import gpu_partial_copy_to
+from distnet.cuda_kernel import gpu_partial_copy_to
 from os.path import basename
-from fastnet import util
+from distnet import util
 import Queue
 import cPickle
 import collections
@@ -388,7 +388,6 @@ class ParallelDataProvider(DataProvider):
     gpu_labels = self._gpu_batch.labels
     if self.multiview:
       batch_size = self.dp.batch_size * self.num_view
-      print 'The batch size is', batch_size
     if self.index + batch_size >=  width:
       width = width - self.index
       labels = gpu_labels[self.index/self.num_view:(self.index + batch_size) / self.num_view]
@@ -403,7 +402,6 @@ class ParallelDataProvider(DataProvider):
       data = gpuarray.zeros((height, batch_size), dtype = np.float32)
       gpu_partial_copy_to(gpu_data, data, 0, height, self.index, self.index + batch_size)
       self.index += batch_size
-    print 'The batch size is', batch_size
     return BatchData(data, labels, self._gpu_batch.epoch)
 
 

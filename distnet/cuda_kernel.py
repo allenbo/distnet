@@ -1,6 +1,6 @@
-import fastnet
-from fastnet import util
-from fastnet.util import timer, divup
+import distnet
+from distnet import util
+from distnet.util import timer, divup
 from pycuda import gpuarray
 from pycuda.compiler import SourceModule
 from pycuda.elementwise import ElementwiseKernel
@@ -8,7 +8,7 @@ from pycuda.gpuarray import GPUArray
 from scikits.cuda import cublas
 from time import time
 import cPickle
-import cudaconv2
+import cudaconv
 import numpy as np
 import pycuda
 import sys
@@ -26,7 +26,7 @@ def _initialize_cublas():
     def sgemm(*args):
       cublas.cublasSgemm(handle, *args)
 _initialize_cublas()
-fastnet.init()
+distnet.init()
 class CompiledSource(object):
   '''
   Compile a source string with PyCuda, caching the resulting module.
@@ -772,7 +772,7 @@ def add_row_sum_to_vec(vec, mat, alpha=1.0, beta=1.0):
   vh, vw = vec.shape
   assert(vw == 1 and vh == mh or vh == 1 and vw == mh)
   if mw != 1:
-    cudaconv2.sum(mat, 1, vec)
+    cudaconv.sum(mat, 1, vec)
   else:
     gpu_partial_copy_to(mat, vec, 0, mh, 0, 1)
   # if mat.shape[1] <= INTERNAL_SIZE:
@@ -806,7 +806,7 @@ def add_col_sum_to_vec(vec, mat, alpha=1.0, beta=1.0):
   vh, vw = vec.shape
   assert(vw == 1 and vh == mw or vh == 1 and vw == mw)
 
-  cudaconv2.sum(mat, 0, vec)
+  cudaconv.sum(mat, 0, vec)
   #grid = (mw, 1)
   #block = (1, mh, 1)
   #leading = mat.strides[0] / 4

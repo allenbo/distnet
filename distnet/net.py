@@ -1,6 +1,6 @@
-from fastnet import util, layer
-from fastnet.layer import TRAIN, WeightedLayer, TEST
-from fastnet.util import timer
+from distnet import util, layer
+from distnet.layer import TRAIN, WeightedLayer, TEST
+from distnet.util import timer
 from pycuda import cumath, gpuarray, driver
 from pycuda.gpuarray import GPUArray
 import numpy as np

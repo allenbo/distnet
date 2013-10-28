@@ -1,9 +1,9 @@
-from fastnet import net, util
-from fastnet.layer import ConvLayer, MaxPoolLayer, AvgPoolLayer, \
+from distnet import net, util
+from distnet.layer import ConvLayer, MaxPoolLayer, AvgPoolLayer, \
   CrossMapResponseNormLayer, SoftmaxLayer, NeuronLayer, ResponseNormLayer, FCLayer, \
   DataLayer
-import fastnet
-from fastnet.util import isfloat
+import distnet
+from distnet.util import isfloat
 import numpy as np
 
 def parse_config_file(parsing_file):
@@ -280,7 +280,7 @@ class CudaconvNetBuilder(FastNetBuilder):
     blocked = bool(Builder.set_val(ld, 'blocked', default = 0))
     return CrossMapResponseNormLayer(name, pow, size, scale, blocked)
   
-#@util.lazyinit(fastnet.init)
+#@util.lazyinit(distnet.init)
 def add_layers(builder, net, model):
   net.append_layer(DataLayer('data0', net.image_shape))
   for layer in model:

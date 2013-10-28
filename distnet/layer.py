@@ -1,13 +1,13 @@
-from fastnet import util
-from fastnet.cuda_kernel import gpu_copy_to, add_vec_to_rows, add_row_sum_to_vec, \
+from distnet import util
+from distnet.cuda_kernel import gpu_copy_to, add_vec_to_rows, add_row_sum_to_vec, \
   dot, bigger_than_scaler, transpose, col_max_reduce, add_vec_to_cols, eltwise_exp, \
   add_col_sum_to_vec, div_vec_to_cols, find_col_max_id, same_reduce, \
   logreg_cost_col_reduce, softmax_bprop, relu_activate, relu_compute_grad, \
   tanh_activate, tanh_compute_grad, same_reduce_multiview, gpu_partial_copy_to
-from fastnet.util import divup, print_matrix
-from fastnet.weights import WEIGHTS, to_gpu
+from distnet.util import divup, print_matrix
+from distnet.weights import WEIGHTS, to_gpu
 from pycuda import cumath, gpuarray, driver
-import cudaconv2
+import cudaconv
 import numpy as np
 
 PFout = False
@@ -216,7 +216,7 @@ class ConvLayer(WeightedLayer):
   def fprop(self, input, output, train=TRAIN):
     #np.save('input.arr', input.get())
     #np.save('weight.arr', self.weight.wt.get())
-    cudaconv2.convFilterActs(input, self.weight.wt, output, self.img_size, self.outputSize,
+    cudaconv.convFilterActs(input, self.weight.wt, output, self.img_size, self.outputSize,
         self.outputSize, -self.padding, self.stride, self.numColor, 1)
     
     #util.log_info('%s', output.get().mean())
@@ -236,11 +236,11 @@ class ConvLayer(WeightedLayer):
     self.bias.grad.fill(0)
    
     # bprop to next layer
-    cudaconv2.convImgActs(grad, self.weight.wt, outGrad, self.img_size, self.img_size,
+    cudaconv.convImgActs(grad, self.weight.wt, outGrad, self.img_size, self.img_size,
         self.outputSize, -self.padding, self.stride, self.numColor, 1, 0.0, 1.0)
     
     # bprop weight
-    cudaconv2.convWeightActs(input, grad, self.weight.grad, self.img_size, self.outputSize,
+    cudaconv.convWeightActs(input, grad, self.weight.grad, self.img_size, self.outputSize,
         self.outputSize, self.filterSize, -self.padding, self.stride, self.numColor, 1, 0, 0, 1)
     
     # bprop bias
@@ -269,13 +269,13 @@ class MaxPoolLayer(Layer):
     return self.poolSize - 1
 
   def fprop(self, input, output, train=TRAIN):
-    cudaconv2.convLocalMaxPool(input, output, self.numColor, self.poolSize, self.start, self.stride,
+    cudaconv.convLocalMaxPool(input, output, self.numColor, self.poolSize, self.start, self.stride,
         self.outputSize)
     if PFout:
       print_matrix(output, self.name)
 
   def bprop(self, grad, input, output, outGrad):
-    cudaconv2.convLocalMaxUndo(input, grad, output, outGrad, self.poolSize,
+    cudaconv.convLocalMaxUndo(input, grad, output, outGrad, self.poolSize,
         self.start, self.stride, self.outputSize, 0.0, 1.0)
 
 class AvgPoolLayer(Layer):
@@ -298,13 +298,13 @@ class AvgPoolLayer(Layer):
   def get_cross_width(self): return self.poolSize - 1
 
   def fprop(self, input, output, train=TRAIN):
-    cudaconv2.convLocalAvgPool(input, output, self.numColor, self.poolSize, self.start, self.stride,
+    cudaconv.convLocalAvgPool(input, output, self.numColor, self.poolSize, self.start, self.stride,
         self.outputSize)
     if PFout:
       print_matrix(output, self.name)
 
   def bprop(self, grad, input, output, outGrad):
-    cudaconv2.convLocalAvgUndo(grad, outGrad, self.poolSize,
+    cudaconv.convLocalAvgUndo(grad, outGrad, self.poolSize,
         self.start, self.stride, self.outputSize, self.img_size, 0.0, 1.0)
 
 class ResponseNormLayer(Layer):
@@ -327,7 +327,7 @@ class ResponseNormLayer(Layer):
 
   def fprop(self, input, output, train=TRAIN):
     self.denom = gpuarray.zeros_like(input)
-    cudaconv2.convResponseNorm(input, self.denom, output, self.numColor, self.size, self.scaler,
+    cudaconv.convResponseNorm(input, self.denom, output, self.numColor, self.size, self.scaler,
         self.pow)
     if PFout:
       print_matrix(output, self.name)
@@ -335,7 +335,7 @@ class ResponseNormLayer(Layer):
   def get_cross_width(self): return self.size - 1
 
   def bprop(self, grad, input, output, outGrad):
-    cudaconv2.convResponseNormUndo(grad, self.denom, input, output, outGrad, self.numColor,
+    cudaconv.convResponseNormUndo(grad, self.denom, input, output, outGrad, self.numColor,
         self.size, self.scaler, self.pow, 0.0, 1.0)
 
 
@@ -353,12 +353,12 @@ class CrossMapResponseNormLayer(ResponseNormLayer):
 
   def fprop(self, input, output, train=TRAIN):
     self.denom = gpuarray.zeros_like(input)
-    cudaconv2.convResponseNormCrossMap(input, self.denom, output, self.numColor, self.size, self.scaler, self.pow, self.blocked)
+    cudaconv.convResponseNormCrossMap(input, self.denom, output, self.numColor, self.size, self.scaler, self.pow, self.blocked)
     if PFout:
       print_matrix(output, self.name)
 
   def bprop(self, grad, input, output, outGrad):
-    cudaconv2.convResponseNormCrossMapUndo(grad, self.denom, input, output, outGrad, self.numColor,
+    cudaconv.convResponseNormCrossMapUndo(grad, self.denom, input, output, outGrad, self.numColor,
         self.size, self.scaler, self.pow, self.blocked, 0.0, 1.0)
 
 

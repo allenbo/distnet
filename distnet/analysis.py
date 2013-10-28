@@ -1,8 +1,8 @@
 #!/usr/bin/env
 
-'''Functions for analyzing the output of fastnet checkpoint files.'''
+'''Functions for analyzing the output of distnet checkpoint files.'''
 
-from fastnet import util
+from distnet import util
 from matplotlib.pyplot import gcf
 import cPickle
 import matplotlib.pyplot as plt

@@ -3,13 +3,13 @@
 This test is for naive trainer to traine a full imagenet model
 '''
 
-from fastnet import data, trainer, net, parser
+from distnet import data, trainer, net, parser
 
 test_id = 'multiview'
 
 data_dir = '/ssd/nn-data/imagenet/'
-checkpoint_dir = '/hdfs/justin/checkpoint/'
-param_file = '/home/justin/fastnet/config/imagenet.cfg'
+checkpoint_dir = '/home/justin/distnet/checkpoint/'
+param_file = '/home/justin/distnet/config/imagenet.cfg'
 output_dir = ''
 output_method = 'disk'
 
@@ -19,7 +19,7 @@ data_provider = 'imagenet'
 
 
 train_dp = data.get_by_name(data_provider)(data_dir,train_range)
-test_dp = data.get_by_name(data_provider)(data_dir, test_range, test = True, batch_size = 8)
+test_dp = data.get_by_name(data_provider)(data_dir, test_range)
 checkpoint_dumper = trainer.CheckpointDumper(checkpoint_dir, test_id)
 
 model = checkpoint_dumper.get_checkpoint()
@@ -27,7 +27,7 @@ if model is None:
   model = parser.parse_config_file(param_file)
 
 save_freq = 100
-test_freq = 8
+test_freq = 100
 adjust_freq = 100
 factor = 1
 num_epoch = 50

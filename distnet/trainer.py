@@ -1,10 +1,10 @@
 from collections import deque
-from fastnet import argparse, util, layer, data
-from fastnet.checkpoint import CheckpointDumper, DataDumper, MemoryDataHolder
-from fastnet.layer import TRAIN, TEST
-from fastnet.net import FastNet
-from fastnet.parser import parse_config_file, load_model
-from fastnet.scheduler import Scheduler
+from distnet import argparse, util, layer, data
+from distnet.checkpoint import CheckpointDumper, DataDumper, MemoryDataHolder
+from distnet.layer import TRAIN, TEST
+from distnet.net import FastNet
+from distnet.parser import parse_config_file, load_model
+from distnet.scheduler import Scheduler
 from pycuda import gpuarray, driver
 import os
 import pprint
@@ -41,7 +41,7 @@ def cache_outputs(net, dp, dumper, layer_name = 'pool5', index = -1):
   dumper.flush()
 
 
-# Trainer should take: (training dp, test dp, fastnet, checkpoint dir)
+# Trainer should take: (training dp, test dp, distnet, checkpoint dir)
 class Trainer:
   def __init__(self, checkpoint_dumper, train_dp, test_dp, batch_size, net=None, **kw):
     self.checkpoint_dumper = checkpoint_dumper

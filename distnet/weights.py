@@ -1,5 +1,5 @@
-from fastnet.cuda_kernel import matrix_add
-from fastnet.util import Assert
+from distnet.cuda_kernel import matrix_add
+from distnet.util import Assert
 from pycuda import gpuarray
 import copy
 import numpy as np

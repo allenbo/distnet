@@ -1,4 +1,4 @@
-from fastnet import util
+from distnet import util
 import cPickle
 import glob
 import numpy as np
