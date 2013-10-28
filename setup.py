@@ -25,7 +25,7 @@ if os.system(cmd) != 0:
 
 extension_modules = []
 setup(
-    name="fastnet",
+    name="distnet",
     description="Fast convolution network library",
     long_description='',
     author="Russell Power & Justin Lin & Yury Skobov",
