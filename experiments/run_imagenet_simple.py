@@ -13,8 +13,8 @@ param_file = '/home/justin/distnet/config/imagenet.cfg'
 output_dir = ''
 output_method = 'disk'
 
-train_range = range(101, 1301) #1,2,3,....,40
-test_range = range(1, 101) #41, 42, ..., 48
+train_range = range(101, 103) #1,2,3,....,40
+test_range = range(1, 3) #41, 42, ..., 48
 data_provider = 'imagenet'
 
 

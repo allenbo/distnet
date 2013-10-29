@@ -180,7 +180,7 @@ class FastNet(object):
     if not isinstance(label, GPUArray):
       label = gpuarray.to_gpu(label).astype(np.float32)
 
-    label = label.reshape((label.size, 1))
+    label = label.reshape((1, label.size))
     self.numCase += data.shape[1]
 
     return data, label

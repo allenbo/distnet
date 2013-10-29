@@ -1,6 +1,5 @@
 from PIL import Image
-from pycuda import gpuarray, driver
-from distnet.cuda_kernel import gpu_partial_copy_to
+import garray
 from os.path import basename
 from distnet import util
 import Queue
@@ -16,7 +15,7 @@ import threading
 import time
 
 def copy_to_gpu(data):
-  return gpuarray.to_gpu(data.astype(np.float32))
+  return garray.to_gpu(data.astype(np.float32))
 
 
 class BatchData(object):
@@ -392,15 +391,15 @@ class ParallelDataProvider(DataProvider):
       width = width - self.index
       labels = gpu_labels[self.index/self.num_view:(self.index + batch_size) / self.num_view]
 
-      data = gpuarray.zeros((height, width), dtype = np.float32)
-      gpu_partial_copy_to(gpu_data, data, 0, height, self.index, self.index + width)
+      data = garray.zeros((height, width), dtype = np.float32)
+      garray.partial_copy_to(gpu_data, data, 0, height, self.index, self.index + width)
 
       self.index = 0
       self._fill_reserved_data()
     else:
       labels = gpu_labels[self.index/ self.num_view:(self.index + batch_size) / self.num_view]
-      data = gpuarray.zeros((height, batch_size), dtype = np.float32)
-      gpu_partial_copy_to(gpu_data, data, 0, height, self.index, self.index + batch_size)
+      data = garray.zeros((height, batch_size), dtype = np.float32)
+      garray.partial_copy_to(gpu_data, data, 0, height, self.index, self.index + batch_size)
       self.index += batch_size
     return BatchData(data, labels, self._gpu_batch.epoch)
 

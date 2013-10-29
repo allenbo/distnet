@@ -1,4 +1,3 @@
-from distnet.cuda_kernel import matrix_add
 from distnet.util import Assert
 import garray
 import copy
@@ -16,17 +15,17 @@ def update(wts, grad, incr, epsilon, momentum, decay, batch_size):
   assert(incr.dtype == np.float32)
 
   if momentum > 0.0:
-    matrix_add(incr, grad, 
+    garray.matrix_add(incr, grad, 
                alpha=momentum, 
                beta=np.float32(epsilon / batch_size))
     
-    matrix_add(incr, wts, 
+    garray.matrix_add(incr, wts, 
                alpha=1, 
                beta=np.float32(-decay * epsilon))
     
-    matrix_add(wts, incr)
+    garray.matrix_add(wts, incr)
   else:
-    matrix_add(wts, grad, 
+    garray.matrix_add(wts, grad, 
                alpha=1, 
                beta=np.float32(epsilon / batch_size))
   

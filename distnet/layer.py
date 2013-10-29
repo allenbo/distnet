@@ -1,13 +1,7 @@
 from distnet import util
-from distnet.cuda_kernel import gpu_copy_to, add_vec_to_rows, add_row_sum_to_vec, \
-  dot, bigger_than_scaler, transpose, col_max_reduce, add_vec_to_cols, eltwise_exp, \
-  add_col_sum_to_vec, div_vec_to_cols, find_col_max_id, same_reduce, \
-  logreg_cost_col_reduce, softmax_bprop, relu_activate, relu_compute_grad, \
-  tanh_activate, tanh_compute_grad, same_reduce_multiview, gpu_partial_copy_to
 from distnet.util import divup, print_matrix
 from distnet.weights import WEIGHTS, to_gpu
 import garray
-import cudaconv
 import numpy as np
 
 PFout = False
@@ -221,8 +215,7 @@ class ConvLayer(WeightedLayer):
                                self.get_single_img_size() * self.batch_size / self.numFilter),
                                 dtype=np.float32)
     garray.copy_to(output, self.tmp)
-    self.tmp += self.bias.wt
-    garray.copy_to(self.tmp, output)
+    garray.copy_to(self.tmp + self.bias.wt, output)
 
     if PFout:
       print_matrix(output, self.name)
@@ -236,12 +229,12 @@ class ConvLayer(WeightedLayer):
         self.outputSize, -self.padding, self.stride, self.numColor)
     
     # bprop weight
-    garra.wconvolution(input, grad, self.weight.grad, self.img_size, self.outputSize,
+    garray.wconvolution(input, grad, self.weight.grad, self.img_size, self.outputSize,
         self.outputSize, self.filterSize, -self.padding, self.stride, self.numColor)
     
     # bprop bias
     garray.copy_to(grad, self.tmp)
-    self.bias.grad += self.tmp
+    self.bias.set_grad(garray.sum(self.tmp, axis = 1))
 
 
 class MaxPoolLayer(Layer):
@@ -265,7 +258,7 @@ class MaxPoolLayer(Layer):
     return self.poolSize - 1
 
   def fprop(self, input, output, train=TRAIN):
-    garra.maxpool(input, output, self.numColor, self.poolSize, self.start, self.stride,
+    garray.maxpool(input, output, self.numColor, self.poolSize, self.start, self.stride,
         self.outputSize)
     if PFout:
       print_matrix(output, self.name)
@@ -331,8 +324,8 @@ class ResponseNormLayer(Layer):
   def get_cross_width(self): return self.size - 1
 
   def bprop(self, grad, input, output, outGrad):
-    cudaconv.convResponseNormUndo(grad, self.denom, input, output, outGrad, self.numColor,
-        self.size, self.scaler, self.pow, 0.0, 1.0)
+    garray.rnormundo(grad, self.denom, input, output, outGrad, self.numColor,
+        self.size, self.scaler, self.pow)
 
 
 class CrossMapResponseNormLayer(ResponseNormLayer):
@@ -349,13 +342,13 @@ class CrossMapResponseNormLayer(ResponseNormLayer):
 
   def fprop(self, input, output, train=TRAIN):
     self.denom = garray.zeros_like(input)
-    cudaconv.convResponseNormCrossMap(input, self.denom, output, self.numColor, self.size, self.scaler, self.pow, self.blocked)
+    garray.rnormcrossmap(input, self.denom, output, self.numColor, self.size, self.scaler, self.pow, self.blocked)
     if PFout:
       print_matrix(output, self.name)
 
   def bprop(self, grad, input, output, outGrad):
-    cudaconv.convResponseNormCrossMapUndo(grad, self.denom, input, output, outGrad, self.numColor,
-        self.size, self.scaler, self.pow, self.blocked, 0.0, 1.0)
+    garray.rnormcrossmapundo(grad, self.denom, input, output, outGrad, self.numColor,
+        self.size, self.scaler, self.pow, self.blocked)
 
 
 class FCLayer(WeightedLayer):
@@ -386,8 +379,8 @@ class FCLayer(WeightedLayer):
     return (self.outputSize, 1, 1, self.batch_size)
 
   def fprop(self, input, output, train=TRAIN):
-    gpu_copy_to(dot(self.weight.wt, input), output)
-    add_vec_to_rows(output, self.bias.wt)
+    garray.copy_to(garray.dot(self.weight.wt, input), output)
+    garray.copy_to(output + self.bias.wt, output)
 
     if train == TEST:
       if self.dropRate > 0.0:
@@ -395,20 +388,20 @@ class FCLayer(WeightedLayer):
     else:
       if self.dropRate > 0.0:
         self.dropMask = to_gpu(np.random.uniform(0, 1, output.size).astype(np.float32).reshape(output.shape))
-        bigger_than_scaler(self.dropMask, self.dropRate)
-        gpu_copy_to(output * self.dropMask, output)
+        garray.bigger_than_scaler(self.dropMask, self.dropRate)
+        garray.copy_to(output * self.dropMask, output)
 
     if PFout:
       print_matrix(output, self.name)
 
   def bprop(self, grad, input, output, outGrad):
     if self.dropRate > 0.0:
-      gpu_copy_to(grad * self.dropMask, grad)
+      garray.copy_to(grad * self.dropMask, grad)
    
-    gpu_copy_to(transpose(dot(transpose(grad), self.weight.wt)), outGrad)
+    garray.copy_to(garray.transpose(garray.dot(garray.transpose(grad), self.weight.wt)), outGrad)
     
-    self.weight.set_grad(dot(grad, transpose(input)))
-    add_row_sum_to_vec(self.bias.grad, grad, alpha=0.0)
+    self.weight.set_grad(garray.dot(grad, garray.transpose(input)))
+    self.bias.set_grad(garray.sum(grad, axis = 1))
 
 
 class SoftmaxLayer(Layer):
@@ -427,38 +420,35 @@ class SoftmaxLayer(Layer):
     return (self.outputSize, 1, 1, self.batch_size)
 
   def fprop(self, input, output, train=TRAIN):
-    max = garray.zeros((1, self.batch_size), dtype=np.float32)
-    col_max_reduce(max, input)
-    add_vec_to_cols(input, max, output, alpha=-1)
-    eltwise_exp(output)
-    sum = garray.zeros(max.shape, dtype=np.float32)
-    add_col_sum_to_vec(sum, output, alpha=0)
-
-    div_vec_to_cols(output, sum)
+    #column max reduce
+    max = garray.max(input, axis = 0)
+    garray.copy_to(input - max, output)
+    garray.iexp(output)
+    sum = garray.sum(output, axis = 0)
+    garray.copy_to(output /sum, output)
     if PFout:
       print_matrix(output, self.name)
 
   def logreg_cost(self, label, output):
     if self.cost.shape[0] != self.batch_size:
       self.cost = garray.zeros((self.batch_size, 1), dtype=np.float32)
-    maxid = garray.zeros((self.batch_size, 1), dtype=np.float32)
-    find_col_max_id(maxid, output)
-    self.batchCorrect = same_reduce(label , maxid)
-    logreg_cost_col_reduce(output, label, self.cost)
+    #column max id
+    maxid = garray.argmax(output, axis = 0)
+    self.batchCorrect = int(garray.sum(label == maxid).get())
+    garray.logreg_cost_col(output, label, self.cost)
 
   def logreg_cost_multiview(self, label, output, num_view):
     unit = self.batch_size / num_view
     if self.cost.shape[0] != unit:
       self.cost = garray.zeros((unit, 1), dtype = np.float32)
-    maxid = garray.zeros((self.batch_size, 1), dtype = np.float32)
-    find_col_max_id(maxid, output)
-    self.batchCorrect = same_reduce_multiview(label, maxid, num_view)
+    maxid = garray.argmax(output, axis = 0)
+    self.batchCorrect = garray.same_reduce_multiview(label, maxid, num_view)
     tmp = garray.zeros((output.shape[0], unit), dtype = np.float32)
-    gpu_partial_copy_to(output, tmp, 0, output.shape[0], 0, unit)
-    logreg_cost_col_reduce(tmp, label, self.cost)
+    garray.gpu_partial_copy_to(output, tmp, 0, output.shape[0], 0, unit)
+    garray.logreg_cost_col(tmp, label, self.cost)
 
   def bprop(self, label, input, output, outGrad):
-    softmax_bprop(output, label, outGrad)
+    garray.softmax_bprop(output, label, outGrad)
 
 
   def get_correct(self):
@@ -484,10 +474,10 @@ class ReluNeuron(Neuron):
     self.e = e;
 
   def activate(self, input, output):
-    relu_activate(input, output, self.e)
+    garray.relu_activate(input, output, self.e)
 
   def computeGrad(self, grad, output, outGrad):
-    relu_compute_grad(grad, output, outGrad, self.e)
+    garray.relu_compute_grad(grad, output, outGrad, self.e)
 
   def dump(self):
     d = Neuron.dump(self)
@@ -500,10 +490,10 @@ class TanhNeuron(Neuron):
     self.a, self.b = a, b
 
   def activate(self, input, output):
-    tanh_activate(input, output, self.a , self.b)
+    garray.tanh_activate(input, output, self.a , self.b)
 
   def computeGrad(self, grad, output, outGrad):
-    tanh_compute_grad(grad, output, outGrad, self.a, self.b)
+    garray.tanh_compute_grad(grad, output, outGrad, self.a, self.b)
 
   def dump(self):
     d = Neuron.dump(self)
