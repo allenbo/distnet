@@ -33,10 +33,11 @@ setup(
     license="GPL",
     version="0.1",
     url="http://github.com/allenbo/fastnet",
-    packages=[ 'distnet', 'cudaconv', ],
+    packages=[ 'distnet', 'cudaconv', 'garray'],
     package_dir={ 
       'distnet' : 'distnet',
       'cudaconv' : 'cudaconv' ,
+      'garray' : 'garray',
     },
     requires=[
       'pycuda', 

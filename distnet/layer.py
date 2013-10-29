@@ -6,7 +6,7 @@ from distnet.cuda_kernel import gpu_copy_to, add_vec_to_rows, add_row_sum_to_vec
   tanh_activate, tanh_compute_grad, same_reduce_multiview, gpu_partial_copy_to
 from distnet.util import divup, print_matrix
 from distnet.weights import WEIGHTS, to_gpu
-from pycuda import cumath, gpuarray, driver
+import garray
 import cudaconv
 import numpy as np
 
@@ -51,8 +51,8 @@ class Layer(object):
     rows = int(np.prod(out_shape[:3]))
     cols = out_shape[3]
     #util.log('Allocating: %s ', out_shape)
-    self.output = gpuarray.GPUArray((rows, cols), dtype=np.float32)
-    self.output_grad = gpuarray.GPUArray((rows, cols), dtype=np.float32)
+    self.output = garray.zeros((rows, cols), dtype=np.float32)
+    self.output_grad = garray.zeros((rows, cols), dtype=np.float32)
 
   def dump(self):
     attr = [att for att in dir(self) if not att.startswith('__')]
@@ -74,7 +74,7 @@ class DataLayer(Layer):
     assert False, 'Must be first layer!'
     
   def fprop(self, input, output, train=TRAIN):
-    gpu_copy_to(input, output)
+    garray.copy_to(input, output)
   
   def bprop(self, grad, input, output, outGrad):
     pass
@@ -214,19 +214,15 @@ class ConvLayer(WeightedLayer):
 
 
   def fprop(self, input, output, train=TRAIN):
-    #np.save('input.arr', input.get())
-    #np.save('weight.arr', self.weight.wt.get())
-    cudaconv.convFilterActs(input, self.weight.wt, output, self.img_size, self.outputSize,
+    garray.convolution(input, self.weight.wt, output, self.img_size, self.outputSize,
         self.outputSize, -self.padding, self.stride, self.numColor, 1)
-    
-    #util.log_info('%s', output.get().mean())
-    self.tmp = gpuarray.empty((self.numFilter, 
+
+    self.tmp = garray.zeros((self.numFilter, 
                                self.get_single_img_size() * self.batch_size / self.numFilter),
                                 dtype=np.float32)
-    
-    gpu_copy_to(output, self.tmp)
-    add_vec_to_rows(self.tmp, self.bias.wt)
-    gpu_copy_to(self.tmp, output)
+    garray.copy_to(output, self.tmp)
+    self.tmp += self.bias.wt
+    garray.copy_to(self.tmp, output)
 
     if PFout:
       print_matrix(output, self.name)
@@ -236,16 +232,16 @@ class ConvLayer(WeightedLayer):
     self.bias.grad.fill(0)
    
     # bprop to next layer
-    cudaconv.convImgActs(grad, self.weight.wt, outGrad, self.img_size, self.img_size,
-        self.outputSize, -self.padding, self.stride, self.numColor, 1, 0.0, 1.0)
+    garray.bconvolution(grad, self.weight.wt, outGrad, self.img_size, self.img_size,
+        self.outputSize, -self.padding, self.stride, self.numColor)
     
     # bprop weight
-    cudaconv.convWeightActs(input, grad, self.weight.grad, self.img_size, self.outputSize,
-        self.outputSize, self.filterSize, -self.padding, self.stride, self.numColor, 1, 0, 0, 1)
+    garra.wconvolution(input, grad, self.weight.grad, self.img_size, self.outputSize,
+        self.outputSize, self.filterSize, -self.padding, self.stride, self.numColor)
     
     # bprop bias
-    gpu_copy_to(grad, self.tmp)
-    add_row_sum_to_vec(self.bias.grad, self.tmp)
+    garray.copy_to(grad, self.tmp)
+    self.bias.grad += self.tmp
 
 
 class MaxPoolLayer(Layer):
@@ -269,14 +265,14 @@ class MaxPoolLayer(Layer):
     return self.poolSize - 1
 
   def fprop(self, input, output, train=TRAIN):
-    cudaconv.convLocalMaxPool(input, output, self.numColor, self.poolSize, self.start, self.stride,
+    garra.maxpool(input, output, self.numColor, self.poolSize, self.start, self.stride,
         self.outputSize)
     if PFout:
       print_matrix(output, self.name)
 
   def bprop(self, grad, input, output, outGrad):
-    cudaconv.convLocalMaxUndo(input, grad, output, outGrad, self.poolSize,
-        self.start, self.stride, self.outputSize, 0.0, 1.0)
+    garray.maxundo(input, grad, output, outGrad, self.poolSize,
+        self.start, self.stride, self.outputSize)
 
 class AvgPoolLayer(Layer):
   def __init__(self, name, poolSize=2, stride=2, start=0, disable_bprop=False):
@@ -298,14 +294,14 @@ class AvgPoolLayer(Layer):
   def get_cross_width(self): return self.poolSize - 1
 
   def fprop(self, input, output, train=TRAIN):
-    cudaconv.convLocalAvgPool(input, output, self.numColor, self.poolSize, self.start, self.stride,
+    garray.avgpool(input, output, self.numColor, self.poolSize, self.start, self.stride,
         self.outputSize)
     if PFout:
       print_matrix(output, self.name)
 
   def bprop(self, grad, input, output, outGrad):
-    cudaconv.convLocalAvgUndo(grad, outGrad, self.poolSize,
-        self.start, self.stride, self.outputSize, self.img_size, 0.0, 1.0)
+    garray.avgundo(grad, outGrad, self.poolSize,
+        self.start, self.stride, self.outputSize, self.img_size)
 
 class ResponseNormLayer(Layer):
   def __init__(self, name, pow=0.75, size=9, scale=0.001, disable_bprop=False):
@@ -326,8 +322,8 @@ class ResponseNormLayer(Layer):
     return (self.numColor, self.img_size, self.img_size, self.batch_size)
 
   def fprop(self, input, output, train=TRAIN):
-    self.denom = gpuarray.zeros_like(input)
-    cudaconv.convResponseNorm(input, self.denom, output, self.numColor, self.size, self.scaler,
+    self.denom = garray.zeros_like(input)
+    garra.rnorm(input, self.denom, output, self.numColor, self.size, self.scaler,
         self.pow)
     if PFout:
       print_matrix(output, self.name)
@@ -352,7 +348,7 @@ class CrossMapResponseNormLayer(ResponseNormLayer):
   def get_cross_width(self): return self.size - 1
 
   def fprop(self, input, output, train=TRAIN):
-    self.denom = gpuarray.zeros_like(input)
+    self.denom = garray.zeros_like(input)
     cudaconv.convResponseNormCrossMap(input, self.denom, output, self.numColor, self.size, self.scaler, self.pow, self.blocked)
     if PFout:
       print_matrix(output, self.name)
@@ -425,17 +421,17 @@ class SoftmaxLayer(Layer):
     self.inputSize, self.batch_size = int(np.prod(input_shape[0:3])), input_shape[3]
     self.outputSize = self.inputSize
     self.inputShape = input_shape
-    self.cost = gpuarray.zeros((self.batch_size, 1), dtype=np.float32)
+    self.cost = garray.zeros((self.batch_size, 1), dtype=np.float32)
 
   def get_output_shape(self):
     return (self.outputSize, 1, 1, self.batch_size)
 
   def fprop(self, input, output, train=TRAIN):
-    max = gpuarray.zeros((1, self.batch_size), dtype=np.float32)
+    max = garray.zeros((1, self.batch_size), dtype=np.float32)
     col_max_reduce(max, input)
     add_vec_to_cols(input, max, output, alpha=-1)
     eltwise_exp(output)
-    sum = gpuarray.zeros(max.shape, dtype=np.float32)
+    sum = garray.zeros(max.shape, dtype=np.float32)
     add_col_sum_to_vec(sum, output, alpha=0)
 
     div_vec_to_cols(output, sum)
@@ -444,8 +440,8 @@ class SoftmaxLayer(Layer):
 
   def logreg_cost(self, label, output):
     if self.cost.shape[0] != self.batch_size:
-      self.cost = gpuarray.zeros((self.batch_size, 1), dtype=np.float32)
-    maxid = gpuarray.zeros((self.batch_size, 1), dtype=np.float32)
+      self.cost = garray.zeros((self.batch_size, 1), dtype=np.float32)
+    maxid = garray.zeros((self.batch_size, 1), dtype=np.float32)
     find_col_max_id(maxid, output)
     self.batchCorrect = same_reduce(label , maxid)
     logreg_cost_col_reduce(output, label, self.cost)
@@ -453,11 +449,11 @@ class SoftmaxLayer(Layer):
   def logreg_cost_multiview(self, label, output, num_view):
     unit = self.batch_size / num_view
     if self.cost.shape[0] != unit:
-      self.cost = gpuarray.zeros((unit, 1), dtype = np.float32)
-    maxid = gpuarray.zeros((self.batch_size, 1), dtype = np.float32)
+      self.cost = garray.zeros((unit, 1), dtype = np.float32)
+    maxid = garray.zeros((self.batch_size, 1), dtype = np.float32)
     find_col_max_id(maxid, output)
     self.batchCorrect = same_reduce_multiview(label, maxid, num_view)
-    tmp = gpuarray.zeros((output.shape[0], unit), dtype = np.float32)
+    tmp = garray.zeros((output.shape[0], unit), dtype = np.float32)
     gpu_partial_copy_to(output, tmp, 0, output.shape[0], 0, unit)
     logreg_cost_col_reduce(tmp, label, self.cost)
 

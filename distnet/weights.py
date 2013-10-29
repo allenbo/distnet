@@ -1,6 +1,6 @@
 from distnet.cuda_kernel import matrix_add
 from distnet.util import Assert
-from pycuda import gpuarray
+import garray
 import copy
 import numpy as np
 
@@ -34,11 +34,11 @@ def update(wts, grad, incr, epsilon, momentum, decay, batch_size):
   
 
 def to_gpu(obj):
-  if isinstance(obj, gpuarray.GPUArray): 
+  if isinstance(obj, garray.GPUArray): 
     return obj
   
   assert obj.dtype == np.float32
-  result = gpuarray.to_gpu(obj).astype(np.float32)
+  result = garray.array(obj, dtype = np.float32)
   assert result.dtype == np.float32
   return result
 
@@ -64,14 +64,14 @@ class Weight(object):
   @property
   def grad(self):
     if self._grad is None or self._grad.shape != self.shape:
-      self._grad = gpuarray.zeros_like(self.wt)
+      self._grad = garray.zeros_like(self.wt)
       
     return self._grad
   
   @property
   def incr(self):
     if (self._incr is None or self._incr.shape != self.shape) and self.momentum > 0:
-      self._incr = gpuarray.zeros_like(self.wt)
+      self._incr = garray.zeros_like(self.wt)
     return self._incr
   
   @property
