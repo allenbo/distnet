@@ -69,6 +69,9 @@ class DataLayer(Layer):
     
   def fprop(self, input, output, train=TRAIN):
     garray.copy_to(input, output)
+
+    if PFout:
+      print_matrix(output, self.name)
   
   def bprop(self, grad, input, output, outGrad):
     pass
@@ -381,7 +384,6 @@ class FCLayer(WeightedLayer):
   def fprop(self, input, output, train=TRAIN):
     garray.copy_to(garray.dot(self.weight.wt, input), output)
     garray.copy_to(output + self.bias.wt, output)
-
     if train == TEST:
       if self.dropRate > 0.0:
         output *= (1.0 - self.dropRate)
@@ -390,9 +392,10 @@ class FCLayer(WeightedLayer):
         self.dropMask = to_gpu(np.random.uniform(0, 1, output.size).astype(np.float32).reshape(output.shape))
         garray.bigger_than_scaler(self.dropMask, self.dropRate)
         garray.copy_to(output * self.dropMask, output)
-
     if PFout:
       print_matrix(output, self.name)
+
+
 
   def bprop(self, grad, input, output, outGrad):
     if self.dropRate > 0.0:
@@ -444,7 +447,7 @@ class SoftmaxLayer(Layer):
     maxid = garray.argmax(output, axis = 0)
     self.batchCorrect = garray.same_reduce_multiview(label, maxid, num_view)
     tmp = garray.zeros((output.shape[0], unit), dtype = np.float32)
-    garray.gpu_partial_copy_to(output, tmp, 0, output.shape[0], 0, unit)
+    garray.partial_copy_to(output, tmp, 0, output.shape[0], 0, unit)
     garray.logreg_cost_col(tmp, label, self.cost)
 
   def bprop(self, label, input, output, outGrad):

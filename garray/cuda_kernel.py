@@ -14,6 +14,7 @@ import pycuda
 import sys
 
 
+distnet.init()
 sgemm = None
 def _initialize_cublas():
   global sgemm
@@ -25,8 +26,8 @@ def _initialize_cublas():
     handle = cublas.cublasCreate()
     def sgemm(*args):
       cublas.cublasSgemm(handle, *args)
+
 _initialize_cublas()
-distnet.init()
 class CompiledSource(object):
   '''
   Compile a source string with PyCuda, caching the resulting module.
@@ -956,7 +957,6 @@ def dot(x, y):
           x.gpudata, x.shape[1], y.gpudata, y.shape[1], 0.0,
           result.gpudata, result.shape[1])
     result = transpose(result)
-    
     return result
   else:
     return np.dot(x, y)

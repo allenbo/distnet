@@ -1,5 +1,7 @@
 from PIL import Image
 import garray
+from garray import partial_copy_to
+from pycuda import driver
 from os.path import basename
 from distnet import util
 import Queue
@@ -106,7 +108,6 @@ def _prepare_images(data_dir, category_range, batch_range, batch_meta):
   for d in cat_dirs:
     imgs = [v for i, v in enumerate(glob.glob(d + '/*.jpg')) if i in batch_dict]
     images.extend(imgs)
-
 
   return np.array(images)
 

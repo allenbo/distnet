@@ -5,7 +5,7 @@ This test is for naive trainer to traine a full imagenet model
 
 from distnet import data, trainer, net, parser
 
-test_id = 'multiview'
+test_id = 'base'
 
 data_dir = '/ssd/nn-data/imagenet/'
 checkpoint_dir = '/home/justin/distnet/checkpoint/'
@@ -13,11 +13,12 @@ param_file = '/home/justin/distnet/config/imagenet.cfg'
 output_dir = ''
 output_method = 'disk'
 
-train_range = range(101, 103) #1,2,3,....,40
-test_range = range(1, 3) #41, 42, ..., 48
+train_range = range(101, 1301) #1,2,3,....,40
+test_range = range(1, 101) #41, 42, ..., 48
 data_provider = 'imagenet'
 
 
+multiview = False
 train_dp = data.get_by_name(data_provider)(data_dir,train_range)
 test_dp = data.get_by_name(data_provider)(data_dir, test_range)
 checkpoint_dumper = trainer.CheckpointDumper(checkpoint_dir, test_id)
