@@ -1,7 +1,6 @@
 from PIL import Image
 import garray
 from garray import partial_copy_to
-from pycuda import driver
 from os.path import basename
 from distnet import util
 import Queue
@@ -181,6 +180,7 @@ class ImageNetDataProvider(DataProvider):
         target[:, idx] = pic.reshape((self.data_dim,))
 
   def get_next_batch(self):
+    #util.log("reading from dist")
     self.get_next_index()
 
     epoch = self.curr_epoch
@@ -200,6 +200,7 @@ class ImageNetDataProvider(DataProvider):
       img = np.asarray(jpeg, np.uint8).transpose(2, 0, 1)
       images.append(img)
 
+    #util.log('between readin')
     self.__trim_borders(images, cropped)
     #if self.test:
     #  np.set_printoptions(threshold = np.nan)
@@ -231,6 +232,7 @@ class ImageNetDataProvider(DataProvider):
     #         num_imgs, time.time() - start, load_time, align_time)
     # self.data = {'data' : SharedArray(cropped), 'labels' : SharedArray(labels)}
 
+    #util.log("finish reading")
     return BatchData(cropped, labels, epoch)
 
 
@@ -264,7 +266,7 @@ class IntermediateDataProvider(DataProvider):
     self.get_next_index()
 
     filename = os.path.join(self.data_dir + '.%s' % self.curr_batch)
-    util.log('reading from %s', filename)
+    #util.log('reading from %s', filename)
 
     data_dic = util.load(filename)
     data  = data_dic[self.data_name].transpose()
@@ -368,7 +370,6 @@ class ParallelDataProvider(DataProvider):
 
   def _fill_reserved_data(self):
     batch_data = self._data_queue.get()
-
     #timer = util.EZTimer('fill reserved data')
 
     self.curr_epoch = batch_data.epoch

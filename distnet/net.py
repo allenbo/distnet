@@ -1,8 +1,8 @@
 from distnet import util, layer
 from distnet.layer import TRAIN, WeightedLayer, TEST
 from distnet.util import timer
-from pycuda import cumath, gpuarray, driver
-from pycuda.gpuarray import GPUArray
+import garray
+from garray import GPUArray, driver
 import numpy as np
 import sys
 import time
@@ -88,7 +88,6 @@ class FastNet(object):
     for layer in self.layers:
       layer.fprop(input, layer.output, train)
       input = layer.output
-    
     return self.layers[-1].output
 
   def bprop(self, label, train=TRAIN):
@@ -175,17 +174,17 @@ class FastNet(object):
         layer.init_output()
 
     if not isinstance(data, GPUArray):
-      data = gpuarray.to_gpu(data).astype(np.float32)
+      data = garray.to_gpu(data).astype(np.float32)
 
     if not isinstance(label, GPUArray):
-      label = gpuarray.to_gpu(label).astype(np.float32)
+      label = garray.to_gpu(label).astype(np.float32)
 
     label = label.reshape((1, label.size))
     self.numCase += data.shape[1]
 
     return data, label
 
-  def train_batch(self, data, label, train=TRAIN, ):
+  def train_batch(self, data, label, train=TRAIN):
     data, label = self.prepare_for_train(data, label)
     prediction = self.fprop(data, train)
     cost, correct = self.get_cost(label, prediction)

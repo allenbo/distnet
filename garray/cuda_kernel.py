@@ -1,4 +1,3 @@
-import distnet
 from distnet import util
 from distnet.util import timer, divup
 from pycuda import gpuarray
@@ -12,9 +11,9 @@ import cudaconv
 import numpy as np
 import pycuda
 import sys
+from cudaconv import *
 
-
-distnet.init()
+cudaconv.init()
 sgemm = None
 def _initialize_cublas():
   global sgemm
@@ -962,9 +961,10 @@ def dot(x, y):
     return np.dot(x, y)
 
 @util.timed_fn
-def transpose(mat):
+def transpose(mat, dst = None):
   mh, mw = mat.shape
-  dst = gpuarray.empty((mw, mh), dtype=np.float32)
+  if dst is None:
+    dst = gpuarray.empty((mw, mh), dtype=np.float32)
 
   block = (32, 32, 1)
   grid = (divup(mw, 32), divup(mh, 32))

@@ -1,6 +1,6 @@
-from distnet import util
 from distnet.util import divup, print_matrix
 from distnet.weights import WEIGHTS, to_gpu
+from distnet import util
 import garray
 import numpy as np
 
@@ -199,6 +199,15 @@ class ConvLayer(WeightedLayer):
     bias_shape = (self.numFilter, 1)
     
     self._init_weights(weight_shape, bias_shape)
+    self.tmp = garray.zeros((self.numFilter, 
+                               self.get_single_img_size() * self.batch_size / self.numFilter),
+                                dtype=np.float32)
+
+  def change_batch_size(self, batch_size):
+    Layer.change_batch_size(self, batch_size)
+    self.tmp = garray.zeros((self.numFilter, 
+                               self.get_single_img_size() * self.batch_size / self.numFilter),
+                                dtype=np.float32)
 
   def get_cross_width(self): 
     return self.filterSize - 1
@@ -214,10 +223,10 @@ class ConvLayer(WeightedLayer):
     garray.convolution(input, self.weight.wt, output, self.img_size, self.outputSize,
         self.outputSize, -self.padding, self.stride, self.numColor, 1)
 
-    self.tmp = garray.zeros((self.numFilter, 
-                               self.get_single_img_size() * self.batch_size / self.numFilter),
-                                dtype=np.float32)
     garray.copy_to(output, self.tmp)
+    #from garray.cuda_kernel import add_vec_to_rows
+    #garray.add_vec_to_rows(self.tmp, self.bias.wt)
+    #garray.copy_to(self.tmp, output)
     garray.copy_to(self.tmp + self.bias.wt, output)
 
     if PFout:
@@ -313,13 +322,18 @@ class ResponseNormLayer(Layer):
     image_shape = prev.get_output_shape()
     self.numColor, self.img_size, _, self.batch_size = image_shape
 
+    self.denom = garray.zeros((self.numColor * self.img_size * self.img_size, self.batch_size), dtype = np.float32)
+
 
   def get_output_shape(self):
     return (self.numColor, self.img_size, self.img_size, self.batch_size)
 
+  def change_batch_size(self, batch_size):
+    Layer.change_batch_size(self, batch_size)
+    self.denom = garray.zeros((self.numColor * self.img_size * self.img_size, self.batch_size), dtype = np.float32)
+
   def fprop(self, input, output, train=TRAIN):
-    self.denom = garray.zeros_like(input)
-    garra.rnorm(input, self.denom, output, self.numColor, self.size, self.scaler,
+    garray.rnorm(input, self.denom, output, self.numColor, self.size, self.scaler,
         self.pow)
     if PFout:
       print_matrix(output, self.name)
@@ -344,7 +358,6 @@ class CrossMapResponseNormLayer(ResponseNormLayer):
   def get_cross_width(self): return self.size - 1
 
   def fprop(self, input, output, train=TRAIN):
-    self.denom = garray.zeros_like(input)
     garray.rnormcrossmap(input, self.denom, output, self.numColor, self.size, self.scaler, self.pow, self.blocked)
     if PFout:
       print_matrix(output, self.name)

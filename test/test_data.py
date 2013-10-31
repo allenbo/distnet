@@ -1,20 +1,18 @@
-from fastnet import data, util
-from fastnet.util import print_matrix
+from distnet import data, util
+from distnet.util import print_matrix
 import numpy as np
 import time
 
 def test_imagenet_loader():
   df = data.get_by_name('imagenet')(
                                  '/ssd/nn-data/imagenet/', 
-                                 batch_range=range(1000), 
-                                 test = True,
-                                 batch_size=128)
+                                 batch_range=range(1000))
   
   for i in range(32):
     st = time.time()
     batch = df.get_next_batch(8 * 10)
     print time.time() - st
-    print batch.labels
+    #print batch.labels
     print batch.data.shape
     time.sleep(0.5)
   print batch.labels
@@ -34,7 +32,7 @@ def test_cifar_loader():
     if batch.shape[1] != batch_size:
       break
   batch = np.concatenate(data_list, axis = 1)
-  print_matrix(batch, 'batch')
+  #print_matrix(batch, 'batch')
   
 if __name__ == '__main__':
   test_imagenet_loader()

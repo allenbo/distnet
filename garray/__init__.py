@@ -1,9 +1,16 @@
-from pycuda import gpuarray
-from pycuda.gpuarray import *
+from pycuda import gpuarray, driver
+from pycuda.gpuarray import GPUArray, to_gpu, zeros, zeros_like, empty
 import numpy as np
 from cuda_kernel import *
-import cudaconv
 
+cudaconv.init()
+
+
+old_init = GPUArray.__init__
+def new_init(*args, **kw):
+  driver.Context.synchronize()
+  return old_init(*args, **kw)
+GPUArray.__init__ = new_init
 
 def array(obj, dtype = np.float32):
   return to_gpu(obj).astype(dtype)
@@ -146,3 +153,10 @@ def sum(input, axis = None):
       rst = zeros((input.shape[0], 1), dtype = np.float32)
       add_row_sum_to_vec(rst, input)
     return rst
+
+
+def reshape_last(input):
+  shape = input.shape
+  row = int(np.prod(shape[:-1]))
+  col = shape[-1]
+  return input.reshape((row, col))

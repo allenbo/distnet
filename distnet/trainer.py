@@ -5,7 +5,6 @@ from distnet.layer import TRAIN, TEST
 from distnet.net import FastNet
 from distnet.parser import parse_config_file, load_model
 from distnet.scheduler import Scheduler
-from pycuda import gpuarray, driver
 import os
 import pprint
 import sys

@@ -4,5 +4,3 @@
 #from .util import *
 #from .parser import *
 #from .layer import *
-
-from cudaconv import init
