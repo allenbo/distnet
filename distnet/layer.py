@@ -235,9 +235,9 @@ class ConvLayer(WeightedLayer):
   def bprop(self, grad, input, output, outGrad):
     self.weight.grad.fill(0)
     self.bias.grad.fill(0)
-   
+
     # bprop to next layer
-    garray.bconvolution(grad, self.weight.wt, outGrad, self.img_size, self.img_size,
+    garray.bconvolution(input, grad, self.weight.wt, outGrad, self.img_size, self.img_size,
         self.outputSize, -self.padding, self.stride, self.numColor)
     
     # bprop weight

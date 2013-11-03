@@ -21,7 +21,7 @@ partial_copy_to = gpu_partial_copy_to
 convolution = cudaconv.convFilterActs
 
 def bconvolution(*args):
-  args = args + (1, )
+  args = args[1:] + (1,)
   cudaconv.convImgActs(*args)
 
 def wconvolution(*args):
