@@ -15,6 +15,14 @@ GPUArray.__init__ = new_init
 def array(obj, dtype = np.float32):
   return to_gpu(obj).astype(dtype)
 
+
+
+def get_seed():
+  import time
+  return int(time.time())
+
+
+
 copy_to = gpu_copy_to
 partial_copy_to = gpu_partial_copy_to
 

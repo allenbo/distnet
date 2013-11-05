@@ -15,6 +15,12 @@ import sys
 import threading
 import time
 
+
+seed = garray.get_seed()
+assert type(seed) == int
+random.seed(seed)
+np.random.seed(seed)
+
 def copy_to_gpu(data):
   return garray.to_gpu(data.astype(np.float32))
 
