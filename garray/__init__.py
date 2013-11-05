@@ -5,16 +5,24 @@ from cuda_kernel import *
 
 cudaconv.init()
 
-
 old_init = GPUArray.__init__
 def new_init(*args, **kw):
   driver.Context.synchronize()
   return old_init(*args, **kw)
 GPUArray.__init__ = new_init
 
-def array(obj, dtype = np.float32):
-  return to_gpu(obj).astype(dtype)
 
+def reshape_last(input):
+  shape = input.shape
+  row = int(np.prod(shape[:-1]))
+  col = shape[-1]
+  return input.reshape((row, col))
+
+
+def array(obj, dtype = np.float32):
+  if len(obj.shape) != 2 and len(obj.shape) != 1:
+    obj = reshape_last(obj)
+  return to_gpu(obj).astype(dtype)
 
 
 def get_seed():
@@ -163,8 +171,4 @@ def sum(input, axis = None):
     return rst
 
 
-def reshape_last(input):
-  shape = input.shape
-  row = int(np.prod(shape[:-1]))
-  col = shape[-1]
-  return input.reshape((row, col))
+

@@ -21,10 +21,6 @@ assert type(seed) == int
 random.seed(seed)
 np.random.seed(seed)
 
-def copy_to_gpu(data):
-  return garray.to_gpu(data.astype(np.float32))
-
-
 class BatchData(object):
   def __init__(self, data, labels, epoch):
     self.data = data
@@ -146,7 +142,8 @@ class ImageNetDataProvider(DataProvider):
         .reshape((3, 256, 256))[:,
                                 self.border_size:self.border_size + self.inner_size,
                                 self.border_size:self.border_size + self.inner_size]
-        .reshape((self.data_dim, 1)))
+        .reshape((self.data_dim,1))
+        )
     util.log('Starting data provider with %d batches', len(self.batches))
 
   def _shuffle_batches(self):
@@ -174,8 +171,8 @@ class ImageNetDataProvider(DataProvider):
         num_image = len(images)
         for idx, img in enumerate(images):
           pic = img[:, startY:endY, startX:endX]
-          target[:, i * num_image + idx] = pic.reshape((self.data_dim, ))
-          target[:, (self.num_view/2 +i) * num_image + idx] = pic[:, :, ::-1].reshape((self.data_dim, ))
+          target[:, :, :, i * num_image + idx] = pic
+          target[:, :, :, (self.num_view/2 +i) * num_image + idx] = pic[:, :, ::-1]
     else:
       for idx, img in enumerate(images):
         startY, startX = np.random.randint(0, self.border_size * 2 + 1), np.random.randint(0, self.border_size * 2 + 1)
@@ -183,7 +180,7 @@ class ImageNetDataProvider(DataProvider):
         pic = img[:, startY:endY, startX:endX]
         if np.random.randint(2) == 0:  # also flip the image with 50% probability
           pic = pic[:, :, ::-1]
-        target[:, idx] = pic.reshape((self.data_dim,))
+        target[:,:, :, idx] = pic
 
   def get_next_batch(self):
     #util.log("reading from dist")
@@ -194,7 +191,7 @@ class ImageNetDataProvider(DataProvider):
     names = self.images[self.batches[batchnum]]
     num_imgs = len(names)
     labels = np.zeros((1, num_imgs))
-    cropped = np.ndarray((self.data_dim, num_imgs * self.num_view), dtype=np.uint8)
+    cropped = np.ndarray((3, self.inner_size, self.inner_size, num_imgs * self.num_view), dtype=np.uint8)
     # _load in parallel for training
     st = time.time()
     images = []
@@ -226,7 +223,9 @@ class ImageNetDataProvider(DataProvider):
     st = time.time()
     cropped = cropped.astype(np.single)
     cropped = np.require(cropped, dtype=np.single, requirements='C')
-    cropped -= self.data_mean
+    old_shape = cropped.shape
+    cropped = garray.reshape_last(cropped) - self.data_mean
+    cropped = cropped.reshape(old_shape)
 
     align_time = time.time() - st
 
@@ -379,8 +378,8 @@ class ParallelDataProvider(DataProvider):
     #timer = util.EZTimer('fill reserved data')
 
     self.curr_epoch = batch_data.epoch
-    batch_data.data = copy_to_gpu(batch_data.data)
-    batch_data.labels = copy_to_gpu(batch_data.labels)
+    batch_data.data = garray.array(batch_data.data, dtype = np.float32)
+    batch_data.labels = garray.array(batch_data.labels, dtype = np.float32)
     self._gpu_batch = batch_data
 
   def get_next_batch(self, batch_size):
@@ -395,6 +394,7 @@ class ParallelDataProvider(DataProvider):
     gpu_labels = self._gpu_batch.labels
     if self.multiview:
       batch_size = self.dp.batch_size * self.num_view
+
     if self.index + batch_size >=  width:
       width = width - self.index
       labels = gpu_labels[self.index/self.num_view:(self.index + batch_size) / self.num_view]
