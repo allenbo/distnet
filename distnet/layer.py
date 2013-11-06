@@ -4,7 +4,7 @@ from distnet import util
 import garray
 import numpy as np
 
-PFout = False
+PFout = True
 PBout = False
 TEST = 0
 TRAIN = 1
@@ -333,7 +333,7 @@ class ResponseNormLayer(Layer):
     self.denom = garray.zeros((self.numColor * self.img_size * self.img_size, self.batch_size), dtype = np.float32)
 
   def fprop(self, input, output, train=TRAIN):
-    garray.rnorm(input, self.denom, output, self.numColor, self.size, self.scaler,
+    garray.rnorm(input, self.denom, output, self.numColor, self.size, self.img_size, self.scaler,
         self.pow)
     if PFout:
       print_matrix(output, self.name)
