@@ -48,9 +48,9 @@
 void sum(NVMatrix& src, int axis, NVMatrix& target);
 void addVector(NVMatrix& target, NVMatrix& vec);
 void convLocalMaxPool(NVMatrix& images, NVMatrix& target, int numFilters,
-                   int subsX, int startX, int strideX, int outputsX);
+                   int subsX, int startX, int strideX, int imageY, int outputsY, int outputsX);
 void convLocalAvgPool(NVMatrix& images, NVMatrix& target, int numFilters,
-                   int subsX, int startX, int strideX, int outputsX);
+                   int subsX, int startX, int strideX, int imageY, int outputsY, int outputsX);
 void convLocalMaxUndo(NVMatrix& images, NVMatrix& maxGrads, NVMatrix& maxActs, NVMatrix& target,
                       int subsX, int startX, int strideX, int outputsX);
 void convLocalAvgUndo(NVMatrix& avgGrads, NVMatrix& target,

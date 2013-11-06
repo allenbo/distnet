@@ -2900,12 +2900,12 @@ void convResponseNormCrossMap(NVMatrix& images, NVMatrix& denoms, NVMatrix& targ
 
 
 void convLocalMaxPool(NVMatrix& images, NVMatrix& target, int numFilters,
-                   int subsX, int startX, int strideX, int outputsX) {
-  convLocalPool(images, target, numFilters, subsX, startX, strideX, outputsX, MaxPooler());
+                   int subsX, int startX, int strideX, int imageY, int outputsY, int outputsX) {
+  convLocalPool(images, target, numFilters, subsX, startX, strideX, imageY, outputsY, outputsX, MaxPooler());
 }
 void convLocalAvgPool(NVMatrix& images, NVMatrix& target, int numFilters,
-                   int subsX, int startX, int strideX, int outputsX) {
-  convLocalPool(images, target, numFilters, subsX, startX, strideX, outputsX, AvgPooler());
+                   int subsX, int startX, int strideX, int imageY, int outputsY, int outputsX) {
+  convLocalPool(images, target, numFilters, subsX, startX, strideX, imageY, outputsY, outputsX, AvgPooler());
 }
 
 void addVector(NVMatrix& target, NVMatrix& vec) {

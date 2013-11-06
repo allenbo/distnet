@@ -17,6 +17,7 @@ import time
 
 
 seed = garray.get_seed()
+seed = 0
 assert type(seed) == int
 random.seed(seed)
 np.random.seed(seed)

@@ -270,8 +270,8 @@ class MaxPoolLayer(Layer):
     return self.poolSize - 1
 
   def fprop(self, input, output, train=TRAIN):
-    garray.maxpool(input, output, self.numColor, self.poolSize, self.start, self.stride,
-        self.outputSize)
+    garray.maxpool(input, output, self.numColor, self.poolSize, self.start, self.stride, self.img_size,
+        self.outputSize, self.outputSize)
     if PFout:
       print_matrix(output, self.name)
 
@@ -300,12 +300,12 @@ class AvgPoolLayer(Layer):
 
   def fprop(self, input, output, train=TRAIN):
     garray.avgpool(input, output, self.numColor, self.poolSize, self.start, self.stride,
-        self.outputSize)
+        self.img_size, self.outputSize, self.outputSize)
     if PFout:
       print_matrix(output, self.name)
 
   def bprop(self, grad, input, output, outGrad):
-    garray.avgundo(grad, outGrad, self.poolSize,
+    garray.avgundo(input, grad, outGrad, self.poolSize,
         self.start, self.stride, self.outputSize, self.img_size)
 
 class ResponseNormLayer(Layer):
