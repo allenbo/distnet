@@ -38,22 +38,25 @@ void convLocalMaxPool(NVMatrix& images, NVMatrix& target, int numFilters,
 void convLocalAvgPool(NVMatrix& images, NVMatrix& target, int numFilters,
                    int subsX, int startX, int strideX, int imageY, int outputsY, int outputsX);
 void convLocalMaxUndo(NVMatrix& images, NVMatrix& maxGrads, NVMatrix& maxActs, NVMatrix& target,
-                      int subsX, int startX, int strideX, int outputsX);
-void convLocalAvgUndo(NVMatrix& avgGrads, NVMatrix& target,
-                      int subsX, int startX, int strideX, int outputsX, int imgSize);
-
-void convLocalAvgUndo(NVMatrix& avgGrads, NVMatrix& target,
-                      int subsX, int startX, int strideX, int outputsX, int imgSize,
-                      float scaleTargets, float scaleOutput);
+                      int subsX, int startX, int strideX, int outputsY, int outputsX, int imageY);
 void convLocalMaxUndo(NVMatrix& images, NVMatrix& maxGrads, NVMatrix& maxActs, NVMatrix& target,
-                      int subsX, int startX, int strideX, int outputsX, float scaleTargets, float scaleOutput);
+                      int subsX, int startX, int strideX, int outputsY, int outputsX, int imageY, float scaleTargets, float scaleOutput);
+void convLocalAvgUndo(NVMatrix& avgGrads, NVMatrix& target,
+                      int subsX, int startX, int strideX, int outputsY, int outputsX, int imageY, int imageX);
+void convLocalAvgUndo(NVMatrix& avgGrads, NVMatrix& target,
+                      int subsX, int startX, int strideX, int outputsy, int outputsX, int imageY, int imageX,
+                      float scaleTargets, float scaleOutput);
 
 void convResponseNorm(NVMatrix& images, NVMatrix& denoms, NVMatrix& target, int numFilters, int sizeX, int imageY, float addScale, float powScale);
 void convResponseNormUndo(NVMatrix& outGrads, NVMatrix& denoms, NVMatrix& inputs, NVMatrix& acts, NVMatrix& target, int numFilters,
-                         int sizeX, float addScale, float powScale, float scaleTargets, float scaleOutput);
+                         int sizeX, int imageY, float addScale, float powScale, float scaleTargets, float scaleOutput);
 void convContrastNorm(NVMatrix& images, NVMatrix& meanDiffs, NVMatrix& denoms, NVMatrix& target, int numFilters, int sizeX, int imageY, float addScale, float powScale);
 void convContrastNormUndo(NVMatrix& outGrads, NVMatrix& denoms, NVMatrix& meanDiffs, NVMatrix& acts, NVMatrix& target, int numFilters,
-                         int sizeX, float addScale, float powScale, float scaleTargets, float scaleOutput);
+                         int sizeX, int imageY, float addScale, float powScale, float scaleTargets, float scaleOutput);
+void convResponseNormCrossMapUndo(NVMatrix& outGrads, NVMatrix& denoms, NVMatrix& inputs, NVMatrix& acts, NVMatrix& target, int numFilters,
+                         int sizeF, int imageY, float addScale, float powScale, bool blocked, float scaleTargets, float scaleOutput);
+void convResponseNormCrossMap(NVMatrix& images, NVMatrix& denoms, NVMatrix& target, int numFilters, int sizeF, int imageY, float addScale,
+                              float powScale, bool blocked);
 
 void convGaussianBlur(NVMatrix& images, NVMatrix& filter, NVMatrix& target, bool horiz, int numChannels,
                       float scaleTargets, float scaleOutputs);
@@ -71,10 +74,6 @@ void convTICAGrad(NVMatrix& images, NVMatrix& ticas, NVMatrix& target, int numFi
 void convTICA(NVMatrix& images, NVMatrix& target, int numFilters, int sizeX, float scaleTarget, float scaleOutput);
 void convContrastNormCrossMap(NVMatrix& images, NVMatrix& meanDiffs, NVMatrix& denoms, NVMatrix& target,
                              int numFilters, int sizeF, int imageY, float addScale, float powScale, bool blocked);
-void convResponseNormCrossMapUndo(NVMatrix& outGrads, NVMatrix& denoms, NVMatrix& inputs, NVMatrix& acts, NVMatrix& target, int numFilters,
-                         int sizeF, float addScale, float powScale, bool blocked, float scaleTargets, float scaleOutput);
-void convResponseNormCrossMap(NVMatrix& images, NVMatrix& denoms, NVMatrix& target, int numFilters, int sizeF, int imageY, float addScale,
-                              float powScale, bool blocked);
 
 class AvgPooler {
 public:

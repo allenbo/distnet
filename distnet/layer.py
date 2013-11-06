@@ -4,7 +4,7 @@ from distnet import util
 import garray
 import numpy as np
 
-PFout = True
+PFout = False
 PBout = False
 TEST = 0
 TRAIN = 1
@@ -277,7 +277,7 @@ class MaxPoolLayer(Layer):
 
   def bprop(self, grad, input, output, outGrad):
     garray.maxundo(input, grad, output, outGrad, self.poolSize,
-        self.start, self.stride, self.outputSize)
+        self.start, self.stride, self.outputSize, self.outputSize, self.img_size)
 
 class AvgPoolLayer(Layer):
   def __init__(self, name, poolSize=2, stride=2, start=0, disable_bprop=False):
@@ -306,7 +306,7 @@ class AvgPoolLayer(Layer):
 
   def bprop(self, grad, input, output, outGrad):
     garray.avgundo(input, grad, outGrad, self.poolSize,
-        self.start, self.stride, self.outputSize, self.img_size)
+        self.start, self.stride, self.outputSize, self.outputSize, self.img_size)
 
 class ResponseNormLayer(Layer):
   def __init__(self, name, pow=0.75, size=9, scale=0.001, disable_bprop=False):
@@ -342,7 +342,7 @@ class ResponseNormLayer(Layer):
 
   def bprop(self, grad, input, output, outGrad):
     garray.rnormundo(grad, self.denom, input, output, outGrad, self.numColor,
-        self.size, self.scaler, self.pow)
+        self.size, self.img_size, self.scaler, self.pow)
 
 
 class CrossMapResponseNormLayer(ResponseNormLayer):
@@ -364,7 +364,7 @@ class CrossMapResponseNormLayer(ResponseNormLayer):
 
   def bprop(self, grad, input, output, outGrad):
     garray.rnormcrossmapundo(grad, self.denom, input, output, outGrad, self.numColor,
-        self.size, self.scaler, self.pow, self.blocked)
+        self.size, self.img_size,self.scaler, self.pow, self.blocked)
 
 
 class FCLayer(WeightedLayer):
