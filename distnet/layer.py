@@ -358,7 +358,7 @@ class CrossMapResponseNormLayer(ResponseNormLayer):
   def get_cross_width(self): return self.size - 1
 
   def fprop(self, input, output, train=TRAIN):
-    garray.rnormcrossmap(input, self.denom, output, self.numColor, self.size, self.scaler, self.pow, self.blocked)
+    garray.rnormcrossmap(input, self.denom, output, self.numColor, self.size, self.img_size, self.scaler, self.pow, self.blocked)
     if PFout:
       print_matrix(output, self.name)
 
