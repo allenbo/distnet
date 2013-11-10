@@ -379,7 +379,7 @@ class ParallelDataProvider(DataProvider):
     #timer = util.EZTimer('fill reserved data')
 
     self.curr_epoch = batch_data.epoch
-    batch_data.data = garray.array(batch_data.data, dtype = np.float32)
+    batch_data.data = garray.array(batch_data.data, dtype = np.float32, reshape_last = True)
     batch_data.labels = garray.array(batch_data.labels, dtype = np.float32)
     self._gpu_batch = batch_data
 
