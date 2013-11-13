@@ -19,8 +19,8 @@ def reshape_last(input):
   return input.reshape((row, col))
 
 
-def array(obj, dtype = np.float32, reshape_last = False):
-  if len(obj.shape) != 2 and len(obj.shape) != 1 and reshape_last:
+def array(obj, dtype = np.float32, to2dim = False):
+  if len(obj.shape) != 2 and len(obj.shape) != 1 and to2dim:
     obj = reshape_last(obj)
   return to_gpu(obj).astype(dtype)
 
