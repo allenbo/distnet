@@ -32,12 +32,13 @@ setup(
     author_email="justin.lin@nyu.edu",
     license="GPL",
     version="0.1",
-    url="http://github.com/allenbo/fastnet",
-    packages=[ 'distnet', 'cudaconv', 'garray'],
-    package_dir={ 
+    url="http://github.com/allenbo/distnet",
+    packages=[ 'distnet', 'cudaconv', 'garray', 'varray',  ],
+    package_dir={
       'distnet' : 'distnet',
       'cudaconv' : 'cudaconv' ,
       'garray' : 'garray',
+      'varray' : 'varray'
     },
     requires=[
       'pycuda', 
