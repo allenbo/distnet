@@ -48,7 +48,9 @@ maxpool = cudaconv.convLocalMaxPool
 maxundo = cudaconv.convLocalMaxUndo
 
 avgpool = cudaconv.convLocalAvgPool
-avgundo = cudaconv.convLocalAvgUndo
+def avgundo(*args):
+  args = args[1:]
+  cudaconv.convLocalAvgUndo(*args)
 
 rnorm = cudaconv.convResponseNorm
 def rnormundo(*args):

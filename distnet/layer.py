@@ -306,7 +306,7 @@ class AvgPoolLayer(Layer):
 
   def bprop(self, grad, input, output, outGrad):
     garray.avgundo(input, grad, outGrad, self.poolSize,
-        self.start, self.stride, self.outputSize, self.outputSize, self.img_size)
+        self.start, self.stride, self.outputSize, self.outputSize, self.img_size, self.img_size)
 
 class ResponseNormLayer(Layer):
   def __init__(self, name, pow=0.75, size=9, scale=0.001, disable_bprop=False):

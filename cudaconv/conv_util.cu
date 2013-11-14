@@ -1974,7 +1974,6 @@ void convLocalAvgUndo(NVMatrix& avgGrads, NVMatrix& target,
     int subsX, int startX, int strideX, int outputsY, int outputsX, int imageY, int imageX,
     float scaleTargets, float scaleOutput) {
   int numImages = avgGrads.getNumCols();
-
   int outputs = outputsX * outputsY;
   int imgPixels = imageY * imageX;
   int numFilters = avgGrads.getNumRows() / outputs;
