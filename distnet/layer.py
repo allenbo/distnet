@@ -10,7 +10,7 @@ TEST = 0
 TRAIN = 1
 
 def col_rand(shape, dtype):
-  return np.require(np.random.rand(*shape), dtype=dtype, requirements='C')  
+  return np.require(np.random.rand(*shape), dtype=dtype, requirements='C')
 
 def col_randn(shape, dtype):
   return np.require(np.random.randn(*shape), dtype=dtype, requirements='C')
@@ -21,7 +21,7 @@ class Layer(object):
     self.name = name
     self.type = type
     self.disable_bprop = disable_bprop
-    
+
     self.output = None
     self.output_grad = None
 
@@ -33,18 +33,17 @@ class Layer(object):
 
   def change_batch_size(self, batch_size):
     self.batch_size = batch_size
-    
+
   def attach(self, prev):
     self.init_output()
-    
+
   def update(self):
     pass
-    
-  def init_output(self): 
+
+  def init_output(self):
     out_shape = self.get_output_shape()
     rows = int(np.prod(out_shape[:3]))
     cols = out_shape[3]
-    #util.log('Allocating: %s ', out_shape)
     self.output = garray.zeros((rows, cols), dtype=np.float32)
     self.output_grad = garray.zeros((rows, cols), dtype=np.float32)
 
@@ -63,22 +62,22 @@ class DataLayer(Layer):
     self.name = name
     self.image_shape = image_shape
     self.batch_size = image_shape[-1]
-  
+
   def attach(self, prev):
     assert False, 'Must be first layer!'
-    
+
   def fprop(self, input, output, train=TRAIN):
     garray.copy_to(input, output)
 
     if PFout:
       print_matrix(output, self.name)
-  
+
   def bprop(self, grad, input, output, outGrad):
     pass
-  
+
   def get_output_shape(self):
-    return tuple(list(self.image_shape[:3]) + [self.batch_size]) 
-  
+    return tuple(list(self.image_shape[:3]) + [self.batch_size])
+
 
 class WeightedLayer(Layer):
   def __init__(self, name, type, epsW, epsB, initW, initB, momW, momB, wc, weight, bias,
@@ -86,36 +85,36 @@ class WeightedLayer(Layer):
     Layer.__init__(self, name, type, disable_bprop)
     self.initW = initW
     self.initB = initB
-    
+
     self.weight = WEIGHTS.empty('weight.' + self.name, epsW, momW, wc)
     self.bias = WEIGHTS.empty('bias.' + self.name, epsB, momB, 0.0)
-   
+
     if weight is not None:
-      self.weight.set_weight(weight) 
+      self.weight.set_weight(weight)
     if weightIncr is not None:
       self.weight.set_incr(weightIncr)
-    
+
     if bias is not None:
-      self.bias.set_weight(bias) 
+      self.bias.set_weight(bias)
     if biasIncr is not None:
       self.bias.set_incr(to_gpu(biasIncr))
-    
+
   def _init_weights(self, weight_shape, bias_shape):
     if self.initB is None:
       self.initB = 0.0
-    
+
     if self.initW is None:
       self.initW = 1.0 / np.sqrt(np.prod(weight_shape))
-     
+
     self.bias.shape = bias_shape
     self.weight.shape = weight_shape
-     
+
     if self.weight.wt is None:
       self.weight.set_weight(to_gpu(col_randn(weight_shape, np.float32) * self.initW))
 
     if self.bias.wt is None:
       self.bias.set_weight(to_gpu((np.ones(bias_shape, dtype=np.float32) * self.initB)))
-  
+
   def clear_weight_incr(self):
     self.weight.incr.fill(0)
 
@@ -148,20 +147,20 @@ class WeightedLayer(Layer):
     d = Layer.dump(self)
     d['weight'] = self.weight.wt.get()
     d['bias'] = self.bias.wt.get()
-    
+
     d['epsW'] = self.weight.epsilon
     d['momW'] = self.weight.momentum
     d['wc'] = self.weight.decay
-    
+
     d['epsB'] = self.bias.epsilon
     d['momB'] = self.bias.momentum
-    
-    
+
+
     if self.weight.incr is not None:
       d['weightIncr'] = self.weight.incr.get()
     if self.bias.incr is not None:
       d['biasIncr'] = self.bias.incr.get()
-    
+
     return d
 
 class ConvLayer(WeightedLayer):
@@ -170,7 +169,7 @@ class ConvLayer(WeightedLayer):
       bias=None, weight=None, weightIncr=None, biasIncr=None, disable_bprop=False):
 
     self.numFilter = num_filters
-    
+
     assert filter_shape[0] == filter_shape[1], 'Non-square filters not yet supported.'
     self.filterSize = filter_shape[0]
     self.padding = padding
@@ -179,12 +178,12 @@ class ConvLayer(WeightedLayer):
     self.partialSum = partialSum
     self.sharedBiases = sharedBiases
 
-    WeightedLayer.__init__(self, name, 'conv', 
+    WeightedLayer.__init__(self, name, 'conv',
                            epsW, epsB, initW, initB, momW, momB, wc, weight,
                            bias, weightIncr, biasIncr, disable_bprop)
-    
+
     util.log('numFilter:%s padding:%s stride:%s initW:%s initB:%s, w: %s, b: %s',
-             self.numFilter, self.padding, self.stride, self.initW, self.initB, 
+             self.numFilter, self.padding, self.stride, self.initW, self.initB,
              self.weight, self.bias)
 
   def attach(self, prev_layer):
@@ -197,19 +196,19 @@ class ConvLayer(WeightedLayer):
 
     weight_shape = (self.filterSize * self.filterSize * self.numColor, self.numFilter)
     bias_shape = (self.numFilter, 1)
-    
+
     self._init_weights(weight_shape, bias_shape)
-    self.tmp = garray.zeros((self.numFilter, 
+    self.tmp = garray.zeros((self.numFilter,
                                self.get_single_img_size() * self.batch_size / self.numFilter),
                                 dtype=np.float32)
 
   def change_batch_size(self, batch_size):
     Layer.change_batch_size(self, batch_size)
-    self.tmp = garray.zeros((self.numFilter, 
+    self.tmp = garray.zeros((self.numFilter,
                                self.get_single_img_size() * self.batch_size / self.numFilter),
                                 dtype=np.float32)
 
-  def get_cross_width(self): 
+  def get_cross_width(self):
     return self.filterSize - 1
 
   def get_single_img_size(self):
@@ -239,11 +238,11 @@ class ConvLayer(WeightedLayer):
     # bprop to next layer
     garray.bconvolution(input, grad, self.weight.wt, outGrad, self.img_size, self.img_size,
         self.outputSize, -self.padding, self.stride, self.numColor)
-    
+
     # bprop weight
     garray.wconvolution(input, grad, self.weight.grad, self.img_size, self.outputSize,
         self.outputSize, self.filterSize, -self.padding, self.stride, self.numColor)
-    
+
     # bprop bias
     garray.copy_to(grad, self.tmp)
     self.bias.set_grad(garray.sum(self.tmp, axis = 1))
@@ -262,11 +261,11 @@ class MaxPoolLayer(Layer):
     image_shape = prev.get_output_shape()
     self.numColor, self.img_size, _, self.batch_size = image_shape
     self.outputSize = divup(self.img_size - self.poolSize - self.start, self.stride) + 1
-  
+
   def get_output_shape(self):
     return (self.numColor, self.outputSize, self.outputSize, self.batch_size)
 
-  def get_cross_width(self): 
+  def get_cross_width(self):
     return self.poolSize - 1
 
   def fprop(self, input, output, train=TRAIN):
@@ -287,7 +286,7 @@ class AvgPoolLayer(Layer):
     self.stride = stride
     self.start = start
     util.log("pool_size:%s stride:%s start:%s", self.poolSize, self.stride, self.start)
-    
+
   def attach(self, prev):
     image_shape = prev.get_output_shape()
     self.numColor, self.img_size, _, self.batch_size = image_shape
@@ -369,7 +368,7 @@ class CrossMapResponseNormLayer(ResponseNormLayer):
 
 class FCLayer(WeightedLayer):
   def __init__(self, name, n_out, epsW=0.001, epsB=0.002, initW=None, initB=None,
-      momW=0.9, momB=0.9, wc=0.004, dropRate=0.0, weight=None, bias=None, weightIncr=None, 
+      momW=0.9, momB=0.9, wc=0.004, dropRate=0.0, weight=None, bias=None, weightIncr=None,
       biasIncr=None, disable_bprop=False):
     self.outputSize = n_out
     self.dropRate = dropRate
@@ -388,7 +387,7 @@ class FCLayer(WeightedLayer):
     self._init_weights(weight_shape, bias_shape)
 
 
-  def get_input_size(self): 
+  def get_input_size(self):
     return self.inputSize
 
   def get_output_shape(self):
@@ -413,9 +412,9 @@ class FCLayer(WeightedLayer):
   def bprop(self, grad, input, output, outGrad):
     if self.dropRate > 0.0:
       garray.copy_to(grad * self.dropMask, grad)
-   
+
     garray.copy_to(garray.transpose(garray.dot(garray.transpose(grad), self.weight.wt)), outGrad)
-    
+
     self.weight.set_grad(garray.dot(grad, garray.transpose(input)))
     self.bias.set_grad(garray.sum(grad, axis = 1))
 
@@ -524,12 +523,12 @@ class NeuronLayer(Layer):
       self.neuron = ReluNeuron(e)
     elif type == 'tanh':
       self.neuron = TanhNeuron(a, b)
-      
+
   def attach(self, prev):
     image_shape = prev.get_output_shape()
     self.numColor, self.img_size, _, self.batch_size = image_shape
 
-  def get_cross_width(self): 
+  def get_cross_width(self):
     return 0
 
   def get_output_shape(self):

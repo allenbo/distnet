@@ -13,7 +13,7 @@ param_file = '/home/justin/distnet/config/imagenet.cfg'
 output_dir = ''
 output_method = 'disk'
 
-train_range = range(101, 1301) #1,2,3,....,40
+train_range = range(101, 103) #1,2,3,....,40
 test_range = range(1, 101) #41, 42, ..., 48
 data_provider = 'imagenet'
 
@@ -31,7 +31,7 @@ save_freq = 100
 test_freq = 100
 adjust_freq = 100
 factor = 1
-num_epoch = 50
+num_epoch = 3
 learning_rate = 0.1
 batch_size = 128
 image_color = 3

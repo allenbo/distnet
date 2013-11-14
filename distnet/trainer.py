@@ -189,10 +189,12 @@ class Trainer:
     self._finished_training()
 
   def report(self):
+    print 'convolution time', self.net.convtime
+    print 'fc time', self.net.fctime
     rep = self.net.get_report()
     if rep is not None:
       print rep
-    # timer.report()
+    #timer.report()
 
   @staticmethod
   def get_trainer_by_name(name, param_dict):
