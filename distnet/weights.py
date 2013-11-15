@@ -1,7 +1,16 @@
 from distnet.util import Assert
 import garray
+import varray
 import copy
 import numpy as np
+
+multi_gpu = False
+if os.environ['MULTIGPU'] == 'yes':
+  import varray as arr
+  multi_gpu = True
+else:
+  import garray as arr
+
 
 
 def update(wts, grad, incr, epsilon, momentum, decay, batch_size):
@@ -15,62 +24,69 @@ def update(wts, grad, incr, epsilon, momentum, decay, batch_size):
   assert(incr.dtype == np.float32)
 
   if momentum > 0.0:
-    garray.matrix_add(incr, grad, 
+    arr.matrix_add(incr, grad, 
                alpha=momentum, 
                beta=np.float32(epsilon / batch_size))
     
-    garray.matrix_add(incr, wts, 
+    arr.matrix_add(incr, wts, 
                alpha=1, 
                beta=np.float32(-decay * epsilon))
     
-    garray.matrix_add(wts, incr)
+    arr.matrix_add(wts, incr)
   else:
-    garray.matrix_add(wts, grad, 
+    arr.matrix_add(wts, grad, 
                alpha=1, 
                beta=np.float32(epsilon / batch_size))
   
   #a2, b2, c2, = self.incr.get().mean(), self.wt.get().mean(), grad.get().mean()
   
 
-def to_gpu(obj):
+def to_gpu(obj, unique = False):
   if isinstance(obj, garray.GPUArray): 
+    return obj
+  if isinstance(obj, varray.VArray):
     return obj
   
   assert obj.dtype == np.float32
-  result = garray.array(obj, dtype = np.float32)
+  if not multi_gpu:
+    result = arr.array(obj, dtype = np.float32)
+  else:
+    result = arr.array(obj, dtype = np.float32, unique = unique)
   assert result.dtype == np.float32
   return result
 
 
 class Weight(object):
+  def __init__(self, unique = False):
+    self.unique = unique
   def set_weight(self, w):
     if self.shape is None:
       self.shape = w.shape
     
     Assert.eq(w.shape, self.shape)
-    self._wt = to_gpu(w)
+    self._wt = to_gpu(w, self.unique)
     
-  def set_grad(self, g):
+  def set_grad(self, g, uniqeu = False):
     assert g.shape == self.shape
     assert g.dtype == np.float32
-    self._grad = to_gpu(g)
+    self._grad = to_gpu(g, self.unique)
     
-  def set_incr(self, g):
+  def set_incr(self, g, unique = False):
     assert g.shape == self.shape
     assert g.dtype == np.float32
-    self._incr = to_gpu(g)
+    self._incr = to_gpu(g, self.unique)
     
   @property
   def grad(self):
     if self._grad is None or self._grad.shape != self.shape:
-      self._grad = garray.zeros_like(self.wt)
+      self._grad = to_gpu(np.zeros_like(self.wt), self.unique)
       
     return self._grad
   
   @property
   def incr(self):
     if (self._incr is None or self._incr.shape != self.shape) and self.momentum > 0:
-      self._incr = garray.zeros_like(self.wt)
+      self._incr = to_gpu(np.zeros_like(self.wt), self.unique)
     return self._incr
   
   @property
@@ -89,7 +105,7 @@ class Weight(object):
   
 
 class WeightManager(object):
-  def __init__(self):
+  def __init__(self, unique = False):
     self._weights = []
     
   def __iter__(self):
@@ -101,8 +117,8 @@ class WeightManager(object):
   def clone(self):
     return copy.deepcopy(self)
     
-  def empty(self, name, epsilon, momentum, decay):
-    w = Weight()
+  def empty(self, name, epsilon, momentum, decay, unique = False):
+    w = Weight(unique = unique)
     w.name = name
     w.shape = None
     w.decay = np.float32(decay)
@@ -111,10 +127,8 @@ class WeightManager(object):
     w._grad = w._wt = w._incr = None
     self._weights.append(w)
     return w
-  
+
   def update(self, batch_size):
     for w in self._weights:
       update(w, batch_size)
-    
-    
 WEIGHTS = WeightManager()

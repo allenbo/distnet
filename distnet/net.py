@@ -83,42 +83,21 @@ class FastNet(object):
 
   def fprop(self, data, train=TRAIN):
     assert len(self.layers) > 0, 'No outputs: uninitialized network!'
-    
-    if not hasattr(self, 'fctime'):
-      self.fctime = 0.0
-    if not hasattr(self, 'convtime'):
-      self.convtime = 0.0
-
     input = data
-    start = time.time()
     fc = False
     for layer in self.layers:
-      if layer.type == 'fc':
-        if fc == False:
-          self.convtime += time.time() - start
-          start = time.time()
-          fc = True
       layer.fprop(input, layer.output, train)
       input = layer.output
-    self.fctime = time.time() - start
     return self.layers[-1].output
 
   def bprop(self, label, train=TRAIN):
     grad = label
-    fc = True
-    start = time.time()
     for i in range(1, len(self.layers) + 1):
       curr = self.layers[-i]
-      if curr.type == 'pool':
-        if fc == True:
-          self.fctime += time.time() - start
-          start = time.time()
-          fc = False
       if curr.disable_bprop: return
-      prev = self.layers[-(i + 1)]     
+      prev = self.layers[-(i + 1)]
       curr.bprop(grad, prev.output, curr.output, prev.output_grad)
       grad = prev.output_grad
-    self.convtime += time.time() - start
 
   def update(self):
     for layer in self.layers:
@@ -190,9 +169,12 @@ class FastNet(object):
     # If data size doesn't match our expected batch_size, reshape outputs.
     if data.shape[1] != self.batch_size:
       self.batch_size = data.shape[1]
+      fc = False
       for layer in self.layers:
         layer.change_batch_size(self.batch_size)
-        layer.init_output()
+        if layer.type = 'fc':
+          fc = True
+        layer.init_output(fc)
 
     if not isinstance(data, GPUArray):
       data = garray.to_gpu(data).astype(np.float32)

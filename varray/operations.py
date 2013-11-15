@@ -1,5 +1,5 @@
 import varray
-from varray.ndarray import VArray, DistMethod, zeros_like
+from varray.ndarray import VArray, DistMethod, zeros_like, WORLD
 from varray.area import Area
 import garray
 
@@ -28,11 +28,72 @@ def dot(x, y):
   c = garray.dot(x.local_data, y.local_data)
   return Varray(c, unique = False)
 
+
+def matrix_add(incr, grad ,alpha = 1.0, beta = 1.0):
+  if len(incr.shape) == 2:
+    garray.matrix_add(inrc.local_data, grad.local_data, alpha = alpha, beta = beta)
+  else:
+    old_shape = incr.local_data.shape
+    incr.local_data = garray.reshape_last(inrc.local_data)
+    garray.matrix_add(incr.local_data, garray.reshape_last(grad.local_data),
+        alpha = alpha, beta = beta)
+    incr.local_data = incr.local_data.reshape(old_shape)
+
 def transpose(mat):
   assert mat.unique == False
   c = zeros_like(mat)
   c.local_data = garray.transpose(mat.local_data)
   return c
+
+def sumto(input, axis = 0):
+  assert 0< axis < len(input.local_shape)
+  if axis == 0:
+    c = garray.sum(garray.reshape_first(input.local_data), axis = 1)
+    if input.unique:
+      if (np.isscalar(input.slice_dim) and axis != input.slice_dim) or (axis not in input.slice_dim):
+        c = WORLD.allreduce(c)
+      else:
+        assert False
+    return VArray(c, unquie = False)
+  elif axis == len(input.local_shape) -1:
+    c = garray.sum(garray.reshape_last(input.local_data), axis = 0)
+    if input.unique:
+      if (np.isscalar(input.slice_dim) and axis != input.slice_dim) or (axis not in input.slice_dim):
+        c = WORLD.allreduce(c)
+      else:
+        assert False
+    return VArray(c, unique = False)
+  else:
+    assert False
+
+
+def maxto(input, axis = 0):
+  assert 0< axis < len(input.local_shape)
+  if axis == 0:
+    c = garray.max(garray.reshape_first(input.local_data), axis = 1)
+    if input.unique:
+      if (np.isscalar(input.slice_dim) and axis != input.slice_dim) or (axis not in input.slice_dim):
+        c = WORLD.allreduce(c)
+      else:
+        assert False
+    return VArray(c, unquie = False)
+  elif axis == len(input.local_shape) -1:
+    c = garray.max(garray.reshape_last(input.local_data), axis = 0)
+    if input.unique:
+      if (np.isscalar(input.slice_dim) and axis != input.slice_dim) or (axis not in input.slice_dim):
+        c = WORLD.allreduce(c, op = max)
+      else:
+        assert False
+    return VArray(c, unique = False)
+  else:
+    assert False
+
+
+def argmaxto(input, axis = 0):
+  assert 0< axis < len(input.local_shape)
+  assert input.unique == False, len(input.local_shape) == 2
+  c = garray.argmax(input.local_data, axis = 1- axis)
+  return VArray(c, unique = False)
 
 
 def sum(input):

@@ -49,14 +49,17 @@ class Layer(object):
   def update(self):
     pass
 
-  def init_output(self):
+  def init_output(self, fc = False):
     out_shape = self.get_output_shape()
     if not multi_gpu:
-      rows = int(np.prod(out_shape[:3]))
-      cols = out_shape[3]
+      rows = int(np.prod(out_shape[:-1]))
+      cols = out_shape[-1]
       out_shape = (rows, cols)
-    self.output = arr.zeros(out_shape, dtype=np.float32)
-    self.output_grad = arr.zeros(out_shape, dtype=np.float32)
+      self.output = arr.zeros(out_shape, dtype=np.float32)
+      self.output_grad = arr.zeros(out_shape, dtype=np.float32)
+    else:
+      self.output = arr.zeros(out_shape, unique = not fc)
+      self.output_grad = arr.zeros(out_shape, unique = not fc)
 
   def dump(self):
     attr = [att for att in dir(self) if not att.startswith('__')]
@@ -96,9 +99,9 @@ class WeightedLayer(Layer):
     Layer.__init__(self, name, type, disable_bprop)
     self.initW = initW
     self.initB = initB
-
-    self.weight = WEIGHTS.empty('weight.' + self.name, epsW, momW, wc)
-    self.bias = WEIGHTS.empty('bias.' + self.name, epsB, momB, 0.0)
+    unique = self.type != 'fc'
+    self.weight = WEIGHTS.empty('weight.' + self.name, epsW, momW, wc, unique)
+    self.bias = WEIGHTS.empty('bias.' + self.name, epsB, momB, 0.0, False)
 
     if weight is not None:
       self.weight.set_weight(weight)
@@ -108,7 +111,7 @@ class WeightedLayer(Layer):
     if bias is not None:
       self.bias.set_weight(bias)
     if biasIncr is not None:
-      self.bias.set_incr(to_gpu(biasIncr))
+      self.bias.set_incr(to_gpu(biasIncr,False))
 
   def _init_weights(self, weight_shape, bias_shape):
     if self.initB is None:
@@ -121,10 +124,10 @@ class WeightedLayer(Layer):
     self.weight.shape = weight_shape
 
     if self.weight.wt is None:
-      self.weight.set_weight(to_gpu(col_randn(weight_shape, np.float32) * self.initW))
+      self.weight.set_weight(to_gpu(col_randn(weight_shape, np.float32) * self.initW, unique))
 
     if self.bias.wt is None:
-      self.bias.set_weight(to_gpu((np.ones(bias_shape, dtype=np.float32) * self.initB)))
+      self.bias.set_weight(to_gpu((np.ones(bias_shape, dtype=np.float32) * self.initB), False))
 
   def clear_weight_incr(self):
     self.weight.incr.fill(0)
@@ -253,7 +256,7 @@ class ConvLayer(WeightedLayer):
       garray.copy_to(grad, tmp)
       self.bias.set_grad(garray.sum(tmp, axis = 1))
     else:
-      self.bais.set_grad(arr.sumto(grad, axis = 0))
+      self.bias.set_grad(arr.sumto(grad, axis = 0))
 
 
 class MaxPoolLayer(Layer):
@@ -399,7 +402,7 @@ class FCLayer(WeightedLayer):
     return self.inputSize
 
   def get_output_shape(self):
-    return (self.outputSize, 1, 1, self.batch_size)
+    return (self.outputSize, self.batch_size)
 
   def fprop(self, input, output, train=TRAIN):
     arr.copy_to(arr.dot(self.weight.wt, input), output)
@@ -437,7 +440,7 @@ class SoftmaxLayer(Layer):
 
   def attach(self, prev_layer):
     input_shape = prev_layer.get_output_shape()
-    self.inputSize, self.batch_size = int(np.prod(input_shape[0:3])), input_shape[3]
+    self.inputSize, self.batch_size = int(np.prod(input_shape[:-1])), input_shape[-1]
     self.outputSize = self.inputSize
     self.inputShape = input_shape
     self.create_cost()
@@ -449,7 +452,7 @@ class SoftmaxLayer(Layer):
       self.cose = arr.zeros((size, 1), unique = False)
 
   def get_output_shape(self):
-    return (self.outputSize, 1, 1, self.batch_size)
+    return (self.outputSize, self.batch_size)
 
   def fprop(self, input, output, train=TRAIN):
     #column max reduce
@@ -557,13 +560,16 @@ class NeuronLayer(Layer):
 
   def attach(self, prev):
     image_shape = prev.get_output_shape()
-    self.numColor, self.img_size, _, self.batch_size = image_shape
+    self.output_shape = image_shape
+    if len(image_shape) == 4:
+      self.numColor, self.img_size, _, self.batch_size = image_shape
+    else:
+      self.numColor, self.batch_size = image_shape
+      self.img_size = 1
 
-  def get_cross_width(self):
-    return 0
 
   def get_output_shape(self):
-    return (self.numColor, self.img_size, self.img_size, self.batch_size)
+    return self.output_shape
 
   def fprop(self, input, output, train=TRAIN):
     self.neuron.activate(input, output)
