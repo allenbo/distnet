@@ -123,8 +123,6 @@ class ImageNetDataProvider(DataProvider):
     DataProvider.__init__(self, data_dir, batch_range)
     self.multiview = multiview
     self.batch_size = batch_size
-    if self.multiview:
-      self.batch_size = 12
     self.images = _prepare_images(data_dir, category_range, batch_range, self.batch_meta)
     self.num_view = 5 * 2 if self.multiview else 1
 
@@ -379,9 +377,12 @@ class ParallelDataProvider(DataProvider):
     #timer = util.EZTimer('fill reserved data')
 
     self.curr_epoch = batch_data.epoch
-    batch_data.data = garray.array(batch_data.data, dtype = np.float32, to2dim = True)
-    batch_data.labels = garray.array(batch_data.labels, dtype = np.float32)
-    self._gpu_batch = batch_data
+    if not self.multiview:
+      batch_data.data = garray.array(batch_data.data, dtype = np.float32, to2dim = True)
+      batch_data.labels = garray.array(batch_data.labels, dtype = np.float32)
+      self._gpu_batch = batch_data
+    else:
+      self._cpu_batch = batch_data
 
   def get_next_batch(self, batch_size):
     if self._reader is None:
@@ -390,27 +391,47 @@ class ParallelDataProvider(DataProvider):
     if self._gpu_batch is None:
       self._fill_reserved_data()
 
-    height, width = self._gpu_batch.data.shape
-    gpu_data = self._gpu_batch.data
-    gpu_labels = self._gpu_batch.labels
-    if self.multiview:
-      batch_size = self.dp.batch_size * self.num_view
+    if not self.multiview:
+      height, width = self._gpu_batch.data.shape
+      gpu_data = self._gpu_batch.data
+      gpu_labels = self._gpu_batch.labels
+      epoch = self._gpu_batch.epoch
 
-    if self.index + batch_size >=  width:
-      width = width - self.index
-      labels = gpu_labels[self.index/self.num_view:(self.index + batch_size) / self.num_view]
+      if self.index + batch_size >=  width:
+        width = width - self.index
+        labels = gpu_labels[self.index/self.num_view:(self.index + batch_size) / self.num_view]
 
-      data = garray.zeros((height, width), dtype = np.float32)
-      garray.partial_copy_to(gpu_data, data, 0, height, self.index, self.index + width)
+        data = garray.zeros((height, width), dtype = np.float32)
+        garray.partial_copy_to(gpu_data, data, 0, height, self.index, self.index + width)
 
-      self.index = 0
-      self._fill_reserved_data()
+        self.index = 0
+        self._fill_reserved_data()
+      else:
+        labels = gpu_labels[self.index/ self.num_view:(self.index + batch_size) / self.num_view]
+        data = garray.zeros((height, batch_size), dtype = np.float32)
+        garray.partial_copy_to(gpu_data, data, 0, height, self.index, self.index + batch_size)
+        self.index += batch_size
     else:
-      labels = gpu_labels[self.index/ self.num_view:(self.index + batch_size) / self.num_view]
-      data = garray.zeros((height, batch_size), dtype = np.float32)
-      garray.partial_copy_to(gpu_data, data, 0, height, self.index, self.index + batch_size)
-      self.index += batch_size
-    return BatchData(data, labels, self._gpu_batch.epoch)
+      height, width = self._cpu_batch.data.shape
+      cpu_data = self._cpu_batch.data
+      cpu_labels = slf._cpu_batch.labels
+      epoch = self._cpu_batch.epoch
+
+
+      width /= self.num_view
+      if self.index + batch_size >=  width:
+        batch_size = width - self.index
+
+      labels = cpu_labels[self.index:self.index + batch_size]
+      data = np.zeros((height, batch_size * self.num_view), dtype = np.float32)
+      for i in range(self.num_view):
+        data[:, i* batch_size: (i+ 1) * batch_size] = cpu_data[:, self.index + width * i : self.index + width * i + batch_size]
+
+      self.index = (self.index + batch_size) / width
+      data = garray.array(np.require(data, requirements = 'C'))
+      labels = garray.array(np.require(labels, requirements = 'C'))
+
+    return BatchData(data, labels, epoch)
 
 
 dp_dict = {}
