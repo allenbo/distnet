@@ -42,7 +42,10 @@ class VArray(object):
       assert False, 'Array has no dtype attr'
 
     if not self.unique:
-      self.local_data = garray.array(array)
+      if isinstance(array, garray.GPUArray):
+        self.local_data = array
+      else:
+        self.local_data = garray.array(array)
       self.local_area = Area.make_area(self.local_shape)
     else:
       if self.slice_method is None:
@@ -262,21 +265,71 @@ class VArray(object):
     return self.slice_method == other.slice_method and self.slice_dim == other.slice_dim and self.unique == other.unique
 
   def __add__(self, other):
-    assert isinstance(other, VArray), 'Other have to be an VArray'
-    assert self.check_param(other)
-
     c = zeros_like(self)
-    c.local_data = self.local_data + other.local_data
+    if isinstance(other, VArray):
+      if self.check_param(other):
+        c.local_data = self.local_data + other.local_data
+        return c
+      elif self.unique == False and other.unique == False:
+        c.local_data = self.local_data + other.local_data
+        return c
+      else:
+        assert False
+    elif np.isscalar(other):
+      c.local_data = self.local_data + other
+      return c
+    else:
+      assert False, 'No implementation'
 
-    return c
+
 
   def __sub__(self, other):
-    assert isinstance(other, VArray), 'Other have to be an VArray'
-    assert self.check_param(other)
-
     c = zeros_like(self)
-    c.local_data = self.local_data - other.local_data
+    if isinstance(other, VArray):
+      if self.check_param(other) or self.unique == False and other.unique == False:
+        c.local_data = self.local_data - other.local_data
+      else:
+        assert False
+    elif np.isscalar(other):
+      c.local_data = self.local_data - other
+    else:
+      assert False, 'No implementation'
+
     return c
+
+  def __mult__(self, other):
+    if np.isscalar(other):
+      c = zeros_like(self)
+      garray.copy_to(self.local_data * other, c.local_data)
+      return c
+    else:
+      assert self.check_param(other)
+      c = zeros_like(self)
+      c.local_data   = self.local_data * other_local_data
+      return c
+  def __eq__(self, other):
+    assert self.check_param(other)
+    c = zeros_like(self)
+    c.local_data = self.local_data == other.local_data
+
+    return c
+
+
+  def sum(self):
+    local_sum = garray.sum(self.local_data)
+    if self.unique:
+      return local_sum
+    else:
+      global_sum = WORLD.allreduce(local_sum)
+      return global_sum
+
+  def max(self):
+    local_max = garray.max(self.local_data)
+    if self.unique:
+      return local_max
+    else:
+      global_max = WORLD.allreduce(local_max, op = max)
+      return global_max
 
   def cross_communicate(self, stride, filter_size, padding = 0):
     r, c = self.slice_dim
@@ -408,14 +461,30 @@ class VArray(object):
       return np_tmp
     return data
 
+  def add(self, other, axis = -1):
+    if isinstanse(other, VArray):
+      data = other.local_data
+    else:
+      data = other
+    if axis == len(self.local_shape) - 1 or axis == -1:
+      tmp = garray.reshape_last(self.local_data) + data
+    elif axis == 0:
+      tmp = garray.reshape_first(self.local_data) + data
+    else:
+      assert False, 'No implementation for axis =', axis
+    self.local_data = tmp.reshape(self.local_shape)
 
-def array(a, unique = True, slice_method = DistMethod.Stripe, slice_dim = None):
+  def fill(self, scalar):
+    self.local_data.fill(scalar)
+
+
+def array(a, unique = True, slice_method = DistMethod.Square, slice_dim = (1, 2)):
   return VArray(a, unique, slice_method, slice_dim)
 
 def square_array(a, slice_dim, unique = True):
   return VArray(a, unique, slice_method = DistMethod.Square, slice_dim = slice_dim)
 
-def zeros(shape, dtype = np.float32, unique = True, slice_method = DistMethod.Square, slice_dim = None):
+def zeros(shape, dtype = np.float32, unique = True, slice_method = DistMethod.Square, slice_dim = (1, 2)):
   a = np.zeros(shape).astype(np.float32)
   return VArray(a, unique, slice_method, slice_dim)
 

@@ -1,7 +1,7 @@
 from varray.ndarray import VArray, DistMethod, MASTER, rank, WORLD
 import numpy as np
 
-def randn(shape, dtype = np.float32, unique = True, slice_method = DistMethod.Stripe, slice_dim = None):
+def randn(shape, dtype = np.float32, unique = True, slice_method = DistMethod.Square, slice_dim = (1, 2)):
   a = np.random.randn(*shape).astype(dtype)
   return VArray(a, unique, slice_method, slice_dim)
 

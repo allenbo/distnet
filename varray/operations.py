@@ -1,6 +1,72 @@
-from varray.ndarray import VArray, DistMethod
+import varray
+from varray.ndarray import VArray, DistMethod, zeros_like
 from varray.area import Area
 import garray
+
+
+def copy_to(input, output):
+  assert input.unique == output.unique
+  assert input.shape == output.shape
+
+  garray.copy_to(input.local_data, output.local_data)
+
+
+def bigger_than_scaler(input, scaler):
+  garray.bigger_than_scaler(input.local_data, scaler)
+
+def dot(x, y):
+  assert isinstance(x, VArray):
+  assert isinstance(y, VArray)
+
+  if x.unique:
+    x.gather()
+    x.local_data = garray.reshape_last(x.local_data)
+  if y.unique:
+    y.gather()
+    y.local_data = garray.reshape_last(y.local_data)
+
+  c = garray.dot(x.local_data, y.local_data)
+  return Varray(c, unique = False)
+
+def transpose(mat):
+  assert mat.unique == False
+  c = zeros_like(mat)
+  c.local_data = garray.transpose(mat.local_data)
+  return c
+
+
+def sum(input):
+  return input.sum()
+
+def exp(input):
+  c = zeros_like(input)
+  garray.copy_to(input.local_data, c.local_data)
+  return c
+
+def iexp(input):
+  garray.iexp(input.local_data)
+
+def logreg_cost_col(output, label, cost):
+  assert not any([output.unique, label.unique, cost.unique])
+  garray.logreg_cost_col(output.local_data, label.local_data, cost.local_data)
+
+def max(input):
+  return input.max()
+
+def softmax_bprop(output, label, out_grad):
+  garray.softmax_bprop(output.local_data, label.local_data, out_grad.local_data)
+
+def relu_activate(input, output, e):
+  garray.relu_active(input.local_data, output.local_data, e)
+
+def relu_compute_grad(grad, output, out_grad, e):
+  garray.relu_comput_grad(grad.local_data, output.local_data, out_grad.local_data, e)
+
+def tanh_activate(input, output, a, b):
+  garray.tanh_avtivate(input.local_data, output.local_data, a, b)
+
+def tanh_compute_grad(grad, output, out_grad, a, b):
+  garray.tanh_compute_grad(grad.local_data, output.local_data, out_grad.local_data, a, b)
 
 def convolution(input, filter ,output, image_y, output_y, output_x, padding, stride, channel, group):
   assert isinstance(input, VArray) and isinstance(filter, VArray) and isinstance(output, VArray)
@@ -232,27 +298,4 @@ def rnormcrossmapundo(grad, denom, input, output, out_grad, channel, size, image
 
   out_grad.local_data = out_grad.local_data.reshape(input.local_shape)
 
-def max():
-  return
 
-def argmax():
-  return
-
-def exp():
-  return
-
-def iexp():
-  return
-
-
-def logreg_cost_col():
-  return
-
-def log_reg_cost_col_multiview():
-  return
-
-def same_reduce_multiview():
-  return
-
-def softmax_bprop():
-  return

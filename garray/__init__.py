@@ -19,6 +19,13 @@ def reshape_last(input):
   return input.reshape((row, col))
 
 
+def resehape_first(input):
+  shape = input.shape
+  row = shape[0]
+  col = int(np.prod(shape[1:]))
+  return input.reshape((row, col))
+
+
 def array(obj, dtype = np.float32, to2dim = False):
   if len(obj.shape) != 2 and len(obj.shape) != 1 and to2dim:
     obj = reshape_last(obj)
@@ -64,7 +71,7 @@ def rnormcrossmapundo(*args):
 
 
 old_add = GPUArray.__add__
-def add(self, other):
+def newadd(self, other):
   if other.shape == self.shape:
     return old_add(self, other)
   if len(other.shape) == 2:
@@ -82,10 +89,11 @@ def add(self, other):
       assert False, 'Shape mismatch' + str(self.shape) + '+' + str(other.shape)
     return rst
   assert False, 'Shape mismatch' + str(self.shape) + '+' + str(other.shape)
-GPUArray.__add__ = add
+GPUArray.__add__ = newadd
+
 
 old_sub = GPUArray.__sub__
-def sub(self, other):
+def newsub(self, other):
   if other.shape == self.shape:
     return old_add(self, other)
   if len(other.shape) == 2:
@@ -103,10 +111,10 @@ def sub(self, other):
       assert False, 'Shape mismatch' + str(self.shape) + '+' + str(other.shape)
     return rst
   assert False, 'Shape mismatch' + str(self.shape) + '+' + str(other.shape)
-GPUArray.__sub__ = sub
+GPUArray.__sub__ = newsub
 
 old_div = GPUArray.__div__
-def div(self, other):
+def newdiv(self, other):
   if np.isscalar(other):
     return old_div(self, other)
   else:
@@ -118,7 +126,7 @@ def div(self, other):
     else:
       rst = old_div(self,other)
     return rst
-GPUArray.__div__ = div
+GPUArray.__div__ = newdiv
 
 old_max = max
 def max(input, axis = None):
@@ -161,7 +169,7 @@ logreg_cost_col = logreg_cost_col_reduce
 old_sum = gpuarray.sum
 def sum(input, axis = None):
   if axis is None:
-    return old_sum(input)
+    return old_sum(input).get().item()
   else:
     assert axis < 2
     if axis == 0:
@@ -171,6 +179,3 @@ def sum(input, axis = None):
       rst = zeros((input.shape[0], 1), dtype = np.float32)
       add_row_sum_to_vec(rst, input)
     return rst
-
-
-
