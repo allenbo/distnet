@@ -15,7 +15,7 @@ def bigger_than_scaler(input, scaler):
   garray.bigger_than_scaler(input.local_data, scaler)
 
 def dot(x, y):
-  assert isinstance(x, VArray):
+  assert isinstance(x, VArray)
   assert isinstance(y, VArray)
 
   if x.unique:

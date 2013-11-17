@@ -6,7 +6,7 @@ import numpy as np
 
 import garray
 multi_gpu = False
-if os.environ['MULTIGPU'] == 'yes':
+if os.environ.get('MULTIGPU', 'no') == 'yes':
   import varray as arr
   multi_gpu = True
 else:
@@ -229,9 +229,9 @@ class ConvLayer(WeightedLayer):
         self.outputSize, -self.padding, self.stride, self.numColor, 1)
 
     if not multi_gpu:
-      garray.copy_to(output, self.tmp)
       tmp = garray.zeros((self.numFilter, self.get_single_img_size() * self.batch_size / self.numFilter), dtype=np.float32)
-      garray.copy_to(self.tmp + self.bias.wt, output)
+      garray.copy_to(output, tmp)
+      garray.copy_to(tmp + self.bias.wt, output)
     else:
       arr.copy_to(output.add(self.bias, axis = 0), output)
 
@@ -391,8 +391,8 @@ class FCLayer(WeightedLayer):
 
   def attach(self, prev):
     input_shape = prev.get_output_shape()
-    self.inputSize = int(np.prod(input_shape[0:3]))
-    self.batch_size = input_shape[3]
+    self.inputSize = int(np.prod(input_shape[:-1]))
+    self.batch_size = input_shape[-1]
     weight_shape = (self.outputSize, self.inputSize)
     bias_shape = (self.outputSize, 1)
     self._init_weights(weight_shape, bias_shape)
@@ -443,7 +443,7 @@ class SoftmaxLayer(Layer):
     self.inputSize, self.batch_size = int(np.prod(input_shape[:-1])), input_shape[-1]
     self.outputSize = self.inputSize
     self.inputShape = input_shape
-    self.create_cost()
+    self.create_cost(self.batch_size)
 
   def create_cost(self, size):
     if not multi_gpu:
@@ -471,8 +471,8 @@ class SoftmaxLayer(Layer):
       print_matrix(output, self.name)
 
 
-  def change_batch_size(self):
-    Layer.change_batch_size(self.batch_size)
+  def change_batch_size(self, batch_size):
+    Layer.change_batch_size(self, batch_size)
     self.create_cost(self.batch_size)
 
   def logreg_cost(self, label, output):
@@ -566,6 +566,9 @@ class NeuronLayer(Layer):
     else:
       self.numColor, self.batch_size = image_shape
       self.img_size = 1
+
+  def change_batch_size(self, batch_size):
+    self.output_shape = tuple(list(self.output_shape)[:-1] + [batch_size])
 
 
   def get_output_shape(self):

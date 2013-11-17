@@ -84,7 +84,6 @@ class FastNet(object):
   def fprop(self, data, train=TRAIN):
     assert len(self.layers) > 0, 'No outputs: uninitialized network!'
     input = data
-    fc = False
     for layer in self.layers:
       layer.fprop(input, layer.output, train)
       input = layer.output
@@ -171,9 +170,9 @@ class FastNet(object):
       self.batch_size = data.shape[1]
       fc = False
       for layer in self.layers:
-        layer.change_batch_size(self.batch_size)
-        if layer.type = 'fc':
+        if layer.type == 'fc':
           fc = True
+        layer.change_batch_size(self.batch_size)
         layer.init_output(fc)
 
     if not isinstance(data, GPUArray):

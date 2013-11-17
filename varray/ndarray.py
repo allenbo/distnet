@@ -471,7 +471,7 @@ class VArray(object):
     elif axis == 0:
       tmp = garray.reshape_first(self.local_data) + data
     else:
-      assert False, 'No implementation for axis =', axis
+      assert False, 'No implementation for axis = %s' % axis
     self.local_data = tmp.reshape(self.local_shape)
 
   def fill(self, scalar):
