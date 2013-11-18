@@ -14,7 +14,7 @@ def copy_to(input, output):
 def bigger_than_scaler(input, scaler):
   garray.bigger_than_scaler(input.local_data, scaler)
 
-def dot(x, y):
+def matrixmult(x, y):
   assert isinstance(x, VArray)
   assert isinstance(y, VArray)
 
@@ -25,7 +25,7 @@ def dot(x, y):
     y.gather()
     y.local_data = garray.reshape_last(y.local_data)
 
-  c = garray.dot(x.local_data, y.local_data)
+  c = garray.matrixmult(x.local_data, y.local_data)
   return Varray(c, unique = False)
 
 
@@ -45,56 +45,16 @@ def transpose(mat):
   c.local_data = garray.transpose(mat.local_data)
   return c
 
-def sumto(input, axis = 0):
-  assert 0< axis < len(input.local_shape)
-  if axis == 0:
-    c = garray.sum(garray.reshape_first(input.local_data), axis = 1)
-    if input.unique:
-      if (np.isscalar(input.slice_dim) and axis != input.slice_dim) or (axis not in input.slice_dim):
-        c = WORLD.allreduce(c)
-      else:
-        assert False
-    return VArray(c, unquie = False)
-  elif axis == len(input.local_shape) -1:
-    c = garray.sum(garray.reshape_last(input.local_data), axis = 0)
-    if input.unique:
-      if (np.isscalar(input.slice_dim) and axis != input.slice_dim) or (axis not in input.slice_dim):
-        c = WORLD.allreduce(c)
-      else:
-        assert False
-    return VArray(c, unique = False)
-  else:
-    assert False
+def sumto(input, shape = None, axis = 0):
+  return input.sumto(shape, axis)
+
+def maxto(input, shape = None, axis = 0):
+  return input.maxto(shape, axis)
 
 
-def maxto(input, axis = 0):
-  assert 0< axis < len(input.local_shape)
-  if axis == 0:
-    c = garray.max(garray.reshape_first(input.local_data), axis = 1)
-    if input.unique:
-      if (np.isscalar(input.slice_dim) and axis != input.slice_dim) or (axis not in input.slice_dim):
-        c = WORLD.allreduce(c)
-      else:
-        assert False
-    return VArray(c, unquie = False)
-  elif axis == len(input.local_shape) -1:
-    c = garray.max(garray.reshape_last(input.local_data), axis = 0)
-    if input.unique:
-      if (np.isscalar(input.slice_dim) and axis != input.slice_dim) or (axis not in input.slice_dim):
-        c = WORLD.allreduce(c, op = max)
-      else:
-        assert False
-    return VArray(c, unique = False)
-  else:
-    assert False
-
-
-def argmaxto(input, axis = 0):
-  assert 0< axis < len(input.local_shape)
-  assert input.unique == False, len(input.local_shape) == 2
-  c = garray.argmax(input.local_data, axis = 1- axis)
-  return VArray(c, unique = False)
-
+def argmaxto(input, shape = None, axis = 0):
+  return input.argmaxto(shape, axis = axis)
+  
 
 def sum(input):
   return input.sum()

@@ -461,18 +461,75 @@ class VArray(object):
       return np_tmp
     return data
 
-  def add(self, other, axis = -1):
+  def add(self, other, dst = None, shape = None, axis = 0):
     if isinstanse(other, VArray):
       data = other.local_data
     else:
       data = other
-    if axis == len(self.local_shape) - 1 or axis == -1:
+
+    if axis == len(self.local_shape) - 1:
       tmp = garray.reshape_last(self.local_data) + data
     elif axis == 0:
       tmp = garray.reshape_first(self.local_data) + data
     else:
       assert False, 'No implementation for axis = %s' % axis
-    self.local_data = tmp.reshape(self.local_shape)
+
+    if dst is not None:
+      assert self.check_param(dst)
+      c = dst
+    else:
+      c = zeros_like(self)
+    c.local_data = tmp.reshape(self.local_shape)
+    return c
+
+  def sumto(self, shape = None, axis = 0):
+    assert 0 <= axis < len(self.local_shape)
+    if axis == 0:
+      c = garray.sum(garray.reshape_first(self.local_data), axis = 1)
+      if self.unique:
+        if (np.isscalar(self.slice_dim) and axis != self.slice_dim) or (axis not in input.slice_dim):
+          c = WORLD.allreduce(c)
+        else:
+          assert False
+      return VArray(c, unquie = False)
+    elif axis == len(self.local_shape) -1:
+      c = garray.sum(garray.reshape_last(self.local_data), axis = 0)
+      if self.unique:
+        if (np.isscalar(self.slice_dim) and axis != self.slice_dim) or (axis not in self.slice_dim):
+          c = WORLD.allreduce(c)
+        else:
+          assert False
+      return VArray(c, unique = False)
+    else:
+      assert False
+
+  def maxto(self, shape = None, axis = 0):
+    assert 0< axis < len(self.local_shape)
+    if axis == 0:
+      c = garray.max(garray.reshape_first(self.local_data), axis = 1)
+      if self.unique:
+        if (np.isscalar(self.slice_dim) and axis != self.slice_dim) or (axis not in self.slice_dim):
+          c = WORLD.allreduce(c)
+        else:
+          assert False
+      return VArray(c, unquie = False)
+    elif axis == len(self.local_shape) -1:
+      c = garray.max(garray.reshape_last(self.local_data), axis = 0)
+      if self.unique:
+        if (np.isscalar(self.slice_dim) and axis != self.slice_dim) or (axis not in self.slice_dim):
+          c = WORLD.allreduce(c, op = max)
+        else:
+          assert False
+      return VArray(c, unique = False)
+    else:
+      assert False
+
+  def argmaxto(self, shape = None, axis = 0):
+    assert 0< axis < len(self.local_shape)
+    assert self.unique == False, len(self.local_shape) == 2
+    c = garray.argmax(self.local_data, axis = 1- axis)
+    return VArray(c, unique = False)
+
 
   def fill(self, scalar):
     self.local_data.fill(scalar)

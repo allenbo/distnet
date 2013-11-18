@@ -50,6 +50,7 @@ class Trainer:
     self.net = net
     self.curr_batch = self.curr_epoch = 0
     self.annealing_factor = 10
+    self.multiview = False
     self.start_time = time.time()
 
     for k, v in kw.iteritems():
@@ -189,8 +190,6 @@ class Trainer:
     self._finished_training()
 
   def report(self):
-    print 'convolution time', self.net.convtime
-    print 'fc time', self.net.fctime
     rep = self.net.get_report()
     if rep is not None:
       print rep

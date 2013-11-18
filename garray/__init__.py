@@ -19,7 +19,7 @@ def reshape_last(input):
   return input.reshape((row, col))
 
 
-def resehape_first(input):
+def reshape_first(input):
   shape = input.shape
   row = shape[0]
   col = int(np.prod(shape[1:]))
@@ -92,6 +92,28 @@ def newadd(self, other):
 GPUArray.__add__ = newadd
 
 
+def object_add(self, other, dst = None, shape = None, axis = 0):
+  if shape is None:
+    shape = self.shape
+  assert axis == 0 or axis == len(shape) - 1
+  tmp = self.reshape(shape)
+
+  if dst is None:
+    c = zeros_like(self)
+  else:
+    c = dst
+  if axis == 0:
+    tmp = reshape_first(tmp)
+    copy_to(tmp + other, c)
+  else:
+    tmp = reshape_last(tmp)
+    copy_to(tmp + other, c)
+
+  return c
+
+GPUArray.add = object_add
+
+
 old_sub = GPUArray.__sub__
 def newsub(self, other):
   if other.shape == self.shape:
@@ -143,6 +165,22 @@ def max(input, axis = None):
     return rst
 
 
+def object_maxto(self, shape = None, axis = 0):
+  if shape is None:
+    shape = self.shape
+  assert axis == 0 or axis == len(shape) -1
+  tmp = self.reshape(shape)
+  if axis == 0:
+    tmp = reshape_first(tmp)
+    c = max(tmp, axis = 1)
+  else:
+    tmp = reshape_last(tmp)
+    c = max(tmp, axis = 0)
+  return c
+
+GPUArray.maxto = object_maxto
+
+
 def argmax(input, axis):
   if axis == 0:
     rst = zeros((1, input.shape[1]), dtype = np.float32)
@@ -153,6 +191,22 @@ def argmax(input, axis):
   else:
     assert False, 'Wrong axis'
   return rst
+
+def object_argmaxto(self, shape = None, axis = 0):
+  if shape is None:
+    shape = self.shape
+
+  assert axis == 0 or axis == len(shape) -1
+  tmp = self.reshape(shape)
+  if axis == 0:
+    tmp = reshape_first(tmp)
+    c = argmax(tmp, axis = 1)
+  else:
+    tmp = reshape_last(tmp)
+    c = argmax(tmp, axis = 0)
+  return c
+
+GPUArray.argmaxto = object_argmaxto
 
 def exp(input, output = None):
   if output is None:
@@ -179,3 +233,19 @@ def sum(input, axis = None):
       rst = zeros((input.shape[0], 1), dtype = np.float32)
       add_row_sum_to_vec(rst, input)
     return rst
+
+def object_sumto(self, shape= None, axis = 0):
+  if shape is None:
+    shape = self.shape
+
+  assert axis == 0 or axis == len(shape) -1
+  tmp = self.reshape(shape)
+  if axis == 0:
+    tmp = reshape_first(tmp)
+    c = sum(tmp, axis = 1)
+  else:
+    tmp = reshape_last(tmp)
+    c = sum(tmp, axis = 0)
+  return c
+
+GPUArray.sumto = object_sumto

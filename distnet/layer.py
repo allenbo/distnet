@@ -111,7 +111,7 @@ class WeightedLayer(Layer):
     if bias is not None:
       self.bias.set_weight(bias)
     if biasIncr is not None:
-      self.bias.set_incr(to_gpu(biasIncr,False))
+      self.bias.set_incr(biasIncr)
 
   def _init_weights(self, weight_shape, bias_shape):
     if self.initB is None:
@@ -124,10 +124,10 @@ class WeightedLayer(Layer):
     self.weight.shape = weight_shape
 
     if self.weight.wt is None:
-      self.weight.set_weight(to_gpu(col_randn(weight_shape, np.float32) * self.initW, unique))
+      self.weight.set_weight(col_randn(weight_shape, np.float32) * self.initW)
 
     if self.bias.wt is None:
-      self.bias.set_weight(to_gpu((np.ones(bias_shape, dtype=np.float32) * self.initB), False))
+      self.bias.set_weight(np.ones(bias_shape, dtype=np.float32) * self.initB)
 
   def clear_weight_incr(self):
     self.weight.incr.fill(0)
@@ -228,12 +228,7 @@ class ConvLayer(WeightedLayer):
     arr.convolution(input, self.weight.wt, output, self.img_size, self.outputSize,
         self.outputSize, -self.padding, self.stride, self.numColor, 1)
 
-    if not multi_gpu:
-      tmp = garray.zeros((self.numFilter, self.get_single_img_size() * self.batch_size / self.numFilter), dtype=np.float32)
-      garray.copy_to(output, tmp)
-      garray.copy_to(tmp + self.bias.wt, output)
-    else:
-      arr.copy_to(output.add(self.bias, axis = 0), output)
+    output.add(self.bias.wt, dst = output, shape = self.get_output_shape(), axis = 0)
 
     if PFout:
       print_matrix(output, self.name)
@@ -251,12 +246,7 @@ class ConvLayer(WeightedLayer):
         self.outputSize, self.filterSize, -self.padding, self.stride, self.numColor)
 
     # bprop bias
-    if not multi_gpu:
-      tmp = garray.zeros((self.numFilter, self.get_single_img_size() * self.batch_size / self.numFilter), dtype=np.float32)
-      garray.copy_to(grad, tmp)
-      self.bias.set_grad(garray.sum(tmp, axis = 1))
-    else:
-      self.bias.set_grad(arr.sumto(grad, axis = 0))
+    self.bias.set_grad(grad.sumto(shape = self.get_output_shape(), axis = 0))
 
 
 class MaxPoolLayer(Layer):
@@ -405,8 +395,8 @@ class FCLayer(WeightedLayer):
     return (self.outputSize, self.batch_size)
 
   def fprop(self, input, output, train=TRAIN):
-    arr.copy_to(arr.dot(self.weight.wt, input), output)
-    arr.copy_to(output + self.bias.wt, output)
+    arr.copy_to(arr.matrixmult(self.weight.wt, input), output)
+    output.add(self.bias.wt, dst = output, axis = 0)
     if train == TEST:
       if self.dropRate > 0.0:
         output *= (1.0 - self.dropRate)
@@ -424,14 +414,17 @@ class FCLayer(WeightedLayer):
     if self.dropRate > 0.0:
       arr.copy_to(grad * self.dropMask, grad)
 
-    arr.copy_to(arr.transpose(arr.dot(arr.transpose(grad), self.weight.wt)), outGrad)
+    arr.copy_to(arr.transpose(arr.matrixmult(arr.transpose(grad), self.weight.wt)), outGrad)
 
-    self.weight.set_grad(arr.dot(grad, arr.transpose(input)))
-    if not multi_gpu:
-      self.bias.set_grad(garray.sum(grad, axis = 1))
-    else:
-      self.bias.set_grad(arr.sumto(grad, axis = 0))
+    self.weight.set_grad(arr.matrixmult(grad, arr.transpose(input)))
+    self.bias.set_grad(grad.sumto(axis = 0))
 
+
+
+#def zeros(shape, dtype = np.float32, unique = False):
+#  if not multi_gpu:
+#    return garray.zeros(shape = shape, dtype= dtype)
+#  return varray.zeros(shape = shape, dtype = dtype, unique = unique)
 
 class SoftmaxLayer(Layer):
   def __init__(self, name, disable_bprop=False):
@@ -449,24 +442,19 @@ class SoftmaxLayer(Layer):
     if not multi_gpu:
       self.cost = garray.zeros((size, 1), dtype=np.float32)
     else:
-      self.cose = arr.zeros((size, 1), unique = False)
+      self.cost = arr.zeros((size, 1), unique = False)
 
   def get_output_shape(self):
     return (self.outputSize, self.batch_size)
 
   def fprop(self, input, output, train=TRAIN):
     #column max reduce
-    if not multi_gpu:
-      max = garray.max(input, axis = 0)
-    else:
-      max = arr.maxto(input, axis = 1)
+    max = input.maxto(axis = 1)
     arr.copy_to(input - max, output)
     arr.iexp(output)
-    if not multi_gpu:
-      sum = garray.sum(output, axis = 0)
-    else:
-      sum = arr.sumto(output, axis = 1)
+    sum = output.sumto(axis = 1)
     arr.copy_to(output / sum, output)
+
     if PFout:
       print_matrix(output, self.name)
 
@@ -476,11 +464,7 @@ class SoftmaxLayer(Layer):
     self.create_cost(self.batch_size)
 
   def logreg_cost(self, label, output):
-    #column max id
-    if not multi_gpu:
-      maxid = garray.argmax(output, axis = 0)
-    else:
-      maxid = arr.argmaxto(output, axis = 1)
+    maxid = output.argmaxto(axis = 1)
     self.batchCorrect = arr.sum(label == maxid)
     assert np.isscalar(self.batchCorrect)
     arr.logreg_cost_col(output, label, self.cost)

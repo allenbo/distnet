@@ -949,7 +949,7 @@ def gpu_partial_copy_to(x, y, row_from, row_to, col_from, col_to):
 
 #@util.lazyinit(_initialize_cublas)
 @util.timed_fn
-def dot(x, y):
+def matrixmult(x, y):
   if isinstance(x, GPUArray):
     result = GPUArray((y.shape[1], x.shape[0]), dtype=x.dtype)
     sgemm('t', 't', x.shape[0], y.shape[1], x.shape[1], 1.0,

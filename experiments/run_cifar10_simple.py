@@ -1,12 +1,12 @@
 #!/usr/bin/python2.7
 
-from fastnet import data, trainer, net, parser
+from distnet import data, trainer, net, parser
 
 test_id = 'cifar-test-1'
 
 data_dir = '/ssd/nn-data/cifar-10.old/'
-checkpoint_dir = './checkpoint/'
-param_file = 'config/cifar-10-26pct.cfg'
+checkpoint_dir = '../checkpoint/'
+param_file = '../config/cifar-10-18pct.cfg'
 
 train_range = range(1, 41) #1,2,3,....,40
 test_range = range(41, 49) #41, 42, ..., 48

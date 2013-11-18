@@ -6,6 +6,11 @@ import time
 import traceback
 import numpy as np
 
+if os.environ.get('MULTIGPU', 'no') == 'yes':
+  from varray import distlog
+else:
+  distlog = lambda(_fn): _fn
+
 DEBUG = 0
 INFO = 1
 WARN = 2
@@ -21,6 +26,9 @@ level_to_char = { DEBUG : 'D',
 
 program_start = time.time()
 log_mutex = threading.Lock()
+
+
+@distlog
 def log(msg, *args, **kw):
   level = kw.get('level', INFO)
   with log_mutex:
@@ -41,6 +49,9 @@ def log_info(msg, *args, **kw): log(msg, *args, level=INFO, caller_frame=2)
 def log_warn(msg, *args, **kw): log(msg, *args, level=WARN, caller_frame=2)
 def log_error(msg, *args, **kw): log(msg, *args, level=ERROR, caller_frame=2)
 def log_fatal(msg, *args, **kw): log(msg, *args, level=FATAL, caller_frame=2)
+
+
+
 
 class Timer:
   def __init__(self):
