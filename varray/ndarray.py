@@ -398,7 +398,6 @@ class VArray(object):
       u, d, l, r = [padding] * 4
       old_shape = list(self.tmp_local_data.shape)
       old_area = copy.deepcopy(self.tmp_local_area)
-      print old_area
 
       #not most top
       if self.local_area._from[row] != 0:

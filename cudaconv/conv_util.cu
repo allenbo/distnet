@@ -2234,12 +2234,9 @@ void convContrastNormUndo(NVMatrix& outGrads, NVMatrix& denoms, NVMatrix& meanDi
 void convResponseNormUndo(NVMatrix& outGrads, NVMatrix& denoms, NVMatrix& inputs, NVMatrix& acts, NVMatrix& target, int numFilters,
     int sizeX, int imageY, float addScale, float powScale, float scaleTargets, float scaleOutput) {
   int numImages = outGrads.getNumCols();
-  std::cout << " number of filters " << numFilters
-    << " number of rows " << outGrads.getNumRows() << std::endl;
   int imgPixels = outGrads.getNumRows() / numFilters;
 
   int imageX = imgPixels / imageY;
-  std::cout << imageX << " " << imageY << " " << imgPixels << std::endl;
   assert(imageX * imageY == imgPixels);
 
   assert(outGrads.getNumRows() == numFilters * imgPixels);

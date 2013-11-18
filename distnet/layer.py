@@ -232,13 +232,6 @@ class ConvLayer(WeightedLayer):
 
 
   def fprop(self, input, output, train=TRAIN):
-    print 'input  global shape', input.shape
-    print 'input local shape', input.local_shape
-    print 'weight global shape', self.weight.wt.shape
-    print 'weight local shape', self.weight.wt.local_shape
-
-    print 'output global shape', output.shape
-    print 'output local shape', output.local_shape
     arr.convolution(input, self.weight.wt, output, self.img_size, self.outputSize,
         self.outputSize, -self.padding, self.stride, self.numColor, 1)
 
