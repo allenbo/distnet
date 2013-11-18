@@ -41,6 +41,15 @@ def get_seed():
 copy_to = gpu_copy_to
 partial_copy_to = gpu_partial_copy_to
 
+
+def partial_copy(input, f, t):
+  shape = list(input.shape)
+  shape[-1] = t - f
+  data = zeros(tuple(shape), dtype = np.float32)
+  partial_copy_to(input, data, 0, shape[0], f, t)
+  return data
+
+
 convolution = cudaconv.convFilterActs
 
 def bconvolution(*args):

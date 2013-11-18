@@ -166,8 +166,8 @@ class FastNet(object):
     timer.start()
 
     # If data size doesn't match our expected batch_size, reshape outputs.
-    if data.shape[1] != self.batch_size:
-      self.batch_size = data.shape[1]
+    if data.shape[-1] != self.batch_size:
+      self.batch_size = data.shape[-1]
       fc = False
       for layer in self.layers:
         if layer.type == 'fc':
@@ -175,14 +175,14 @@ class FastNet(object):
         layer.change_batch_size(self.batch_size)
         layer.init_output(fc)
 
-    if not isinstance(data, GPUArray):
-      data = garray.to_gpu(data).astype(np.float32)
+    #if not isinstance(data, GPUArray):
+    #  data = garray.to_gpu(data).astype(np.float32)
 
-    if not isinstance(label, GPUArray):
-      label = garray.to_gpu(label).astype(np.float32)
+    #if not isinstance(label, GPUArray):
+    #  label = garray.to_gpu(label).astype(np.float32)
 
     label = label.reshape((1, label.size))
-    self.numCase += data.shape[1]
+    self.numCase += data.shape[-1]
 
     return data, label
 

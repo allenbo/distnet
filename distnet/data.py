@@ -15,9 +15,16 @@ import sys
 import threading
 import time
 
+multi_gpu = False
+if os.environ.get('MULTIGPU', 'no') == 'yes':
+  import varray as arr
+  multi_gpu = True
+else:
+  import garray as arr
 
-seed = garray.get_seed()
-seed = 0
+
+
+seed = arr.get_seed()
 assert type(seed) == int
 random.seed(seed)
 np.random.seed(seed)
@@ -252,7 +259,8 @@ class CifarDataProvider(DataProvider):
 
     data = util.load(filename)
     img = data['data'] - self.batch_meta['data_mean']
-    return BatchData(np.require(img, requirements='C', dtype=np.float32),
+    img_size = CifarDataProvider.img_size
+    return BatchData(np.require(img.reshape(3, img_size, img_size, len(data['labels'])), requirements='C', dtype=np.float32),
                      np.array(data['labels']),
                      self.curr_epoch)
 
@@ -378,8 +386,12 @@ class ParallelDataProvider(DataProvider):
 
     self.curr_epoch = batch_data.epoch
     if not self.multiview:
-      batch_data.data = garray.array(batch_data.data, dtype = np.float32, to2dim = True)
-      batch_data.labels = garray.array(batch_data.labels, dtype = np.float32)
+      if multi_gpu:
+        batch_data.data = arr.array(batch_data.data, dtype = np.float32)
+        batch_data.labels = arr.array(batch_data.labels, dtype = np.float32, unique = False)
+      else:
+        batch_data.data = arr.array(batch_data.data, dtype = np.float32, to2dim = True)
+        batch_data.labels = arr.array(batch_data.labels, dtype = np.float32)
       self._gpu_batch = batch_data
     else:
       self._cpu_batch = batch_data
@@ -392,27 +404,25 @@ class ParallelDataProvider(DataProvider):
       self._fill_reserved_data()
 
     if not self.multiview:
-      height, width = self._gpu_batch.data.shape
+      width = self._gpu_batch.data.shape[-1]
       gpu_data = self._gpu_batch.data
       gpu_labels = self._gpu_batch.labels
       epoch = self._gpu_batch.epoch
 
       if self.index + batch_size >=  width:
         width = width - self.index
-        labels = gpu_labels[self.index/self.num_view:(self.index + batch_size) / self.num_view]
+        labels = gpu_labels[self.index:self.index + batch_size]
 
-        data = garray.zeros((height, width), dtype = np.float32)
-        garray.partial_copy_to(gpu_data, data, 0, height, self.index, self.index + width)
+        data = arr.partial_copy(gpu_data, self.index, self.index+ width)
 
         self.index = 0
         self._fill_reserved_data()
       else:
-        labels = gpu_labels[self.index/ self.num_view:(self.index + batch_size) / self.num_view]
-        data = garray.zeros((height, batch_size), dtype = np.float32)
-        garray.partial_copy_to(gpu_data, data, 0, height, self.index, self.index + batch_size)
+        labels = gpu_labels[self.index:self.index + batch_size]
+        data = arr.partial_copy(gpu_data,self.index, self.index + batch_size)
         self.index += batch_size
     else:
-      height, width = self._cpu_batch.data.shape
+      channel, img_size, img_size, width = self._cpu_batch.data.shape
       cpu_data = self._cpu_batch.data
       cpu_labels = slf._cpu_batch.labels
       epoch = self._cpu_batch.epoch
@@ -423,13 +433,17 @@ class ParallelDataProvider(DataProvider):
         batch_size = width - self.index
 
       labels = cpu_labels[self.index:self.index + batch_size]
-      data = np.zeros((height, batch_size * self.num_view), dtype = np.float32)
+      data = np.zeros((channel, img_size, img_size, batch_size * self.num_view), dtype = np.float32)
       for i in range(self.num_view):
-        data[:, i* batch_size: (i+ 1) * batch_size] = cpu_data[:, self.index + width * i : self.index + width * i + batch_size]
+        data[:, :, :, i* batch_size: (i+ 1) * batch_size] = cpu_data[:, :, :, self.index + width * i : self.index + width * i + batch_size]
 
       self.index = (self.index + batch_size) / width
-      data = garray.array(np.require(data, requirements = 'C'))
-      labels = garray.array(np.require(labels, requirements = 'C'))
+      if not multi_gpu:
+        data = garray.array(np.require(data, requirements = 'C'), to2dim = True)
+        labels = garray.array(np.require(labels, requirements = 'C'))
+      else:
+        data = arr.array(np.require(data, requirements = 'C'))
+        labels = arr.array(np.require(labels, requirements = 'C'), unique = False)
 
     return BatchData(data, labels, epoch)
 

@@ -23,7 +23,7 @@ class VArray(object):
                             slice_method = DistMethod.Square,
                             slice_dim = None):
     self.rank = rank
-    self.size = size
+    self.world_size = size
 
     self.unique = unique
     self.slice_method = slice_method
@@ -52,11 +52,11 @@ class VArray(object):
         self.slice_method = DistMethod.Square
 
       if self.slice_method == DistMethod.Square:
-        assert issquare(self.size), 'The size of MPI processes has to square'
+        assert issquare(self.world_size), 'The size of MPI processes has to square'
         assert slice_dim, 'Must specify slice_diim'
         assert len(slice_dim) == 2, 'Length of slice_dim must be 2'
 
-        self.nprow = math.sqrt(self.size)
+        self.nprow = math.sqrt(self.world_size)
 
         self.local_area = self.make_square_area()
         self.local_data = garray.array(array.__getitem__(self.local_area.slice).copy())
@@ -79,7 +79,7 @@ class VArray(object):
 
   def sync_area_dict(self):
     rev = WORLD.allgather(self.area_dict[self.rank])
-    for i in range(self.size):
+    for i in range(self.world_size):
       self.area_dict[i] = rev[i]
 
   @property
@@ -116,18 +116,18 @@ class VArray(object):
     req_list = reqs[:]
     req_list = WORLD.alltoall(req_list)
 
-    send_data = [self.fetch_local(req_list[rank]) for rank in range(self.size)]
+    send_data = [self.fetch_local(req_list[rank]) for rank in range(self.world_size)]
     send_data = WORLD.alltoall(send_data)
     WORLD.barrier()
-    subs = { reqs[rank]: send_data[rank] for rank in range(self.size)}
+    subs = { reqs[rank]: send_data[rank] for rank in range(self.world_size)}
     return subs
 
   def fetch(self, area):
     subs = {}
-    reqs = [None] * self.size
+    reqs = [None] * self.world_size
     if area in self.local_area:
       subs[area] = self.fetch_local(area)
-      for i in range(self.size):
+      for i in range(self.world_size):
         if i != self.rank:
           reqs[i] = None
     else:
@@ -164,7 +164,7 @@ class VArray(object):
 
     sub_data = WORLD.alltoall(sub_data)
 
-    for rank in range(self.size):
+    for rank in range(self.world_size):
       if rank == self.rank:
         continue
       else:
@@ -178,8 +178,8 @@ class VArray(object):
       self.write_local(sub_area, sub_data)
       return
 
-    reqs = [None] * self.size
-    local_subs = [None] * self.size
+    reqs = [None] * self.world_size
+    local_subs = [None] * self.world_size
     if self.unique and area in self.local_area:
       self.write_local(area, data)
     else:
@@ -225,7 +225,7 @@ class VArray(object):
 
   def make_square_area(self):
     first , second = self.slice_dim
-    assert first < second < len(self.global_shape), 'Wrong slice_dim'
+    assert first < second < len(self.global_shape), 'Wrong slice_dim ' + str(len(self.global_shape))
     local_nrow = self.global_shape[first] / self.nprow
     local_ncol = local_nrow
 
@@ -233,7 +233,7 @@ class VArray(object):
     second_pos = int(self.rank % self.nprow)
 
     first_from  = first_pos * local_nrow
-    first_to = (first_pos + 1) * local_nrow  if self.size - self.rank >= self.nprow else self.global_shape[first]
+    first_to = (first_pos + 1) * local_nrow  if self.world_size - self.rank >= self.nprow else self.global_shape[first]
     second_from = second_pos * local_ncol
     second_to = (second_pos + 1) * local_ncol if (self.rank + 1) % self.nprow != 0  else self.global_shape[second]
 
@@ -249,7 +249,7 @@ class VArray(object):
 
   def make_stripe_area(self):
     assert self.slice_dim < len(self.global_shape), 'Wrong slice dim'
-    nrow = util.divup(self.global_shape[self.slice_dim], self.size)
+    nrow = util.divup(self.global_shape[self.slice_dim], self.world_size)
 
     pos_from = nrow * self.rank
     pos_to = min( (self.rank+ 1)* nrow , self.global_shape[self.slice_dim])
@@ -303,10 +303,20 @@ class VArray(object):
       garray.copy_to(self.local_data * other, c.local_data)
       return c
     else:
-      assert self.check_param(other)
       c = zeros_like(self)
-      c.local_data   = self.local_data * other_local_data
+      c.local_data   = self.local_data * other.local_data
       return c
+
+  def __div__(self, other):
+    if np.isscalar(other):
+      c = zeros_like(self)
+      garray.copy_to(self.local_data / other, c.local_data)
+      return c
+    else:
+      c = zeros_like(self)
+      c.local_data = self.local_data / other.local_data
+      return c
+
   def __eq__(self, other):
     assert self.check_param(other)
     c = zeros_like(self)
@@ -381,11 +391,14 @@ class VArray(object):
     self.tmp_local_data = self.fetch(self.tmp_local_area)
 
   def pad(self, padding):
+    assert padding <= 0
+    padding = -padding
     if padding:
       row, col = self.slice_dim
       u, d, l, r = [padding] * 4
       old_shape = list(self.tmp_local_data.shape)
       old_area = copy.deepcopy(self.tmp_local_area)
+      print old_area
 
       #not most top
       if self.local_area._from[row] != 0:
@@ -424,6 +437,8 @@ class VArray(object):
   def unpad(self, data, padding):
     if padding == 0:
       return data
+    assert padding <= 0
+    padding = -padding
     row, col = self.slice_dim
     u, d, l, r = [padding] * 4
     old_shape = list(data.shape)
@@ -457,12 +472,12 @@ class VArray(object):
 
 
     if u or d or l or r:
-      np_tmp = data[old_area.offset(self.local_area._from).slice]
-      return np_tmp
+      np_tmp = data.get()[old_area.offset(self.local_area._from).slice]
+      return garray.array(np.require(np_tmp, dtype = np.float32, requirements = 'C'))
     return data
 
   def add(self, other, dst = None, shape = None, axis = 0):
-    if isinstanse(other, VArray):
+    if isinstance(other, VArray):
       data = other.local_data
     else:
       data = other
@@ -487,11 +502,11 @@ class VArray(object):
     if axis == 0:
       c = garray.sum(garray.reshape_first(self.local_data), axis = 1)
       if self.unique:
-        if (np.isscalar(self.slice_dim) and axis != self.slice_dim) or (axis not in input.slice_dim):
+        if (np.isscalar(self.slice_dim) and axis != self.slice_dim) or (axis not in self.slice_dim):
           c = WORLD.allreduce(c)
         else:
           assert False
-      return VArray(c, unquie = False)
+      return VArray(c, unique = False)
     elif axis == len(self.local_shape) -1:
       c = garray.sum(garray.reshape_last(self.local_data), axis = 0)
       if self.unique:
@@ -512,7 +527,7 @@ class VArray(object):
           c = WORLD.allreduce(c)
         else:
           assert False
-      return VArray(c, unquie = False)
+      return VArray(c, unique = False)
     elif axis == len(self.local_shape) -1:
       c = garray.max(garray.reshape_last(self.local_data), axis = 0)
       if self.unique:
@@ -534,8 +549,29 @@ class VArray(object):
   def fill(self, scalar):
     self.local_data.fill(scalar)
 
+  def get(self):
+    if not self.unique:
+      return self.local_data.get()
+    assert False
 
-def array(a, unique = True, slice_method = DistMethod.Square, slice_dim = (1, 2)):
+  def __getitem__(self, key):
+    if not self.unique:
+      local_data = self.local_data.__getitem__(key)
+      c = VArray(local_data, unique = False)
+      return c
+    assert False
+
+  @property
+  def size(self):
+    assert not self.unique
+    return self.local_data.size
+
+  def reshape(self, shape):
+    assert not self.unique
+    data = self.local_data
+    return VArray(data.reshape(shape), unique = False)
+
+def array(a, dtype = np.float32,unique = True, slice_method = DistMethod.Square, slice_dim = (1, 2)):
   return VArray(a, unique, slice_method, slice_dim)
 
 def square_array(a, slice_dim, unique = True):

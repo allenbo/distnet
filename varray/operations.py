@@ -1,14 +1,36 @@
 import varray
-from varray.ndarray import VArray, DistMethod, zeros_like, WORLD
+import numpy as np
+from varray.ndarray import VArray, DistMethod, zeros_like, WORLD, zeros
 from varray.area import Area
 import garray
 
 
 def copy_to(input, output):
-  assert input.unique == output.unique
-  assert input.shape == output.shape
+  if output.unique:
+    if not input.unique:
+      print output.shape
+      print output.local_shape
+      tmp = garray.zeros_like(input.local_data)
+      tmp = tmp.reshape(output.shape)
+      output.write(data = tmp, area =output.local_area, acc = 'no')
+      return
 
   garray.copy_to(input.local_data, output.local_data)
+
+
+def partial_copy(input, f, t):
+  ''' partial copy last dimention '''
+  shape = list(input.shape)
+  shape[-1] = t-f
+  rst = zeros(tuple(shape), dtype = np.float32)
+  a = Area.make_area(input.local_shape)
+  a._from.point[-1] = f
+  a._to.point[-1] = t
+  old_shape = rst.local_shape
+  rst.local_data = garray.partial_copy(garray.reshape_last(input.local_data), f, t)
+  rst.local_data = rst.local_data.reshape(old_shape)
+  print rst.local_shape, 'inside varray partial copy'
+  return rst
 
 
 def bigger_than_scaler(input, scaler):
@@ -26,15 +48,15 @@ def matrixmult(x, y):
     y.local_data = garray.reshape_last(y.local_data)
 
   c = garray.matrixmult(x.local_data, y.local_data)
-  return Varray(c, unique = False)
+  return VArray(c, unique = False)
 
 
 def matrix_add(incr, grad ,alpha = 1.0, beta = 1.0):
   if len(incr.shape) == 2:
-    garray.matrix_add(inrc.local_data, grad.local_data, alpha = alpha, beta = beta)
+    garray.matrix_add(incr.local_data, grad.local_data, alpha = alpha, beta = beta)
   else:
     old_shape = incr.local_data.shape
-    incr.local_data = garray.reshape_last(inrc.local_data)
+    incr.local_data = garray.reshape_last(incr.local_data)
     garray.matrix_add(incr.local_data, garray.reshape_last(grad.local_data),
         alpha = alpha, beta = beta)
     incr.local_data = incr.local_data.reshape(old_shape)
@@ -257,26 +279,31 @@ def rnorm(input, denom, output, channel, size, image_y, scaler, pow):
   output.tmp_local_data = tmp_out_data
   output.write(input.tmp_local_area, tmp_out_data.reshape(input.tmp_local_data.shape), acc = 'no')
   denom.write(input.tmp_local_area, tmp_denom_data.reshape(input.tmp_local_data.shape), acc = 'no')
+  print output.tmp_local_data.shape
 
 def rnormundo(grad, denom, input, output, out_grad, channel, size, image_y, scaler, pow):
   if not hasattr(input, 'tmp_local_data'):
-    input.cross_communicate(stride = 1, filter_size = 1)
+    input.cross_communicate(stride = 1, filter_size = size)
     input.pad(0)
-
-    output.cross_communicate(stride = 1, filter_size = 1)
-    output.pad(0)
-
-    denom.cross_communicate(stride = 1, filter_size = 1)
+    denom.cross_communicate(stride = 1, filter_size = size)
     denom.pad(0)
 
+  output.cross_communicate(stride = 1, filter_size = size)
+  output.pad(0)
+
+
   if not hasattr(grad, 'tmp_local_data'):
-    grad.cross_communicate(stride = 1, filter_size = 1)
+    grad.cross_communicate(stride = 1, filter_size = size)
     grad.pad(0)
 
   tmp_out_grad = garray.reshape_last(garray.zeros_like(input.tmp_local_data))
 
   r, c = output.slice_dim
   image_y = input.tmp_local_data.shape[r]
+  print 'grad', grad.tmp_local_data.shape
+  print 'denom', denom.tmp_local_data.shape
+  print 'input', input.tmp_local_data.shape
+  print 'output', output.tmp_local_data.shape
 
   garray.rnormundo(
       garray.reshape_last(grad.tmp_local_data),

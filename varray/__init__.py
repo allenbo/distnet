@@ -9,4 +9,4 @@ def distlog(_fn):
   if rank == MASTER:
     return _fn
   else:
-    return lambda(msg, *arg, **kw): 0
+    return lambda msg, *arg, **kw : 0

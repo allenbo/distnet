@@ -25,6 +25,14 @@ def col_randn(shape, dtype):
   return np.require(np.random.randn(*shape), dtype=dtype, requirements='C')
 
 
+def zeros(shape, dtype = np.float32, unique = False):
+  if not multi_gpu:
+    col = shape[-1]
+    row = np.prod(shape[:-1])
+    return garray.zeros((row, col), dtype = dtype)
+  else:
+    return arr.zeros(shape, dtype = dtype, unique = unique)
+
 class Layer(object):
   def __init__(self, name, type, disable_bprop=False):
     self.name = name
@@ -51,15 +59,8 @@ class Layer(object):
 
   def init_output(self, fc = False):
     out_shape = self.get_output_shape()
-    if not multi_gpu:
-      rows = int(np.prod(out_shape[:-1]))
-      cols = out_shape[-1]
-      out_shape = (rows, cols)
-      self.output = arr.zeros(out_shape, dtype=np.float32)
-      self.output_grad = arr.zeros(out_shape, dtype=np.float32)
-    else:
-      self.output = arr.zeros(out_shape, unique = not fc)
-      self.output_grad = arr.zeros(out_shape, unique = not fc)
+    self.output = zeros(out_shape, unique = not fc)
+    self.output_grad = zeros(out_shape, unique = not fc)
 
   def dump(self):
     attr = [att for att in dir(self) if not att.startswith('__')]
@@ -99,8 +100,7 @@ class WeightedLayer(Layer):
     Layer.__init__(self, name, type, disable_bprop)
     self.initW = initW
     self.initB = initB
-    unique = self.type != 'fc'
-    self.weight = WEIGHTS.empty('weight.' + self.name, epsW, momW, wc, unique)
+    self.weight = WEIGHTS.empty('weight.' + self.name, epsW, momW, wc, False)
     self.bias = WEIGHTS.empty('bias.' + self.name, epsB, momB, 0.0, False)
 
     if weight is not None:
@@ -191,6 +191,13 @@ class ConvLayer(WeightedLayer):
 
     self.partialSum = partialSum
     self.sharedBiases = sharedBiases
+    
+    if weight is not None:
+      if len(weight.shape) == 2:
+        num_filter = weight.shape[-1]
+        num_color = weight.shape[0] / (self.filterSize ** 2)
+        weight = weight.reshape((num_color, self.filterSize, self.filterSize, self.numFilter))
+        weightIncr = weightIncr.reshape((num_color, self.filterSize, self.filterSize, self.numFilter))
 
     WeightedLayer.__init__(self, name, 'conv',
                            epsW, epsB, initW, initB, momW, momB, wc, weight,
@@ -208,7 +215,7 @@ class ConvLayer(WeightedLayer):
                   self.outputSize)
     self.modules = self.outputSize ** 2
 
-    weight_shape = (self.filterSize * self.filterSize * self.numColor, self.numFilter)
+    weight_shape = (self.numColor, self.filterSize, self.filterSize,  self.numFilter)
     bias_shape = (self.numFilter, 1)
 
     self._init_weights(weight_shape, bias_shape)
@@ -225,6 +232,13 @@ class ConvLayer(WeightedLayer):
 
 
   def fprop(self, input, output, train=TRAIN):
+    print 'input  global shape', input.shape
+    print 'input local shape', input.local_shape
+    print 'weight global shape', self.weight.wt.shape
+    print 'weight local shape', self.weight.wt.local_shape
+
+    print 'output global shape', output.shape
+    print 'output local shape', output.local_shape
     arr.convolution(input, self.weight.wt, output, self.img_size, self.outputSize,
         self.outputSize, -self.padding, self.stride, self.numColor, 1)
 
@@ -322,7 +336,7 @@ class ResponseNormLayer(Layer):
     image_shape = prev.get_output_shape()
     self.numColor, self.img_size, _, self.batch_size = image_shape
 
-    self.denom = garray.zeros((self.numColor * self.img_size * self.img_size, self.batch_size), dtype = np.float32)
+    self.denom = zeros((self.numColor , self.img_size , self.img_size, self.batch_size), unique = True)
 
 
   def get_output_shape(self):
@@ -330,7 +344,7 @@ class ResponseNormLayer(Layer):
 
   def change_batch_size(self, batch_size):
     Layer.change_batch_size(self, batch_size)
-    self.denom = garray.zeros((self.numColor * self.img_size * self.img_size, self.batch_size), dtype = np.float32)
+    self.denom = zeros((self.numColor , self.img_size , self.img_size, self.batch_size), unique = True)
 
   def fprop(self, input, output, train=TRAIN):
     arr.rnorm(input, self.denom, output, self.numColor, self.size, self.img_size, self.scaler,
@@ -439,10 +453,7 @@ class SoftmaxLayer(Layer):
     self.create_cost(self.batch_size)
 
   def create_cost(self, size):
-    if not multi_gpu:
-      self.cost = garray.zeros((size, 1), dtype=np.float32)
-    else:
-      self.cost = arr.zeros((size, 1), unique = False)
+    self.cost = zeros((size, 1), unique = False)
 
   def get_output_shape(self):
     return (self.outputSize, self.batch_size)
