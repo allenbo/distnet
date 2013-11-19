@@ -13,7 +13,7 @@ else:
   import garray as arr
 
 
-PFout = False
+PFout = True
 PBout = False
 TEST = 0
 TRAIN = 1
@@ -28,10 +28,17 @@ def col_randn(shape, dtype):
 def zeros(shape, dtype = np.float32, unique = False):
   if not multi_gpu:
     col = shape[-1]
-    row = np.prod(shape[:-1])
+    row = int(np.prod(shape[:-1]))
     return garray.zeros((row, col), dtype = dtype)
   else:
     return arr.zeros(shape, dtype = dtype, unique = unique)
+
+def convert_shape(shape):
+  if not multi_gpu:
+    col = shape[-1]
+    row = int(np.prod(shape[:-1]))
+    return (row, col)
+  return shape
 
 class Layer(object):
   def __init__(self, name, type, disable_bprop=False):
@@ -85,7 +92,7 @@ class DataLayer(Layer):
     arr.copy_to(input, output)
 
     if PFout:
-      print_matrix(output, self.name)
+      print_matrix(output.local_data, self.name)
 
   def bprop(self, grad, input, output, outGrad):
     pass
@@ -193,7 +200,7 @@ class ConvLayer(WeightedLayer):
     self.sharedBiases = sharedBiases
     
     if weight is not None:
-      if len(weight.shape) == 2:
+      if len(weight.shape) == 2 and multi_gpu:
         num_filter = weight.shape[-1]
         num_color = weight.shape[0] / (self.filterSize ** 2)
         weight = weight.reshape((num_color, self.filterSize, self.filterSize, self.numFilter))
@@ -215,7 +222,7 @@ class ConvLayer(WeightedLayer):
                   self.outputSize)
     self.modules = self.outputSize ** 2
 
-    weight_shape = (self.numColor, self.filterSize, self.filterSize,  self.numFilter)
+    weight_shape = convert_shape((self.numColor, self.filterSize, self.filterSize,  self.numFilter))
     bias_shape = (self.numFilter, 1)
 
     self._init_weights(weight_shape, bias_shape)
