@@ -6,11 +6,10 @@ def test_1():
   stop = 53
   a = np.random.randn(100).astype(np.float32)
   b = a[1:stop:3]
-  print b
 
   ga = garray.array(a)
   gb = ga[1:stop:3]
-  print gb
+  print gb.get() - b
 
 def test_2():
   a = np.random.randn(10000, 10000).astype(np.float32)

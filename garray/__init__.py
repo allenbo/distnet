@@ -78,6 +78,48 @@ def new_getitem(self, index):
 
 GPUArray.__getitem__ = new_getitem
 
+
+
+def new_setitem(self, index, data):
+  assert len(self.shape) <= 4, str(self.shape)
+  
+  if not isinstance(index, tuple):
+    index = (index, )
+  
+  if not isinstance(data, GPUArray):
+    data = array(np.require(data, dtype = self.dtype, requirements = 'C'))
+
+  index_axis = 0
+  array_axis = 0
+  slices = []
+  new_shape = []
+  while index_axis < len(index):
+    index_entry = index[index_axis]
+
+    if array_axis > len(self.shape):
+      raise IndexError("too many axes in index")
+
+    if isinstance(index_entry, slice):
+      slices.append(index_entry)
+      start, stop, idx_stride = index_entry.indices(self.shape[array_axis])
+      new_shape.append(divup(stop-start, idx_stride))
+    else:
+      assert False
+
+    index_axis += 1
+    array_axis += 1
+
+  while array_axis < len(self.shape):
+    new_shape.append(self.shape[array_axis])
+    slices.append(slice(0, self.shape[array_axis]))
+    array_axis += 1
+
+  assert data.shape == tuple(new_shape)
+
+  stride_write(data, self, slices)
+
+GPUArray.__setitem__ = new_setitem
+
 copy_to = gpu_copy_to
 partial_copy_to = gpu_partial_copy_to
 

@@ -88,9 +88,9 @@ class VArray(object):
 
 
   def copy_from_global(self, input):
-    tmp = input.get().__getitem__(self.local_area.slice)
+    tmp = input.__getitem__(self.local_area.slice)
     assert tmp.shape == self.local_shape, str(tmp.shape) + ' ' + str(self.local_shape)
-    self.local_data = garray.array(np.require(tmp, dtype = np.float32, requirements = 'C'))
+    self.local_data = tmp
 
   @property
   def global_area(self):
