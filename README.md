@@ -18,7 +18,7 @@ To run a trainer directly:
 
     python distnet/trainer.py --help
     
-Take a look at the scripts in `fastnet/scripts` for examples of how to run your own network.
+Take a look at the scripts in `distnet/scripts` for examples of how to run your own network.
 
 
 **Requires**
