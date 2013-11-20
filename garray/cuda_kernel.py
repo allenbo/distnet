@@ -42,7 +42,7 @@ class CompiledSource(object):
       util.log('Compiling... %s', self.kernel_name)
       self.module = SourceModule(self.src)
       self.kernel = self.module.get_function(self.kernel_name)
-      
+
     self.kernel(*args, **kw)
 
 
@@ -523,6 +523,100 @@ _tanh_compute_grad_ = CompiledSource('''
 
 
 
+
+_stride_copy_1_ = CompiledSource('''
+    __global__
+    void stride_copy_1(float* input, float* output, int start, int stride, int col) {
+      int i = threadIdx.x;
+      int idx = i * stride + start;
+      while ( i < col) {
+        output[i] = input[idx];
+        i += blockDim.x;
+        idx = i * stride + start;
+      }
+    }''', 'stride_copy_1')
+
+
+_stride_copy_2_ = CompiledSource ('''
+    __global__
+    void stride_copy_2(float* input, float* output,
+      int start1, int stride1, int start2, int stride2,
+      int col, int row, int ileading, int oleading) {
+    
+      int i = blockIdx.x * blockDim.x + threadIdx.x;
+      int j = blockIdx.y * blockDim.y + threadIdx.y;
+
+      if (i >= col || j >= row ) return;
+
+      output[i + j * oleading] = input[i * stride2 + start2 + ( j * stride1 + start1) * ileading];
+    }''', 'stride_copy_2')
+
+
+_stride_copy_3_image_block_ = CompiledSource('''
+    __global__
+    void stride_copy_3_image_block(float* input, float* output,
+      int start1, int stride1, int start2, int stride2, int start3, int stride3,
+      int ifleading, int isleading, int ofleading, int osleading) {
+      int z = blockIdx.x;
+      int x = threadIdx.x;
+      int y = threadIdx.y;
+
+      int dind = z * ofleading + y * osleading + x;
+      int sind = (z*stride1 + start1) * ifleading + (y * stride2 + start2) * isleading + (x * stride3+ start3);
+
+      output[dind] = input[sind];
+    }''', 'stride_copy_3_image_block')
+
+
+
+_stride_copy_3_channel_block_ = CompiledSource('''
+    __global__
+    void stride_copy_3_channel_block(float* input, float* output,
+      int start1, int stride1, int start2, int stride2, int start3, int stride3, int col, int row, int channel,
+      int ifleading, int isleading, int ofleading, int osleading) {
+      int x = blockIdx.x * blockDim.x + threadIdx.x;
+      int y = blockIdx.y * blockDim.y + threadIdx.y;
+      if ( x >= col || y >= row) return;
+
+      int z = 0;
+      int sidx, didx;
+      while( z < channel) {
+        didx = z * ofleading + y * osleading + x;
+        sidx = (z*stride1 + start1) * ifleading + (y * stride2 + start2) * isleading + (x * stride3 + start3);
+        output[didx] = input[sidx];
+        z ++;
+      }
+    }''', 'stride_copy_3_channel_block')
+
+
+_stride_copy_4_ = CompiledSource('''
+    __global__
+    void stride_copy_4( float* input, float* output, 
+      int start1, int stride1, int start2, int stride2,
+      int start3, int stride3, int start4, int stride4,
+      int col, int row,
+      int ifleading, int isleading, int itleading,
+      int ofleading, int osleading, int otleading) {
+
+      int channel = blockIdx.x;
+      int batch = blockIdx.y;
+      int height = threadIdx.y;
+      int width = threadIdx.x;
+
+      int sidx, didx;
+      for(height = threadIdx.y; height < row; height += blockDim.y) {
+        for(width = threadIdx.x; width < col; width += blockDim.x) {
+          if (height >= row || width >= col ) continue;
+          didx = channel * ofleading + height * osleading + width * otleading + batch;
+          sidx = (channel * stride1 + start1) * ifleading + (height * stride2 + start2) * isleading
+          + (width * stride3 + start3) * itleading + (batch * stride4 + start4);
+
+          output[didx] = input[sidx];
+        }
+      }
+    }''', 'stride_copy_4')
+
+
 _transpose_ = CompiledSource('''
   __global__
   void transpose(float * src, float* dst, int sleading, int dleading, int srows, int scols) {
@@ -927,6 +1021,109 @@ def tanh_compute_grad(grad, output, outGrad, a, b):
   _tanh_compute_grad_(grad, output, outGrad, F(a), F(_n4ab), I(leading), I(mh), I(mw), block=block , grid=grid)
   
 
+
+def stride_copy_1(input, output, slices):
+  assert len(input.strides) == 1 and len(output.strides) == 1
+  assert len(slices) == 1
+
+  start, stop, stride = slices[0].indices(input.shape[0])
+  if stride == 1:
+    pycuda.driver.memcpy_dtod(output.gpudata,
+        input.ptr + start * input.dtype.itemsize,
+        (stop - start) * input.dtype.itemsize)
+    return
+  block = (128, 1, 1)
+  grid = (1, 1)
+  _stride_copy_1_(input, output, I(start),I(stride), I(output.size), block = block, grid = grid)
+
+
+def stride_copy_2(input, output, slices):
+  assert len(input.strides) ==2 and len(output.strides) == 2
+  assert len(slices) == 2
+
+  start1, stop1, stride1 = slices[0].indices(input.shape[0])
+  start2, stop2, stride2 = slices[1].indices(input.shape[1])
+
+  if stride1 == 1 and stride2 == 1:
+    gpu_partial_copy_to(input, output, row_from = start1, row_to = stop1, col_from = start2, col_to = stop2)
+  else:
+    h, w = output.shape
+    block = (32, 32, 1)
+    grid = (divup(w, 32), divup(h, 32))
+    ileading, oleading = input.strides[0] / 4, output.strides[0] / 4
+    _stride_copy_2_(input, output,
+        I(start1), I(stride1), I(start2), I(stride2),
+        I(w), I(h), I(ileading), I(oleading),
+        block = block, grid = grid)
+
+
+def stride_copy_3(input, output, slices):
+  assert len(input.strides) == 3 and len(output.strides) == 3
+  assert len(slices) == 3
+
+  start1, _, stride1 = slices[0].indices(input.shape[0])
+  start2, _, stride2 = slices[1].indices(input.shape[1])
+  start3, _, stride3 = slices[2].indices(input.shape[2])
+
+  h, w = output.shape[1:]
+  if h * w <= 1024:
+    block = (w, h, 1)
+    grid = (output.shape[0], 1)
+    ifleading, isleading = input.strides[0]/4, input.strides[1]/4
+    ofleading, osleading = output.strides[0]/4, output.strides[1]/4
+    _stride_copy_3_image_block_(input, output,
+        I(start1), I(stride1), I(start2), I(stride2), I(start3), I(stride3),
+        I(ifleading), I(isleading), I(ofleading), I(osleading),
+        block = block, grid = grid)
+  else:
+    block = (32, 32, 1)
+    grid = (divup(w, 32), divup(h, 32))
+    ifleading, isleading = input.strides[0]/4, input.strides[1]/4
+    ofleading, osleading = output.strides[0]/4, output.strides[1]/4
+    _stride_copy_3_channel_block_(input, output,
+        I(start1), I(stride1), I(start2), I(stride2), I(start3), I(stride3),
+        I(w), I(h), I(output.shape[0]),
+        I(ifleading), I(isleading), I(ofleading), I(osleading), block = block , grid = grid)
+
+def stride_copy_4(input, output, slices):
+  assert len(input.strides) == 4 and len(output.strides) == 4
+  assert len(slices) == 4
+
+  start1, _, stride1 = slices[0].indices(input.shape[0])
+  start2, _, stride2 = slices[1].indices(input.shape[1])
+  start3, _, stride3 = slices[2].indices(input.shape[2])
+  start4, _, stride4 = slices[3].indices(input.shape[3])
+
+  channel, height, width, batch = output.shape
+
+  block = (32, 32, 1)
+  grid = (channel, batch)
+  ifleading, isleading, itleading = [x / 4 for x in input.strides[:3]]
+  ofleading, osleading, otleading = [x / 4 for x in output.strides[:3]]
+
+  _stride_copy_4_(input, output,
+      I(start1), I(stride1),
+      I(start2), I(stride2),
+      I(start3), I(stride3),
+      I(start4), I(stride4),
+      I(width), I(height),
+      I(ifleading), I(isleading), I(itleading),
+      I(ofleading), I(osleading), I(otleading),
+      block = block, grid = grid)
+
+
+def stride_copy(input, output, slices):
+  if len(input.strides) == 1:
+    stride_copy_1(input, output, slices)
+  elif len(input.strides) == 2:
+    stride_copy_2(input, output, slices)
+  elif len(input.strides) == 3:
+    stride_copy_3(input, output, slices)
+  elif len(input.strides) == 4:
+    stride_copy_4(input, output, slices)
+  else:
+    assert False
+  return output
 
 
 @util.timed_fn

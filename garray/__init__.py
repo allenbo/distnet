@@ -2,6 +2,7 @@ from pycuda import gpuarray, driver
 from pycuda.gpuarray import GPUArray, to_gpu, zeros, zeros_like, empty
 import numpy as np
 from cuda_kernel import *
+from distnet.util import divup
 
 cudaconv.init()
 
@@ -37,6 +38,45 @@ def get_seed():
   return int(time.time())
 
 
+
+old_getitem = GPUArray.__getitem__
+def new_getitem(self, index):
+
+  if len(self.shape) > 4:
+    return old_getitem(self, index)
+
+  if not isinstance(index, tuple):
+    index = (index, )
+
+  index_axis = 0
+  array_axis = 0
+  slices = []
+  new_shape = []
+  while index_axis < len(index):
+    index_entry = index[index_axis]
+
+    if array_axis > len(self.shape):
+      raise IndexError("too many axes in index")
+
+    if isinstance(index_entry, slice):
+      slices.append(index_entry)
+      start, stop, idx_stride = index_entry.indices(self.shape[array_axis])
+      new_shape.append(divup(stop-start, idx_stride))
+    else:
+      assert False
+
+    index_axis += 1
+    array_axis += 1
+
+  while array_axis < len(self.shape):
+    new_shape.append(self.shape[array_axis])
+    slices.append(slice(0, self.shape[array_axis]))
+    array_axis += 1
+
+  output = GPUArray(shape = tuple(new_shape), dtype = self.dtype)
+  return stride_copy(self, output, slices)
+
+GPUArray.__getitem__ = new_getitem
 
 copy_to = gpu_copy_to
 partial_copy_to = gpu_partial_copy_to
