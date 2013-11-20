@@ -82,10 +82,10 @@ GPUArray.__getitem__ = new_getitem
 
 def new_setitem(self, index, data):
   assert len(self.shape) <= 4, str(self.shape)
-  
+
   if not isinstance(index, tuple):
     index = (index, )
-  
+
   if not isinstance(data, GPUArray):
     data = array(np.require(data, dtype = self.dtype, requirements = 'C'))
 
@@ -119,6 +119,36 @@ def new_setitem(self, index, data):
   stride_write(data, self, slices)
 
 GPUArray.__setitem__ = new_setitem
+
+
+def concatenate(arrays, axis = 0):
+  if not isinstance(arrays, tuple):
+    raise TypeError('First parameter has to be a tuple of arrays')
+
+  other_dim = arrays[0].shape[:axis] + arrays[0].shape[axis+1:]
+  for array in arrays:
+    if axis >= len(array.shape):
+      raise RuntimeError('axis is too big, axis = %d, shape = %s' % ( axis, array.shape))
+    if array.shape[:axis] + array.shape[axis+1:] != other_dim:
+      raise ValueError('array dimensions must agree expect for d_%d' % axis)
+  source = arrays[0]
+  for other in arrays[1:]:
+    new_shape = source.shape[:axis] + (source.shape[axis] + other.shape[axis], ) + source.shape[axis+1:]
+
+    dest = GPUArray(shape = tuple(new_shape), dtype = source.dtype)
+
+    slices = tuple([slice(0, j, 1) for j in source.shape])
+    dest[slices] = source
+
+    extend = source.shape[axis]
+    slices = [slice(0, j, 1) for j in other.shape]
+    slices[axis] = slice(extend, extend+ other.shape[axis], 1)
+
+    slices = tuple(slices)
+    dest[slices] = other
+
+    source = dest
+  return dest
 
 copy_to = gpu_copy_to
 partial_copy_to = gpu_partial_copy_to

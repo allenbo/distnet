@@ -104,7 +104,6 @@ class VArray(object):
     global_area = self.global_area
 
     self.local_data = self.fetch(global_area)
-    self.local_data = garray.array(np.require(self.local_data, dtype = np.float32, requirements = 'C'))
     self.local_area = global_area
 
     self.area_dict[self.rank] = self.local_area
@@ -114,7 +113,7 @@ class VArray(object):
     if area is None:
       return None
     area = area.offset(self.local_area._from)
-    data = self.local_data.get().__getitem__(area.slice)
+    data = self.local_data.__getitem__(area.slice)
     return data
 
   def fetch_remote(self, reqs):
@@ -151,16 +150,13 @@ class VArray(object):
     if area is None:
       return
     area = area.offset(self.local_area._from)
-    cpu_data = self.local_data.get()
-    if not isinstance(data, np.ndarray):
-      data = data.get()
+    gpu_data = self.local_data
     if acc == 'overwrite':
-      cpu_data.__setitem__(area.slice, data)
+      gpu_data.__setitem__(area.slice, data)
     elif acc == 'add':
-      cpu_data.__setitem__(area.slice, cpu_data.__getitem__(area.slice) + data)
+      gpu_data.__setitem__(area.slice, gpu_data.__getitem__(area.slice) + data)
     else:
       assert False
-    self.local_data = garray.array(np.require(cpu_data, dtype = np.float32, requirements = 'C'))
 
 
 
@@ -181,7 +177,7 @@ class VArray(object):
     if acc == 'no':
       sub_area = self.local_area & area
       print sub_area.offset(area._from).slice
-      sub_data = data.get().__getitem__(sub_area.offset(area._from).slice)
+      sub_data = data.__getitem__(sub_area.offset(area._from).slice)
       self.write_local(sub_area, sub_data)
       return
 
@@ -193,7 +189,7 @@ class VArray(object):
       for rank, a in self.area_dict.iteritems():
         sub_area = a & area
         if sub_area is not None:
-          sub_data = data.get().__getitem__(sub_area.offset(area._from).slice)
+          sub_data = data.__getitem__(sub_area.offset(area._from).slice)
         else:
           sub_data = None
         if rank == self.rank:
