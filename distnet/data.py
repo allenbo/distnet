@@ -25,7 +25,6 @@ else:
 
 
 seed = arr.get_seed()
-seed = 0
 assert type(seed) == int
 random.seed(seed)
 np.random.seed(seed)
@@ -190,7 +189,6 @@ class ImageNetDataProvider(DataProvider):
         target[:,:, :, idx] = pic
 
   def get_next_batch(self):
-    #util.log("reading from dist")
     self.get_next_index()
 
     epoch = self.curr_epoch
@@ -203,19 +201,13 @@ class ImageNetDataProvider(DataProvider):
     st = time.time()
     images = []
     for idx, filename in enumerate(names):
-#       util.log('Loading... %s %s', idx, filename)
       jpeg = Image.open(filename)
       if jpeg.mode != "RGB": jpeg = jpeg.convert("RGB")
       # starts as rows * cols * rgb, tranpose to rgb * rows * cols
       img = np.asarray(jpeg, np.uint8).transpose(2, 0, 1)
       images.append(img)
 
-    #util.log('between readin')
     self.__trim_borders(images, cropped)
-    #if self.test:
-    #  np.set_printoptions(threshold = np.nan)
-    #  print cropped[:, 0]
-    #  print cropped[:, num_imgs]
 
     load_time = time.time() - st
 
@@ -240,11 +232,6 @@ class ImageNetDataProvider(DataProvider):
     labels = labels.reshape(labels.size,)
     labels = np.require(labels, dtype=np.single, requirements='C')
 
-    # util.log("Loaded %d images in %.2f seconds (%.2f _load, %.2f align)",
-    #         num_imgs, time.time() - start, load_time, align_time)
-    # self.data = {'data' : SharedArray(cropped), 'labels' : SharedArray(labels)}
-
-    #util.log("finish reading")
     return BatchData(cropped, labels, epoch)
 
 
@@ -279,7 +266,6 @@ class IntermediateDataProvider(DataProvider):
     self.get_next_index()
 
     filename = os.path.join(self.data_dir + '.%s' % self.curr_batch)
-    #util.log('reading from %s', filename)
 
     data_dic = util.load(filename)
     data  = data_dic[self.data_name].transpose()
@@ -320,10 +306,7 @@ class ReaderThread(threading.Thread):
 
   def run(self):
     while not self._stop:
-      #util.log('Fetching...')
       self.queue.put(self.dp.get_next_batch())
-      #util.log('%s', self.dp.curr_batch_index)
-      #util.log('Done.')
 
     self._running = False
 
@@ -383,7 +366,6 @@ class ParallelDataProvider(DataProvider):
 
   def _fill_reserved_data(self):
     batch_data = self._data_queue.get()
-    #timer = util.EZTimer('fill reserved data')
 
     self.curr_epoch = batch_data.epoch
     if not self.multiview:

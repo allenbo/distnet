@@ -9,8 +9,10 @@ multi_gpu = False
 if os.environ.get('MULTIGPU', 'no') == 'yes':
   import varray as arr
   multi_gpu = True
+  garray.device_init(arr.rank)
 else:
   import garray as arr
+  garray.device_init()
 
 
 PFout = False
@@ -262,13 +264,6 @@ class ConvLayer(WeightedLayer):
 
     # bprop bias
     self.bias.set_grad(grad.sumto(shape = self.get_output_shape(), axis = 0))
-    #if not multi_gpu:
-    #  print_matrix(outGrad, self.name)
-    #else:
-    #  outGrad.gather()
-    #  print_matrix(garray.reshape_last(outGrad.local_data), self.name)
-    #import sys
-    #sys.exit(1)
 
 
 class MaxPoolLayer(Layer):

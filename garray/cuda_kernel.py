@@ -13,7 +13,6 @@ import pycuda
 import sys
 from cudaconv import *
 
-cudaconv.init()
 sgemm = None
 def _initialize_cublas():
   global sgemm

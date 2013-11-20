@@ -4,7 +4,7 @@ import numpy as np
 from cuda_kernel import *
 from distnet.util import divup
 
-cudaconv.init()
+device_init = cudaconv.init
 
 old_init = GPUArray.__init__
 def new_init(*args, **kw):
