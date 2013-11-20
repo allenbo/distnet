@@ -8,6 +8,10 @@ import shelve
 import string
 import zipfile
 
+if os.environ.get('MULTIGPU', 'no') == 'yes':
+  from varray import distlog
+else:
+  distlog = lambda(_fn): _fn
 
 class DataDumper(object):
   def __init__(self, target_path, max_mem_size=500e5):
@@ -180,6 +184,7 @@ class CheckpointDumper(object):
           dict[k] = cPickle.loads(zf.read(k))
       return dict
 
+  @distlog
   def dump(self, checkpoint, suffix=0):
     if self.checkpoint_dir is None:
       return

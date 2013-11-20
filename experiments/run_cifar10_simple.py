@@ -6,7 +6,7 @@ test_id = 'cifar-test-1'
 
 data_dir = '/ssd/nn-data/cifar-10.old/'
 checkpoint_dir = '../checkpoint/'
-param_file = '../config/cifar-10-18pct.cfg'
+param_file = '../config/cifar-13pct.cfg'
 
 train_range = range(1, 41) #1,2,3,....,40
 test_range = range(41, 49) #41, 42, ..., 48
@@ -22,7 +22,7 @@ if init_model is None:
   init_model = parser.parse_config_file(param_file)
   
 
-save_freq = 100
+save_freq = 10
 test_freq = 100
 adjust_freq = 100
 factor = 1
@@ -36,6 +36,5 @@ image_shape = (image_color, image_size, image_size, batch_size)
 net = parser.load_model(net.FastNet(image_shape), init_model)
 
 param_dict = globals()
-print type(param_dict)
 t = trainer.Trainer(**param_dict)
 t.train(num_epoch)

@@ -13,7 +13,7 @@ else:
   import garray as arr
 
 
-PFout = True
+PFout = False
 PBout = False
 TEST = 0
 TRAIN = 1
@@ -92,7 +92,7 @@ class DataLayer(Layer):
     arr.copy_to(input, output)
 
     if PFout:
-      print_matrix(output.local_data, self.name)
+      print_matrix(output, self.name)
 
   def bprop(self, grad, input, output, outGrad):
     pass
@@ -198,7 +198,7 @@ class ConvLayer(WeightedLayer):
 
     self.partialSum = partialSum
     self.sharedBiases = sharedBiases
-    
+
     if weight is not None:
       if len(weight.shape) == 2 and multi_gpu:
         num_filter = weight.shape[-1]
@@ -247,6 +247,7 @@ class ConvLayer(WeightedLayer):
     if PFout:
       print_matrix(output, self.name)
 
+
   def bprop(self, grad, input, output, outGrad):
     self.weight.grad.fill(0)
     self.bias.grad.fill(0)
@@ -261,6 +262,13 @@ class ConvLayer(WeightedLayer):
 
     # bprop bias
     self.bias.set_grad(grad.sumto(shape = self.get_output_shape(), axis = 0))
+    #if not multi_gpu:
+    #  print_matrix(outGrad, self.name)
+    #else:
+    #  outGrad.gather()
+    #  print_matrix(garray.reshape_last(outGrad.local_data), self.name)
+    #import sys
+    #sys.exit(1)
 
 
 class MaxPoolLayer(Layer):
@@ -423,22 +431,19 @@ class FCLayer(WeightedLayer):
       print_matrix(output, self.name)
 
 
-
   def bprop(self, grad, input, output, outGrad):
     if self.dropRate > 0.0:
       arr.copy_to(grad * self.dropMask, grad)
 
-    arr.copy_to(arr.transpose(arr.matrixmult(arr.transpose(grad), self.weight.wt)), outGrad)
+    tmp = arr.transpose(arr.matrixmult(arr.transpose(grad), self.weight.wt))
+    arr.copy_to(tmp, outGrad)
 
     self.weight.set_grad(arr.matrixmult(grad, arr.transpose(input)))
     self.bias.set_grad(grad.sumto(axis = 0))
 
 
 
-#def zeros(shape, dtype = np.float32, unique = False):
-#  if not multi_gpu:
-#    return garray.zeros(shape = shape, dtype= dtype)
-#  return varray.zeros(shape = shape, dtype = dtype, unique = unique)
+
 
 class SoftmaxLayer(Layer):
   def __init__(self, name, disable_bprop=False):
@@ -518,10 +523,10 @@ class ReluNeuron(Neuron):
     self.e = e;
 
   def activate(self, input, output):
-    garray.relu_activate(input, output, self.e)
+    arr.relu_activate(input, output, self.e)
 
   def computeGrad(self, grad, output, outGrad):
-    garray.relu_compute_grad(grad, output, outGrad, self.e)
+    arr.relu_compute_grad(grad, output, outGrad, self.e)
 
   def dump(self):
     d = Neuron.dump(self)
@@ -534,10 +539,10 @@ class TanhNeuron(Neuron):
     self.a, self.b = a, b
 
   def activate(self, input, output):
-    garray.tanh_activate(input, output, self.a , self.b)
+    arr.tanh_activate(input, output, self.a , self.b)
 
   def computeGrad(self, grad, output, outGrad):
-    garray.tanh_compute_grad(grad, output, outGrad, self.a, self.b)
+    arr.tanh_compute_grad(grad, output, outGrad, self.a, self.b)
 
   def dump(self):
     d = Neuron.dump(self)

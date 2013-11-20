@@ -28,9 +28,9 @@ out_grad_shape = input.shape
 print 'input', input.shape
 print 'grad', grad.shape
 print 'output', output.shape
-image_y = 55
-output_y = 27
-output_x = 27
+image_y = 32
+output_y = 16
+output_x = 16
 
 if sys.argv[1] == 'single':
   print 'single GPU version'

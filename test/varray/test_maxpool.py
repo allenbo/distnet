@@ -13,18 +13,18 @@ assert len(sys.argv) == 2
 start = 0
 size = 3
 stride = 2
-out_shape = (96, 27, 27, 128)
+out_shape = (64, 16, 16, 128)
 
 # get the input and filter
 import garray as arr
-with open('filter') as f, open('input') as i:
+with open('input') as i:
   import cPickle as pickle
   input = pickle.load(i)
 print  'read', time.time() - start
 
-image_y = 55
-output_y = 27
-output_x = 27
+image_y = 32
+output_y = 16
+output_x = 16
 
 if sys.argv[1] == 'single':
   print 'single GPU version'
@@ -37,7 +37,7 @@ if sys.argv[1] == 'single':
   arr.maxpool(
       arr.reshape_last(input),
       output,
-      96, size, start, stride, image_y, output_y, output_x)
+      64, size, start, stride, image_y, output_y, output_x)
   print  'max pooling', time.time() - start
 
   output = output.reshape(out_shape)
@@ -56,7 +56,7 @@ else:
   input = arr.square_array(input, slice_dim = (1, 2))
   output = arr.zeros(out_shape, slice_dim = (1, 2))
   arr.maxpool(input,output,
-      96, size, start, stride, image_y, output_y, output_x)
+      64, size, start, stride, image_y, output_y, output_x)
   print 'max pooling', time.time() - start
   output.gather()
   if rank == 0:

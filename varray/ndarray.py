@@ -86,6 +86,12 @@ class VArray(object):
   def shape(self):
     return self.global_shape
 
+
+  def copy_from_global(self, input):
+    tmp = input.get().__getitem__(self.local_area.slice)
+    assert tmp.shape == self.local_shape, str(tmp.shape) + ' ' + str(self.local_shape)
+    self.local_data = garray.array(np.require(tmp, dtype = np.float32, requirements = 'C'))
+
   @property
   def global_area(self):
     return Area.make_area(self.global_shape)
@@ -174,6 +180,7 @@ class VArray(object):
   def write(self, area, data, acc = 'add'):
     if acc == 'no':
       sub_area = self.local_area & area
+      print sub_area.offset(area._from).slice
       sub_data = data.get().__getitem__(sub_area.offset(area._from).slice)
       self.write_local(sub_area, sub_data)
       return
@@ -327,7 +334,7 @@ class VArray(object):
 
   def sum(self):
     local_sum = garray.sum(self.local_data)
-    if self.unique:
+    if not self.unique:
       return local_sum
     else:
       global_sum = WORLD.allreduce(local_sum)
@@ -335,13 +342,13 @@ class VArray(object):
 
   def max(self):
     local_max = garray.max(self.local_data)
-    if self.unique:
+    if not self.unique:
       return local_max
     else:
       global_max = WORLD.allreduce(local_max, op = max)
       return global_max
 
-  def cross_communicate(self, stride, filter_size, padding = 0):
+  def cross_communicate(self, stride, filter_size, padding = 0, num_output = None):
     r, c = self.slice_dim
 
     half_filter_size = (filter_size - 1) /2
@@ -351,17 +358,35 @@ class VArray(object):
       row_begin_centroid = global_row_begin_centroid
       col_begin_centroid = global_col_begin_centroid
 
-      while row_begin_centroid < self.local_area._from[r]: row_begin_centroid += stride
-      while col_begin_centroid < self.local_area._from[c]: col_begin_centroid += stride
+      while row_begin_centroid <= self.local_area._from[r]: row_begin_centroid += stride
+      while col_begin_centroid <= self.local_area._from[c]: col_begin_centroid += stride
 
       row_end_centroid = row_begin_centroid
       col_end_centroid = col_begin_centroid
 
       while row_end_centroid < self.local_area._to[r]: row_end_centroid += stride
-      row_end_centroid -= stride
+      if row_end_centroid != self.local_area._to[r]:
+        row_end_centroid -= stride
       while col_end_centroid < self.local_area._to[c]: col_end_centroid += stride
-      col_end_centroid -= stride
+      if col_end_centroid != self.local_area._to[c]:
+        col_end_centroid -= stride
 
+      if num_output is not None:
+        num_row , num_col = num_output
+        diff = num_row - ((row_end_centroid - row_begin_centroid) / stride  + 1)
+        if diff != 0:
+          # change the centriod, asssume there are 4 GPU
+          if self.local_area._from[r] == 0:
+            row_end_centroid += diff * stride
+          else:
+            row_begin_centroid +=  diff * stride
+        diff = num_col - ((col_end_centroid - col_begin_centroid) / stride  + 1)
+        if diff != 0:
+          # change the centriod, asssume there are 4 GPU
+          if self.local_area._from[c] == 0:
+            col_end_centroid += diff * stride
+          else:
+            col_begin_centroid +=  diff * stride
 
       row_up = half_filter_size - (row_begin_centroid - self.local_area._from[r])
       row_down = half_filter_size - (self.local_area._to[r] - row_end_centroid)

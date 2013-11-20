@@ -1,12 +1,12 @@
 from collections import deque
 from distnet import argparse, util, layer, data
+from distnet.util import log
 from distnet.checkpoint import CheckpointDumper, DataDumper, MemoryDataHolder
 from distnet.layer import TRAIN, TEST
 from distnet.net import FastNet
 from distnet.parser import parse_config_file, load_model
 from distnet.scheduler import Scheduler
 import os
-import pprint
 import sys
 import time
 import math
@@ -33,7 +33,7 @@ def cache_outputs(net, dp, dumper, layer_name = 'pool5', index = -1):
     net.train_batch(batch.data, batch.labels, TEST)
     cost, correct, numCase = net.get_batch_information()
     curr_batch += 1
-    print >> sys.stderr, '%d.%d: error: %f logreg: %f time: %f' % (epoch, curr_batch, 1 - correct, cost, time.time() - batch_start)
+    log('%d.%d: error: %f logreg: %f time: %f', epoch, curr_batch, 1 - correct, cost, time.time() - batch_start)
     dumper.add({ 'labels' : batch.labels.get(),
                  'fc' : net.get_output_by_index(index).get().transpose()})
     batch = dp.get_next_batch(128)
@@ -87,13 +87,13 @@ class Trainer:
     model['train_outputs'] = self.train_outputs
     model['test_outputs'] = self.test_outputs
 
-    print >> sys.stderr, '---- save checkpoint ----'
+    log('---- save checkpoint ----')
     self.print_net_summary()
     self.checkpoint_dumper.dump(checkpoint=model, suffix=self.curr_epoch)
 
 
   def adjust_lr(self):
-    print >> sys.stderr, '---- adjust learning rate ----'
+    log('---- adjust learning rate ----')
     self.net.adjust_learning_rate(self.factor)
 
   def elapsed(self):
@@ -113,18 +113,15 @@ class Trainer:
       cost , correct, numCase, = self.net.get_batch_information()
 
     self.test_outputs += [({'logprob': [cost, 1 - correct]}, numCase, self.elapsed())]
-    print >> sys.stderr, '---- test ----'
-    print >> sys.stderr, 'error: %f logreg: %f' % (1 - correct, cost)
+    log( '---- test ----')
+    log('error: %f logreg: %f', 1 - correct, cost)
 
   def print_net_summary(self):
-    print >> sys.stderr, '--------------------------------------------------------------'
     for s in self.net.get_summary():
       name = s[0]
       values = s[1]
-      print >> sys.stderr, "Layer '%s' weight: %e [%e] @ [%e]" % (name, values[0], values[1],
-          values[4])
-      print >> sys.stderr, "Layer '%s' bias: %e [%e] @ [%e]" % (name, values[2], values[3],
-          values[5])
+      log("Layer '%s' weight: %e [%e] @ [%e]", name, values[0], values[1], values[4])
+      log("Layer '%s' bias: %e [%e] @ [%e]", name, values[2], values[3],values[5])
 
 
   def check_test_data(self):
@@ -171,8 +168,7 @@ class Trainer:
       self.train_outputs += [({'logprob': [cost, 1 - correct]}, numCase, self.elapsed())]
 
       if time.time() - last_print_time > 1:
-        print >> sys.stderr, '%d.%d: error: %f logreg: %f time: %f' % (
-                      self.curr_epoch, self.curr_batch, 1 - correct, cost, time.time() - batch_start)
+        log('%d.%d: error: %f logreg: %f time: %f', self.curr_epoch, self.curr_batch, 1 - correct, cost, time.time() - batch_start)
         last_print_time = time.time()
 
       if self.check_test_data():
@@ -192,7 +188,7 @@ class Trainer:
   def report(self):
     rep = self.net.get_report()
     if rep is not None:
-      print rep
+      log(rep)
     #timer.report()
 
   @staticmethod
@@ -271,7 +267,6 @@ class ImageNetLayerwisedTrainer(Trainer):
     self.stack = self.fc_stack
 
     self.initialize_model()
-    pprint.pprint(self.stack)
 
     self.num_epoch = self.frag_epoch
     self.net = FastNet(self.learning_rate, self.image_shape, self.curr_model)

@@ -8,9 +8,7 @@ import garray
 def copy_to(input, output):
   if output.unique:
     if not input.unique:
-      tmp = garray.zeros_like(input.local_data)
-      tmp = tmp.reshape(output.shape)
-      output.write(data = tmp, area =output.local_area, acc = 'no')
+      output.copy_from_global(input.local_data.reshape(output.shape))
       return
 
   garray.copy_to(input.local_data, output.local_data)
@@ -105,10 +103,34 @@ def softmax_bprop(output, label, out_grad):
   garray.softmax_bprop(output.local_data, label.local_data, out_grad.local_data)
 
 def relu_activate(input, output, e):
-  garray.relu_active(input.local_data, output.local_data, e)
+  if len(input.local_shape) != 2:
+    old_shape = output.local_shape
+    output.local_data = garray.reshape_last(output.local_data)
+    garray.relu_activate(
+        garray.reshape_last(input.local_data),
+        output.local_data,
+        e)
+    output.local_data = output.local_data.reshape(old_shape)
+  else:
+    garray.relu_activate(
+        input.local_data,
+        output.local_data,
+        e)
+
 
 def relu_compute_grad(grad, output, out_grad, e):
-  garray.relu_comput_grad(grad.local_data, output.local_data, out_grad.local_data, e)
+  if len(grad.shape) != 2:
+    old_shape = out_grad.local_shape
+    out_grad.local_data = garray.reshape_last(out_grad.local_data)
+    garray.relu_compute_grad(
+        garray.reshape_last(grad.local_data),
+        garray.reshape_last(output.local_data),
+        out_grad.local_data,
+        e)
+
+    out_grad.local_data = out_grad.local_data.reshape(old_shape)
+  else:
+    garray.relu_compute_grad(grad.local_data, output.local_data, out_grad.local_data, e)
 
 def tanh_activate(input, output, a, b):
   garray.tanh_avtivate(input.local_data, output.local_data, a, b)
@@ -184,9 +206,11 @@ def wconvolution(input, grad, weight_grad, image_y, output_y, output_x, filter_s
   weight_grad.write(weight_grad.global_area, tmp_weight_grad)
 
 def maxpool(input, output, channel, pool_size, start, stride, input_y, output_y, output_x):
-  input.cross_communicate(stride = stride, filter_size = pool_size)
-  input.pad(0)
   r,c = output.slice_dim
+  num_row = output.local_shape[r]
+  num_col = output.local_shape[c]
+  input.cross_communicate(stride = stride, filter_size = pool_size, num_output = (num_row, num_col))
+  input.pad(0)
 
   output_y = output.local_shape[r]
   output_x = output.local_shape[c]
@@ -203,11 +227,13 @@ def maxpool(input, output, channel, pool_size, start, stride, input_y, output_y,
   output.local_data = output.local_data.reshape(old_shape)
 
 def maxundo(input, grad, output, out_grad, pool_size, start, stride, output_y, output_x, input_y):
+  r, c = input.slice_dim
   if not hasattr(input, 'tmp_local_data'):
-    input.cross_communicate(stride = stride, filter_size = pool_size)
+    num_row = output.local_shape[r]
+    num_col = output.local_shape[c]
+    input.cross_communicate(stride = stride, filter_size = pool_size, num_output = (num_row, num_col))
     input.pad(0)
   tmp_out_grad = garray.reshape_last(garray.zeros_like(input.tmp_local_data))
-  r, c = input.slice_dim
   output_y = output.local_data.shape[r]
   output_x = output.local_data.shape[c]
 
@@ -225,9 +251,11 @@ def maxundo(input, grad, output, out_grad, pool_size, start, stride, output_y, o
 
 def avgpool(input, output, channel, pool_size, start, stride, input_y, output_y, output_x):
   # same as max pooling layer
-  input.cross_communicate(stride = stride, filter_size = pool_size)
-  input.pad(0)
   r,c = output.slice_dim
+  num_row = output.local_shape[r]
+  num_col = output.local_shape[c]
+  input.cross_communicate(stride = stride, filter_size = pool_size, num_output = (num_row, num_col))
+  input.pad(0)
 
   output_y = output.local_shape[r]
   output_x = output.local_shape[c]
@@ -244,11 +272,13 @@ def avgpool(input, output, channel, pool_size, start, stride, input_y, output_y,
   output.local_data = output.local_data.reshape(old_shape)
 
 def avgundo(input, grad, out_grad, pool_size, start, stride, output_y, output_x, image_y, image_x):
+  r, c = input.slice_dim
   if not hasattr(input, 'tmp_local_data'):
-    input.cross_communicate(stride = stride, filter_size = pool_size)
+    num_row = output.local_shape[r]
+    num_col = output.local_shape[c]
+    input.cross_communicate(stride = stride, filter_size = pool_size, num_output = (num_row, num_col))
     input.pad(0)
   tmp_out_grad = garray.reshape_last(garray.zeros_like(input.tmp_local_data))
-  r, c = input.slice_dim
   output_y = grad.local_data.shape[r]
   output_x = grad.local_data.shape[c]
 
