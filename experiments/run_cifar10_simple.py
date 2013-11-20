@@ -2,7 +2,7 @@
 
 from distnet import data, trainer, net, parser
 
-test_id = 'cifar-test-1'
+test_id = 'cifar-test-2'
 
 data_dir = '/ssd/nn-data/cifar-10.old/'
 checkpoint_dir = '../checkpoint/'
@@ -20,9 +20,8 @@ checkpoint_dumper = trainer.CheckpointDumper(checkpoint_dir, test_id)
 init_model = checkpoint_dumper.get_checkpoint()
 if init_model is None:
   init_model = parser.parse_config_file(param_file)
-  
 
-save_freq = 10
+save_freq = 100
 test_freq = 100
 adjust_freq = 100
 factor = 1

@@ -1,14 +1,14 @@
-Fastnet
+distnet
 =========
-A [convolutional neural network](http://yann.lecun.com/exdb/lenet/) framework, building on 
+A [distributed convolutional neural network](http://yann.lecun.com/exdb/lenet/) framework, building on 
 top of the convolutional kernel code from [cuda-convnet](https://code.google.com/p/cuda-convnet/).
 
 
 **Setup**
 
 ```
-git clone https://github.com/rjpower/fastnet
-cd fastnet
+git clone https://github.com/allenbo/distnet
+cd distnet
 python setup.py develop [--user]
 ```
 
@@ -16,7 +16,7 @@ python setup.py develop [--user]
 
 To run a trainer directly:
 
-    python fastnet/trainer.py --help
+    python distnet/trainer.py --help
     
 Take a look at the scripts in `fastnet/scripts` for examples of how to run your own network.
 
