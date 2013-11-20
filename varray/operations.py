@@ -36,15 +36,11 @@ def matrixmult(x, y):
   assert isinstance(y, VArray)
 
   if x.unique:
-    x = x.fetch(x.global_area)
-    x = garray.array(np.require(x, dtype = np.float32, requirements = 'C'))
-    x = garray.reshape_last(x)
+    x = garray.reshape_last(x.fetch(x.global_area))
   else:
     x = x.local_data
   if y.unique:
-    y = y.fetch(y.global_area)
-    y = garray.array(np.require(y, dtype = np.float32, requirements = 'C'))
-    y = garray.reshape_last(y)
+    y = garray.reshape_last(y.fetch(y.global_area))
   else:
     y = y.local_data
 
@@ -64,7 +60,7 @@ def matrix_add(incr, grad ,alpha = 1.0, beta = 1.0):
 
 def transpose(mat):
   if mat.unique:
-    x = garray.reshape_last(garray.array(np.require(mat.fetch(mat.global_area), dtype= np.float32, requirements = 'C')))
+    x = garray.reshape_last(mat.fetch(mat.global_area))
   else:
     x = mat.local_data
   c = garray.transpose(x)

@@ -205,19 +205,19 @@ class VArray(object):
       first, second = self.slice_dim
       row_from = area._from.point[first]
       a = sorted([sub_area for sub_area in subs if sub_area._from.point[first] == row_from], key = lambda x: x._to.point[second])
-      rst = np.concatenate(tuple([subs[sub] for sub in a]), axis = second)
+      rst = garray.concatenate(tuple([subs[sub] for sub in a]), axis = second)
       while True:
         row_from = a[0]._to.point[first] + 1
         a = sorted([sub_area for sub_area in subs if sub_area._from.point[first] == row_from], key = lambda x: x._to.point[second])
         if not a: break;
         else:
-          tmp = np.concatenate(tuple([subs[sub] for sub in a]), axis = second)
-          rst = np.concatenate((rst, tmp), axis = first)
+          tmp = garray.concatenate(tuple([subs[sub] for sub in a]), axis = second)
+          rst = garray.concatenate((rst, tmp), axis = first)
       return rst
     elif self.slice_method == DistMethod.Stripe:
       dim = self.slice_dim
       a = sorted(subs.keys(), key = lambda x : x._from.point[dim])
-      rst = np.concatenate(tuple([subs[sub] for sub in a]), axis = dim)
+      rst = garray.concatenate(tuple([subs[sub] for sub in a]), axis = dim)
       return rst
     else:
       assert False, 'No implementation'
@@ -447,12 +447,10 @@ class VArray(object):
 
 
       if u or d or l or r:
-        old_tmp = self.tmp_local_area
-        np_tmp = np.zeros(tuple(old_shape), dtype = np.float32)
+        tmp = garray.zeros(tuple(old_shape), dtype = np.float32)
         slices = old_area.offset(self.tmp_local_area._from).slice
-        np_tmp[slices] = self.tmp_local_data
-        self.tmp_local_data = np_tmp
-    self.tmp_local_data = garray.array(np.require(self.tmp_local_data, dtype = np.float32, requirements = 'C'))
+        tmp[slices] = self.tmp_local_data
+        self.tmp_local_data = tmp
 
   def unpad(self, data, padding):
     if padding == 0:
@@ -492,8 +490,7 @@ class VArray(object):
 
 
     if u or d or l or r:
-      np_tmp = data.get()[old_area.offset(self.local_area._from).slice]
-      return garray.array(np.require(np_tmp, dtype = np.float32, requirements = 'C'))
+      data = data[old_area.offset(self.local_area._from).slice]
     return data
 
   def add(self, other, dst = None, shape = None, axis = 0):

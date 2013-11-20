@@ -132,6 +132,7 @@ def concatenate(arrays, axis = 0):
     if array.shape[:axis] + array.shape[axis+1:] != other_dim:
       raise ValueError('array dimensions must agree expect for d_%d' % axis)
   source = arrays[0]
+  dest = source
   for other in arrays[1:]:
     new_shape = source.shape[:axis] + (source.shape[axis] + other.shape[axis], ) + source.shape[axis+1:]
 
