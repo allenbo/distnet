@@ -3,7 +3,8 @@
 This test is for naive trainer to traine a full imagenet model
 '''
 
-from distnet import data, trainer, net, parser
+from distnet import data, trainer, net, parser, util
+
 
 test_id = 'base'
 
@@ -31,7 +32,7 @@ save_freq = 100
 test_freq = 100
 adjust_freq = 100
 factor = 1
-num_epoch = 3
+num_epoch = 1
 learning_rate = 0.1
 batch_size = 128
 image_color = 3
@@ -41,4 +42,6 @@ net = parser.load_model(net.FastNet(image_shape), model)
 
 param_dict = globals()
 t = trainer.Trainer(**param_dict)
+
+util.enable_profile()
 t.train(num_epoch)

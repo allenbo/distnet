@@ -6,6 +6,8 @@ import numpy as np
 import math
 import copy
 import garray
+import time
+from pycuda import driver
 
 WORLD = MPI.COMM_WORLD
 MASTER = 0
@@ -18,10 +20,15 @@ class DistMethod(object):
 
 
 
+def tobuffer(gpuarray):
+  dtype = np.dtype(gpuarray.dtype)
+  return garray.make_buffer(gpuarray.ptr, gpuarray.size * dtype.itemsize)
+
 class VArray(object):
-  def __init__(self, array, unique = True,
+  def __init__(self, array = None, unique = True,
                             slice_method = DistMethod.Square,
-                            slice_dim = None):
+                            slice_dim = None, shape = None):
+    start = time.time()
     self.rank = rank
     self.world_size = size
 
@@ -33,15 +40,21 @@ class VArray(object):
 
     if hasattr(array, 'shape'):
       self.global_shape = array.shape
+    elif shape is not None:
+      self.global_shape = shape
     else:
       assert False, 'Array has no shape attr'
 
     if hasattr(array, 'dtype'):
       self.dtype = array.dtype
+    elif shape is not None:
+      self.dtype = np.float32
     else:
       assert False, 'Array has no dtype attr'
 
     if not self.unique:
+      if array is None and shape is not None:
+        array = garray.GPUArray(shape, self.dtype)
       if isinstance(array, garray.GPUArray):
         self.local_data = array
       else:
@@ -59,7 +72,15 @@ class VArray(object):
         self.nprow = math.sqrt(self.world_size)
 
         self.local_area = self.make_square_area()
-        self.local_data = garray.array(array.__getitem__(self.local_area.slice).copy())
+        if array is not None:
+          if isinstance(array, garray.GPUArray):
+            #driver.Context.synchronize()
+            self.local_data = array.__getitem__(self.local_area.slice)
+          else:
+            self.local_data = garray.array(array.__getitem__(self.local_area.slice).copy())
+        else:
+          assert shape is not None
+          self.local_data = garray.GPUArray(self.local_area.get_shape(), dtype = self.dtype)
       elif self.slice_method == DistMethod.Stripe:
         if self.slice_dim is None:
           self.slice_dim = 0
@@ -88,6 +109,7 @@ class VArray(object):
 
 
   def copy_from_global(self, input):
+    #driver.Context.synchronize()
     tmp = input.__getitem__(self.local_area.slice)
     assert tmp.shape == self.local_shape, str(tmp.shape) + ' ' + str(self.local_shape)
     self.local_data = tmp
@@ -113,18 +135,35 @@ class VArray(object):
     if area is None:
       return None
     area = area.offset(self.local_area._from)
+    #driver.Context.synchronize()
     data = self.local_data.__getitem__(area.slice)
     return data
 
   def fetch_remote(self, reqs):
     subs = {}
+    recv_data = []
     req_list = reqs[:]
+    for req in req_list:
+      if req is None:
+        recv_data.append(None)
+      else:
+        recv_data.append(garray.GPUArray(req.get_shape(), dtype = np.float32))
     req_list = WORLD.alltoall(req_list)
 
     send_data = [self.fetch_local(req_list[rank]) for rank in range(self.world_size)]
-    send_data = WORLD.alltoall(send_data)
-    WORLD.barrier()
-    subs = { reqs[rank]: send_data[rank] for rank in range(self.world_size)}
+    send_req = []
+    recv_req = []
+    for i,data in enumerate(send_data):
+      if i == self.rank or data is None:continue
+      send_req.append(WORLD.Isend(tobuffer(data), dest = i))
+
+    for i, data in enumerate(recv_data):
+      if i == self.rank or data is None:continue
+      recv_req.append(WORLD.Irecv(tobuffer(data), source = i))
+
+    for req in send_req: req.wait()
+    for req in recv_req: req.wait()
+    subs = { reqs[rank]: recv_data[rank] for rank in range(self.world_size)}
     return subs
 
   def fetch(self, area):
@@ -141,7 +180,9 @@ class VArray(object):
         if rank == self.rank:
           sub_array = self.fetch_local(sub_area)
           subs[sub_area] = sub_array
-        reqs[rank] = sub_area
+          reqs[rank] = None
+        else:
+          reqs[rank] = sub_area
     subs.update(self.fetch_remote(reqs))
     return self.merge(subs, area)
 
@@ -160,20 +201,42 @@ class VArray(object):
 
 
 
+  def communicate_remote(self, sub_data, recv_data):
+    send_req = []
+    recv_req = []
+    for i,data in enumerate(sub_data):
+      if i == self.rank or data is None:continue
+      send_req.append(WORLD.Isend(tobuffer(data), dest = i))
+
+    for i, data in enumerate(recv_data):
+      if i == self.rank or data is None:continue
+      recv_req.append(WORLD.Irecv(tobuffer(data), source = i))
+
+    for req in send_req: req.wait()
+    for req in recv_req: req.wait()
+
+
   def write_remote(self, reqs, sub_data, acc):
+    recv_data = []
     req_list = reqs[:]
     req_list = WORLD.alltoall(req_list)
-
-    sub_data = WORLD.alltoall(sub_data)
+    size = 0
+    for req in req_list:
+      if req is None:
+        recv_data.append(None)
+      else:
+        recv_data.append(garray.GPUArray(req.get_shape(), dtype = np.float32))
+        size += req.size
+    self.communicate_remote(sub_data, recv_data)
 
     for rank in range(self.world_size):
-      if rank == self.rank:
-        continue
+      if rank == self.rank or req_list[rank] is None: continue
       else:
-        self.write_local(req_list[rank], sub_data[rank], acc)
-    WORLD.barrier()
+        self.write_local(req_list[rank], recv_data[rank], acc)
 
   def write(self, area, data, acc = 'add'):
+    WORLD.barrier()
+    start = time.time()
     if acc == 'no':
       sub_area = self.local_area & area
       print sub_area.offset(area._from).slice
@@ -194,6 +257,7 @@ class VArray(object):
           sub_data = None
         if rank == self.rank:
           self.write_local(sub_area, sub_data)
+          reqs[rank] = None
         else:
           reqs[rank] = sub_area
           local_subs[rank] = sub_data
@@ -268,7 +332,7 @@ class VArray(object):
     return self.slice_method == other.slice_method and self.slice_dim == other.slice_dim and self.unique == other.unique
 
   def __add__(self, other):
-    c = zeros_like(self)
+    c = allocate_like(self)
     if isinstance(other, VArray):
       if self.check_param(other):
         c.local_data = self.local_data + other.local_data
@@ -287,7 +351,7 @@ class VArray(object):
 
 
   def __sub__(self, other):
-    c = zeros_like(self)
+    c = allocate_like(self)
     if isinstance(other, VArray):
       if self.check_param(other) or self.unique == False and other.unique == False:
         c.local_data = self.local_data - other.local_data
@@ -300,29 +364,29 @@ class VArray(object):
 
     return c
 
-  def __mult__(self, other):
+  def __mul__(self, other):
     if np.isscalar(other):
-      c = zeros_like(self)
+      c = allocate_like(self)
       garray.copy_to(self.local_data * other, c.local_data)
       return c
     else:
-      c = zeros_like(self)
+      c = allocate_like(self)
       c.local_data   = self.local_data * other.local_data
       return c
 
   def __div__(self, other):
     if np.isscalar(other):
-      c = zeros_like(self)
+      c = allocate_like(self)
       garray.copy_to(self.local_data / other, c.local_data)
       return c
     else:
-      c = zeros_like(self)
+      c = allocate_like(self)
       c.local_data = self.local_data / other.local_data
       return c
 
   def __eq__(self, other):
     assert self.check_param(other)
-    c = zeros_like(self)
+    c = allocate_like(self)
     c.local_data = self.local_data == other.local_data
 
     return c
@@ -447,7 +511,7 @@ class VArray(object):
 
 
       if u or d or l or r:
-        tmp = garray.zeros(tuple(old_shape), dtype = np.float32)
+        tmp = garray.GPUArray(tuple(old_shape), dtype = np.float32)
         slices = old_area.offset(self.tmp_local_area._from).slice
         tmp[slices] = self.tmp_local_data
         self.tmp_local_data = tmp
@@ -510,7 +574,7 @@ class VArray(object):
       assert self.check_param(dst)
       c = dst
     else:
-      c = zeros_like(self)
+      c = allocate_like(self)
     c.local_data = tmp.reshape(self.local_shape)
     return c
 
@@ -573,6 +637,7 @@ class VArray(object):
 
   def __getitem__(self, key):
     if not self.unique:
+      #driver.Context.synchronize()
       local_data = self.local_data.__getitem__(key)
       c = VArray(local_data, unique = False)
       return c
@@ -597,6 +662,13 @@ def square_array(a, slice_dim, unique = True):
 def zeros(shape, dtype = np.float32, unique = True, slice_method = DistMethod.Square, slice_dim = (1, 2)):
   a = np.zeros(shape).astype(np.float32)
   return VArray(a, unique, slice_method, slice_dim)
+
+
+def allocate(shape, dtype = np.float32, unique = True, slice_method = DistMethod.Square, slice_dim = (1, 2)):
+  return VArray(array = None, unique =  unique, slice_method = slice_method, slice_dim = slice_dim, shape = shape)
+
+def allocate_like(input):
+  return VArray(array = None, unique = input.unique, slice_method = input.slice_method, slice_dim = input.slice_dim, shape = input.shape)
 
 def zeros_like(like):
   assert isinstance(like, VArray)

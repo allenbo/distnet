@@ -1,10 +1,12 @@
 import time
 import threading
-import inspect
 import sys
 import os
 import math
 import os.path
+import ctypes
+import sys
+import numpy as np
 
 start = time.time()
 log_lock = threading.Lock()
@@ -22,15 +24,18 @@ log_level = { DEBUG:'DEBUG',
               FATAL:'FATAL'
               }
 
+from mpi4py import MPI
+rank = MPI.COMM_WORLD.Get_rank()
+
 def log(fmt, *args, **kw):
   with log_lock:
     level = kw.get('level', 0)
     level = log_level[level]
-    caller_frame = inspect.stack()[1]
-    filename = os.path.basename(caller_frame[1])
-    lineno = caller_frame[2]
-    print >> sys.stderr, "==%s== %.4fs %s:%s ::" % (level, time.time() - start, filename, lineno) ,
-    print >> sys.stderr, "%s" % (fmt % args)
+    caller_frame = sys._getframe(1)
+    filename = os.path.basename(caller_frame.f_code.co_filename)
+    lineno = caller_frame.f_lineno
+    msg = "==%s== %.4fs %s:%s %s:: %s" % (level, time.time() - start, filename, lineno, rank, fmt % args)
+    print >> sys.stderr, msg
 
 
 def D(fmt, *args): log(fmt, *args, level=DEBUG)
@@ -73,3 +78,4 @@ def timeit(fn):
     return rst
 
   return _fn
+

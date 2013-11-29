@@ -1,6 +1,6 @@
 from distnet import util
-from distnet.util import timer, divup
-from pycuda import gpuarray
+from distnet.util import timer, divup, make_copy
+from pycuda import gpuarray, driver
 from pycuda.compiler import SourceModule
 from pycuda.elementwise import ElementwiseKernel
 from pycuda.gpuarray import GPUArray
@@ -12,6 +12,7 @@ import numpy as np
 import pycuda
 import sys
 from cudaconv import *
+#cudaconv.init()
 
 sgemm = None
 def _initialize_cublas():
@@ -25,7 +26,7 @@ def _initialize_cublas():
     def sgemm(*args):
       cublas.cublasSgemm(handle, *args)
 
-_initialize_cublas()
+#_initialize_cublas()
 class CompiledSource(object):
   '''
   Compile a source string with PyCuda, caching the resulting module.
@@ -36,6 +37,7 @@ class CompiledSource(object):
     self.module = None
     self.kernel = None
 
+
   def __call__(self, *args, **kw):
     if self.module is None:
       util.log('Compiling... %s', self.kernel_name)
@@ -43,6 +45,7 @@ class CompiledSource(object):
       self.kernel = self.module.get_function(self.kernel_name)
 
     self.kernel(*args, **kw)
+    driver.Context.synchronize()
 
 
 def I(i): return np.int32(i)
@@ -601,36 +604,183 @@ _stride_copy_3_channel_block_ = CompiledSource('''
     }''', 'stride_copy_3_channel_block')
 
 
-_stride_copy_4_ = CompiledSource('''
+_stride_copy_4_roll_both_ = CompiledSource('''
     __global__
-    void stride_copy_4( float* input, float* output, 
+    void stride_copy_4_roll_both( float* input, float* output,
       int start1, int stride1, int start2, int stride2,
       int start3, int stride3, int start4, int stride4,
-      int col, int row,
+      int col, int row, int step,
       int ifleading, int isleading, int itleading,
       int ofleading, int osleading, int otleading, int reversed) {
 
-      int channel = blockIdx.x;
-      int batch = blockIdx.y;
+      int offset_dest, offset_src;
+      offset_dest = blockIdx.x * ofleading + blockIdx.y;
+      offset_src = (blockIdx.x * stride1 + start1) * ifleading + (blockIdx.y * stride4 + start4);
+      /*
       int height = threadIdx.y;
-      int width = threadIdx.x;
-
-      int sidx, didx;
+      const int stride_dest = blockDim.x * otleading;
+      const int stride_src = blockDim.x * stride3 * itleading;
+      int didx, sidx;
       for(height = threadIdx.y; height < row; height += blockDim.y) {
+        int width = threadIdx.x;
+        didx = offset_dest + height*osleading + width * otleading;
+        sidx = offset_src + (height * stride2 + start2) * isleading + (width * stride3 + start3) * itleading;
         for(width = threadIdx.x; width < col; width += blockDim.x) {
           if (height >= row || width >= col ) continue;
-          didx = channel * ofleading + height * osleading + width * otleading + batch;
-          sidx = (channel * stride1 + start1) * ifleading + (height * stride2 + start2) * isleading
-          + (width * stride3 + start3) * itleading + (batch * stride4 + start4);
-
-          if ( ! reversed)
-            output[didx] = input[sidx];
-          else
+          if (reversed)
             input[sidx] = output[didx];
+          else
+            output[didx] = input[sidx];
+          didx += stride_dest;
+          sidx += stride_src;
         }
       }
-    }''', 'stride_copy_4')
+      */
+      int height,width;
+      int didx, sidx;
+      const int height_to = threadIdx.y * step  + step < row ? threadIdx.y * step + step: row;
+      const int width_to = threadIdx.x * step  + step < col ? threadIdx.x * step + step: col;
+      for(height =  threadIdx.y * step; height < height_to; height ++) {
+        width = threadIdx.x * step;
+        didx = offset_dest + height*osleading + width * otleading;
+        sidx = offset_src + (height * stride2 + start2) * isleading + (width * stride3 + start3) * itleading;
+        for(; width < width_to; width ++, didx += otleading,sidx += stride3 * itleading) {
+          if (reversed )
+            input[sidx] = output[didx];
+          else
+            output[didx] = input[sidx];
+        }
+      }
+    }''', 'stride_copy_4_roll_both')
 
+
+_stride_copy_4_single_pixel_ = CompiledSource('''
+    __global__
+    void stride_copy_4_single_pixel( float* input, float* output,
+      int start1, int stride1, int start2,
+      int start3, int start4, int stride4,
+      int num_channel, int num_batch, int step,
+      int ifleading, int isleading, int itleading,
+      int ofleading, int osleading, int otleading, int reversed) {
+
+      const int x = blockDim.x * blockIdx.x + threadIdx.x;
+      const int y = blockDim.y * blockIdx.y + threadIdx.y;
+      int channel, batch;
+      int didx, sidx;
+      const int channel_to= x * step  + step < num_channel ? x* step + step: num_channel;
+      const int batch_to = y* step  + step < num_batch ? y* step + step: num_batch;
+      #pragma unroll
+      for(channel = x * step; channel < channel_to; channel ++) {
+        #pragma unroll
+        for(batch = y * step; batch < batch_to; batch ++) {
+          didx = channel * ofleading + batch;
+          sidx = (channel * stride1 + start1) * ifleading + start2 * isleading  + start3 * itleading + batch * stride4 + start4;
+          if (reversed)
+            input[sidx] = output[didx];
+          else
+            output[didx] = input[sidx];
+        }
+      }
+    }''', 'stride_copy_4_single_pixel')
+
+
+
+_stride_copy_4_fold_batch_ = CompiledSource('''
+    __global__
+    void stride_copy_4_fold_batch( float* input, float* output,
+      int start1, int stride1, int start2, int stride2,
+      int start3, int stride3, int start4, int stride4,
+      int col, int row, int batch, int step,
+      int ifleading, int isleading, int itleading,
+      int ofleading, int osleading, int otleading, int reversed) {
+
+
+      int offset_dest = blockIdx.x * ofleading;
+      int offset_src = (blockIdx.x * stride1 + start1 ) * ifleading;
+      int x, y;
+      int pixels = row * col;
+      int didx, sidx;
+      int height, width;
+      const int x_to = threadIdx.x * step + step < pixels ? threadIdx.x * step + step : pixels;
+      const int y_to = threadIdx.y * step + step < batch ? threadIdx.y * step + step : batch;
+      #pragma unroll
+      for(x = threadIdx.x * step; x < x_to; x ++ ) {
+        height = x / col;
+        width = x % col;
+        y = threadIdx.y * step;
+        didx = offset_dest + height*osleading + width * otleading + y;
+        sidx = offset_src + (height*stride2 + start2) * isleading + (width * stride3 + start3) * itleading + (y * stride4 + start4);
+        #pragma unroll
+        for(; y < y_to; y ++, didx ++, sidx += stride4) {
+          if (reversed)
+            input[sidx] = output[didx];
+          else
+            output[didx] = input[sidx];
+        }
+      }
+    }''', 'stride_copy_4_fold_batch')
+
+_stride_copy_4_fold_channel_ = CompiledSource('''
+    __global__
+    void stride_copy_4_fold_channel( float* input, float* output,
+      int start1, int stride1, int start2, int stride2,
+      int start3, int stride3, int start4, int stride4,
+      int col, int row, int channel, int step,
+      int ifleading, int isleading, int itleading,
+      int ofleading, int osleading, int otleading, int reversed) {
+
+      int x, y;
+      int pixels = row * col;
+      int didx, sidx;
+      int height, width;
+      const int x_to = threadIdx.x * step + step <  channel ? threadIdx.x * step + step : channel;
+      const int y_to = threadIdx.y * step + step <  pixels? threadIdx.y * step + step : pixels;
+      #pragma unroll
+      for(y = threadIdx.y * step; y < y_to; y ++ ) {
+        height = y / col;
+        width = y % col;
+        x = threadIdx.x * step;
+        didx = x * ofleading + height * osleading +  width * otleading + blockIdx.x;
+        sidx = (x * stride1 + start1) * ifleading + (height * stride2 + start2) * isleading + (width * stride3 + start3) * itleading + (blockIdx.x * stride4 + start4);
+        #pragma unroll
+        for(; x < x_to; x ++, didx += ofleading, sidx += ifleading * stride1) {
+          if (reversed)
+            input[sidx] = output[didx];
+          else
+            output[didx] = input[sidx];
+        }
+      }
+    }''', 'stride_copy_4_fold_channel')
+
+#_stride_copy_4_ = CompiledSource('''
+#    __global__
+#    void stride_copy_4( float* input, float* output, 
+#      int start1, int stride1, int start2, int stride2,
+#      int start3, int stride3, int start4, int stride4,
+#      int col, int row,
+#      int ifleading, int isleading, int itleading,
+#      int ofleading, int osleading, int otleading, int reversed) {
+#
+#      int channel = blockIdx.x;
+#      int batch = blockIdx.y;
+#      int height = threadIdx.y;
+#      int width = threadIdx.x;
+#
+#      int sidx, didx;
+#      for(height = threadIdx.y; height < row; height += blockDim.y) {
+#        for(width = threadIdx.x; width < col; width += blockDim.x) {
+#          if (height >= row || width >= col ) continue;
+#          didx = channel * ofleading + height * osleading + width * otleading + batch;
+#          sidx = (channel * stride1 + start1) * ifleading + (height * stride2 + start2) * isleading
+#          + (width * stride3 + start3) * itleading + (batch * stride4 + start4);
+#
+#          if ( ! reversed)
+#            output[didx] = input[sidx];
+#          else
+#            input[sidx] = output[didx];
+#        }
+#      }
+#    }''', 'stride_copy_4')
 
 _transpose_ = CompiledSource('''
   __global__
@@ -1111,20 +1261,62 @@ def stride_copy_4(input, output, slices):
 
   channel, height, width, batch = output.shape
 
-  block = (32, 32, 1)
-  grid = (channel, batch)
+
   ifleading, isleading, itleading = [x / 4 for x in input.strides[:3]]
   ofleading, osleading, otleading = [x / 4 for x in output.strides[:3]]
 
-  _stride_copy_4_(input, output,
-      I(start1), I(stride1),
-      I(start2), I(stride2),
-      I(start3), I(stride3),
-      I(start4), I(stride4),
-      I(width), I(height),
-      I(ifleading), I(isleading), I(itleading),
-      I(ofleading), I(osleading), I(otleading), I(0),
-      block = block, grid = grid)
+
+  if height >= 8 and width >= 8:
+    grid = (channel, batch)
+    step = 4
+    block = (divup(height, step), divup(width, step), 1)
+    _stride_copy_4_roll_both_(input, output,
+        I(start1), I(stride1),
+        I(start2), I(stride2),
+        I(start3), I(stride3),
+        I(start4), I(stride4),
+        I(width), I(height), I(step),
+        I(ifleading), I(isleading), I(itleading),
+        I(ofleading), I(osleading), I(otleading), I(0),
+        block = block, grid = grid)
+  elif height == 1 and width == 1:
+    step = 16
+    block = (step, step, 1)
+    grid = (divup(channel, step), divup(batch, step))
+    _stride_copy_4_single_pixel_(input, output,
+        I(start1), I(stride1),
+        I(start2), I(start3),
+        I(start4), I(stride4),
+        I(channel), I(batch), I(step),
+        I(ifleading), I(isleading), I(itleading),
+        I(ofleading), I(osleading), I(otleading), I(0),
+        block = block, grid = grid)
+  else:
+    step = 4
+    if channel > batch:
+      grid = (channel, 1)
+      block = (divup(height * width, step), divup(batch, step), 1)
+      _stride_copy_4_fold_batch_(input, output,
+        I(start1), I(stride1),
+        I(start2), I(stride2),
+        I(start3), I(stride3),
+        I(start4), I(stride4),
+        I(width), I(height), I(batch), I(step),
+        I(ifleading), I(isleading), I(itleading),
+        I(ofleading), I(osleading), I(otleading), I(0),
+        block = block, grid = grid)
+    else:
+      grid = (batch, 1)
+      block = (divup(channel, step), divup(height* width, step), 1)
+      _stride_copy_4_fold_channel_(input, output,
+        I(start1), I(stride1),
+        I(start2), I(stride2),
+        I(start3), I(stride3),
+        I(start4), I(stride4),
+        I(width), I(height), I(channel),I(step),
+        I(ifleading), I(isleading), I(itleading),
+        I(ofleading), I(osleading), I(otleading), I(0),
+        block = block, grid = grid)
 
 
 def stride_copy(input, output, slices):
@@ -1212,20 +1404,62 @@ def stride_write_4(data, container, slices):
 
   channel, height, width, batch = data.shape
 
-  block = (32, 32, 1)
-  grid = (channel, batch)
+
   ifleading, isleading, itleading = [x / 4 for x in container.strides[:3]]
   ofleading, osleading, otleading = [x / 4 for x in data.strides[:3]]
 
-  _stride_copy_4_(container, data,
-      I(start1), I(stride1),
-      I(start2), I(stride2),
-      I(start3), I(stride3),
-      I(start4), I(stride4),
-      I(width), I(height),
-      I(ifleading), I(isleading), I(itleading),
-      I(ofleading), I(osleading), I(otleading), I(1),
-      block = block, grid = grid)
+
+  if height >= 8 and width >= 8:
+    grid = (channel, batch)
+    step = 4
+    block = (divup(height, step), divup(width, step), 1)
+    _stride_copy_4_roll_both_(container, data,
+        I(start1), I(stride1),
+        I(start2), I(stride2),
+        I(start3), I(stride3),
+        I(start4), I(stride4),
+        I(width), I(height), I(step),
+        I(ifleading), I(isleading), I(itleading),
+        I(ofleading), I(osleading), I(otleading), I(1),
+        block = block, grid = grid)
+  elif height == 1 and width == 1:
+    step = 16
+    block = (step, step, 1)
+    grid = (divup(channel, step), divup(batch, step))
+    _stride_copy_4_single_pixel_(container, data,
+        I(start1), I(stride1),
+        I(start2), I(start3),
+        I(start4), I(stride4),
+        I(channel), I(batch), I(step),
+        I(ifleading), I(isleading), I(itleading),
+        I(ofleading), I(osleading), I(otleading), I(1),
+        block = block, grid = grid)
+  else:
+    step = 4
+    if channel > batch:
+      grid = (channel, 1)
+      block = (divup(height * width, step), divup(batch, step), 1)
+      _stride_copy_4_fold_batch_(container, data,
+        I(start1), I(stride1),
+        I(start2), I(stride2),
+        I(start3), I(stride3),
+        I(start4), I(stride4),
+        I(width), I(height), I(batch), I(step),
+        I(ifleading), I(isleading), I(itleading),
+        I(ofleading), I(osleading), I(otleading), I(1),
+        block = block, grid = grid)
+    else:
+      grid = (batch, 1)
+      block = (divup(channel, step), divup(height* width, step), 1)
+      _stride_copy_4_fold_channel_(container, data,
+        I(start1), I(stride1),
+        I(start2), I(stride2),
+        I(start3), I(stride3),
+        I(start4), I(stride4),
+        I(width), I(height), I(channel),I(step),
+        I(ifleading), I(isleading), I(itleading),
+        I(ofleading), I(osleading), I(otleading), I(1),
+        block = block, grid = grid)
 
 def stride_write(data, container, slices):
   if len(data.strides) == 1:
@@ -1257,7 +1491,7 @@ def gpu_partial_copy_to(x, y, row_from, row_to, col_from, col_to):
   _gpu_partial_copy_to_(x, y, I(row_from), I(row_to), I(col_from), I(col_to), I(sleading), I(dleading), block=block, grid=grid)
   
 
-#@util.lazyinit(_initialize_cublas)
+@util.lazyinit(_initialize_cublas)
 @util.timed_fn
 def matrixmult(x, y):
   if isinstance(x, GPUArray):

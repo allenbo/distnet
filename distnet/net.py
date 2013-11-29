@@ -85,17 +85,23 @@ class FastNet(object):
     assert len(self.layers) > 0, 'No outputs: uninitialized network!'
     input = data
     for layer in self.layers:
+      start = time.time()
       layer.fprop(input, layer.output, train)
       input = layer.output
+      driver.Context.synchronize()
+      #print 'fprop', layer.name, time.time() - start
     return self.layers[-1].output
 
   def bprop(self, label, train=TRAIN):
     grad = label
     for i in range(1, len(self.layers) + 1):
+      start = time.time()
       curr = self.layers[-i]
       if curr.disable_bprop: return
       prev = self.layers[-(i + 1)]
       curr.bprop(grad, prev.output, curr.output, prev.output_grad)
+      driver.Context.synchronize()
+      #print 'bprop', curr.name, time.time() - start
       grad = prev.output_grad
 
   def update(self):
@@ -200,7 +206,6 @@ class FastNet(object):
     # make sure we have everything finished before returning!
     # also, synchronize properly releases the Python GIL,
     # allowing other threads to make progress.
-    driver.Context.synchronize()
 
   def test_batch_multiview(self, data, label, num_view):
     data, label = self.prepare_for_train(data, label)

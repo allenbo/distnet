@@ -1,18 +1,30 @@
 from pycuda import gpuarray, driver
-from pycuda.gpuarray import GPUArray, to_gpu, zeros, zeros_like, empty
+from pycuda.gpuarray import GPUArray, to_gpu, zeros, zeros_like, empty, empty_like
 import numpy as np
 from cuda_kernel import *
-from distnet.util import divup
+from distnet.util import divup, make_copy
+import time
 
 device_init = cudaconv.init
 
+
+def sync_function(fn):
+  def _wrapper(*args, **kw):
+    result = fn(*args, **kw)
+    driver.Context.synchronize()
+    return result
+  
+  return make_copy(_wrapper, fn.__name__)
+
+
 old_init = GPUArray.__init__
+@sync_function
 def new_init(*args, **kw):
-  driver.Context.synchronize()
+  #driver.Context.synchronize()
   return old_init(*args, **kw)
 GPUArray.__init__ = new_init
 
-
+#@sync_function
 def reshape_last(input):
   shape = input.shape
   row = int(np.prod(shape[:-1]))
@@ -20,6 +32,7 @@ def reshape_last(input):
   return input.reshape((row, col))
 
 
+@sync_function
 def reshape_first(input):
   shape = input.shape
   row = shape[0]
@@ -27,10 +40,12 @@ def reshape_first(input):
   return input.reshape((row, col))
 
 
+@sync_function
 def array(obj, dtype = np.float32, to2dim = False):
+  obj = to_gpu(obj).astype(dtype)
   if len(obj.shape) != 2 and len(obj.shape) != 1 and to2dim:
     obj = reshape_last(obj)
-  return to_gpu(obj).astype(dtype)
+  return obj
 
 
 def get_seed():
@@ -38,16 +53,15 @@ def get_seed():
   return int(time.time())
 
 
-
 old_getitem = GPUArray.__getitem__
+@sync_function
 def new_getitem(self, index):
-
   if len(self.shape) > 4:
     return old_getitem(self, index)
 
   if not isinstance(index, tuple):
     index = (index, )
-
+  start = time.time()
   index_axis = 0
   array_axis = 0
   slices = []
@@ -74,12 +88,14 @@ def new_getitem(self, index):
     array_axis += 1
 
   output = GPUArray(shape = tuple(new_shape), dtype = self.dtype)
-  return stride_copy(self, output, slices)
+  #util.log('shape %s', output.shape)
+  result = stride_copy(self, output, slices)
+  return result
 
 GPUArray.__getitem__ = new_getitem
 
 
-
+@sync_function
 def new_setitem(self, index, data):
   assert len(self.shape) <= 4, str(self.shape)
 
@@ -115,12 +131,14 @@ def new_setitem(self, index, data):
     array_axis += 1
 
   assert data.shape == tuple(new_shape)
-
+  #util.log('shape %s', data.shape)
   stride_write(data, self, slices)
 
 GPUArray.__setitem__ = new_setitem
 
 
+
+@sync_function
 def concatenate(arrays, axis = 0):
   if not isinstance(arrays, tuple):
     raise TypeError('First parameter has to be a tuple of arrays')
@@ -151,10 +169,11 @@ def concatenate(arrays, axis = 0):
     source = dest
   return dest
 
-copy_to = gpu_copy_to
-partial_copy_to = gpu_partial_copy_to
+copy_to = sync_function(gpu_copy_to)
+partial_copy_to = sync_function(gpu_partial_copy_to)
 
 
+@sync_function
 def partial_copy(input, f, t):
   shape = list(input.shape)
   shape[-1] = t - f
@@ -163,36 +182,44 @@ def partial_copy(input, f, t):
   return data
 
 
-convolution = cudaconv.convFilterActs
+convolution = sync_function(cudaconv.convFilterActs)
 
+@sync_function
 def bconvolution(*args):
   args = args[1:] + (1,)
   cudaconv.convImgActs(*args)
 
+@sync_function
 def wconvolution(*args):
   args = args + (1, 0)
   cudaconv.convWeightActs(*args)
 
-maxpool = cudaconv.convLocalMaxPool
-maxundo = cudaconv.convLocalMaxUndo
+maxpool = sync_function(cudaconv.convLocalMaxPool)
+maxundo = sync_function(cudaconv.convLocalMaxUndo)
+avgpool = sync_function(cudaconv.convLocalAvgPool)
 
-avgpool = cudaconv.convLocalAvgPool
+@sync_function
 def avgundo(*args):
   args = args[1:]
   cudaconv.convLocalAvgUndo(*args)
 
-rnorm = cudaconv.convResponseNorm
+rnorm = sync_function(cudaconv.convResponseNorm)
+
+@sync_function
 def rnormundo(*args):
   args = args + (0.0, 1.0)
   cudaconv.convResponseNormUndo(*args)
 
-rnormcrossmap = cudaconv.convResponseNormCrossMap
+rnormcrossmap = sync_function(cudaconv.convResponseNormCrossMap)
+
+@sync_function
 def rnormcrossmapundo(*args):
   args = args +  (0.0, 1.0)
   cudaconv.convResponseNormCrossMapUndo(*args)
 
 
 old_add = GPUArray.__add__
+@sync_function
 def newadd(self, other):
   if other.shape == self.shape:
     return old_add(self, other)
@@ -214,21 +241,23 @@ def newadd(self, other):
 GPUArray.__add__ = newadd
 
 
+@sync_function
 def object_add(self, other, dst = None, shape = None, axis = 0):
   if shape is None:
     shape = self.shape
   assert axis == 0 or axis == len(shape) - 1
-  tmp = self.reshape(shape)
+  
+  tmp = self.reshape(shape) if self.shape != shape else self
 
   if dst is None:
     c = zeros_like(self)
   else:
     c = dst
   if axis == 0:
-    tmp = reshape_first(tmp)
+    tmp = reshape_first(tmp) if len(tmp.shape) != 2 else tmp
     copy_to(tmp + other, c)
   else:
-    tmp = reshape_last(tmp)
+    tmp = reshape_last(tmp) if len(tmp.shape) != 2 else tmp
     copy_to(tmp + other, c)
 
   return c
@@ -237,6 +266,7 @@ GPUArray.add = object_add
 
 
 old_sub = GPUArray.__sub__
+@sync_function
 def newsub(self, other):
   if other.shape == self.shape:
     return old_add(self, other)
@@ -258,6 +288,7 @@ def newsub(self, other):
 GPUArray.__sub__ = newsub
 
 old_div = GPUArray.__div__
+@sync_function
 def newdiv(self, other):
   if np.isscalar(other):
     return old_div(self, other)
@@ -273,6 +304,7 @@ def newdiv(self, other):
 GPUArray.__div__ = newdiv
 
 old_max = max
+@sync_function
 def max(input, axis = None):
   if axis is None:
     return old_max(input).astype(np.float32)
@@ -287,22 +319,24 @@ def max(input, axis = None):
     return rst
 
 
+@sync_function
 def object_maxto(self, shape = None, axis = 0):
   if shape is None:
     shape = self.shape
   assert axis == 0 or axis == len(shape) -1
-  tmp = self.reshape(shape)
+  tmp = self.reshape(shape) if self.shape != shape else self
   if axis == 0:
-    tmp = reshape_first(tmp)
+    tmp = reshape_first(tmp) if len(tmp.shape)!= 2 else tmp
     c = max(tmp, axis = 1)
   else:
-    tmp = reshape_last(tmp)
+    tmp = reshape_last(tmp) if len(tmp.shape)!=2 else tmp
     c = max(tmp, axis = 0)
   return c
 
 GPUArray.maxto = object_maxto
 
 
+@sync_function
 def argmax(input, axis):
   if axis == 0:
     rst = zeros((1, input.shape[1]), dtype = np.float32)
@@ -314,22 +348,24 @@ def argmax(input, axis):
     assert False, 'Wrong axis'
   return rst
 
+@sync_function
 def object_argmaxto(self, shape = None, axis = 0):
   if shape is None:
     shape = self.shape
 
   assert axis == 0 or axis == len(shape) -1
-  tmp = self.reshape(shape)
+  tmp = self.reshape(shape) if self.shape != shape else self
   if axis == 0:
-    tmp = reshape_first(tmp)
+    tmp = reshape_first(tmp) if len(tmp.shape) != 2 else tmp
     c = argmax(tmp, axis = 1)
   else:
-    tmp = reshape_last(tmp)
+    tmp = reshape_last(tmp) if len(tmp.shape) != 2 else tmp
     c = argmax(tmp, axis = 0)
   return c
 
 GPUArray.argmaxto = object_argmaxto
 
+@sync_function
 def exp(input, output = None):
   if output is None:
     output = zeros_like(input)
@@ -337,12 +373,14 @@ def exp(input, output = None):
   eltwise_exp(output)
   return output
 
+@sync_function
 def iexp(input):
   eltwise_exp(input)
 
 logreg_cost_col = logreg_cost_col_reduce
 
 old_sum = gpuarray.sum
+@sync_function
 def sum(input, axis = None):
   if axis is None:
     return old_sum(input).get().item()
@@ -356,17 +394,18 @@ def sum(input, axis = None):
       add_row_sum_to_vec(rst, input)
     return rst
 
+@sync_function
 def object_sumto(self, shape= None, axis = 0):
   if shape is None:
     shape = self.shape
 
   assert axis == 0 or axis == len(shape) -1
-  tmp = self.reshape(shape)
+  tmp = self.reshape(shape) if self.shape != shape else self
   if axis == 0:
-    tmp = reshape_first(tmp)
+    tmp = reshape_first(tmp) if len(tmp.shape) != 2 else tmp
     c = sum(tmp, axis = 1)
   else:
-    tmp = reshape_last(tmp)
+    tmp = reshape_last(tmp) if len(tmp.shape) != 2 else tmp
     c = sum(tmp, axis = 0)
   return c
 

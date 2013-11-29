@@ -1,4 +1,6 @@
-class Point:
+import numpy as np
+
+class Point(object):
   def __init__(self, first, *args):
     l = [first]
     for a in args:
@@ -25,7 +27,7 @@ class Point:
     return Point(*[a + b for a, b in zip(self.point, padding)])
 
 
-class Area:
+class Area(object):
   def __init__(self, f, t):
     if len(f) != len(t):
       return None
@@ -78,3 +80,7 @@ class Area:
 
   def get_shape(self):
     return tuple([ a - b + 1 for a, b in zip(self._to.point, self._from.point)])
+  
+  @property
+  def size(self):
+    return np.prod(self.get_shape())

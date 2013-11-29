@@ -6,10 +6,10 @@ import time
 import traceback
 import numpy as np
 
-if os.environ.get('MULTIGPU', 'no') == 'yes':
-  from varray import distlog
-else:
-  distlog = lambda(_fn): _fn
+#if os.environ.get('MULTIGPU', 'no') == 'yes':
+#  from varray import distlog
+#else:
+distlog = lambda(_fn): _fn
 
 DEBUG = 0
 INFO = 1
@@ -203,6 +203,21 @@ class Assert(object):
     assert len(bad) == 0, 'Duplicates found: %s' % bad
   
 
+from types import FunctionType, CodeType
+
+def make_copy(f, name):
+  func_code = f.func_code
+  new_code  = CodeType(
+            func_code.co_argcount, func_code.co_nlocals, func_code.co_stacksize,
+            func_code.co_flags, func_code.co_code, func_code.co_consts,
+            func_code.co_names, func_code.co_varnames, func_code.co_filename,
+            name, func_code.co_firstlineno, func_code.co_lnotab,
+            func_code.co_freevars, func_code.co_cellvars)
+  wrapper = FunctionType(
+            new_code, f.func_globals, name, f.func_defaults,
+            f.func_closure)
+  return wrapper
+
 def lazyinit(initializer_fn):
   '''
   (Lazily) call initializer_fn prior to invocation.
@@ -211,10 +226,9 @@ def lazyinit(initializer_fn):
     def _fn(*args, **kw):
       initializer_fn()
       return fn(*args, **kw)
-    _fn.__name__ = fn.__name__
-    return _fn
+    return make_copy(_fn, fn.__name__)
   
-  return wrap
+  return make_copy(wrap, initializer_fn.__name__)
 
 def timed_fn(fn):
   '''
@@ -227,5 +241,24 @@ def timed_fn(fn):
     
     return result
     
-  _fn.__name__ = fn.__name__
-  return _fn
+  return make_copy(_fn, fn.__name__)
+
+PROFILER = None
+
+import cProfile
+import yappi
+from mpi4py import MPI
+def enable_profile():
+  global PROFILER
+  if PROFILER is None:
+    yappi.start()
+    PROFILER = 1
+    #PROFILER = cProfile.Profile()
+    #PROFILER.enable()
+
+def dump_profile():
+  if PROFILER is None:
+    return
+
+  yappi.get_func_stats().save('./profile.%d' % MPI.COMM_WORLD.Get_rank(), 'pstat')
+  #PROFILER.dump_stats('./profile.%d' % MPI.COMM_WORLD.Get_rank())

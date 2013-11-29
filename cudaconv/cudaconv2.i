@@ -7,7 +7,7 @@
 
 %typemap(in) NVMatrix& {
   PyObject* shape = PyObject_GetAttrString($input, "shape");
-  long rows, cols;
+  long channel, rows, cols, batch_size;
   PyObject* data = PyObject_GetAttrString($input, "gpudata");
   Py_DECREF(shape);
   PyObject* strides = PyObject_GetAttrString($input, "strides");
@@ -17,10 +17,19 @@
 
   float* gpudata = (float*)PyInt_AsLong(data);
   Py_DECREF(data);
-  
-  PyArg_ParseTuple(shape, "ll", &rows, &cols);
-  PyArg_ParseTuple(strides, "ll", &stride, &itemsize);
-  stride = stride / itemsize;
+  int len = PyTuple_Size(shape);
+  if (len == 2){
+    PyArg_ParseTuple(shape, "ll", &rows, &cols);
+    PyArg_ParseTuple(strides, "ll", &stride, &itemsize);
+    stride = stride / itemsize;
+  }else if (len == 4) {
+    PyArg_ParseTuple(shape, "llll", &channel, &rows, &cols, &batch_size);
+    rows = channel * rows * cols;
+    cols = batch_size;
+    long stride0, stride1, stride2, itemsize;
+    PyArg_ParseTuple(strides, "llll", &stride0, &stride1, &stride2, &itemsize);
+    stride = stride2/itemsize;
+  }
   $1 = new NVMatrix(gpudata, rows, cols, stride);
 }
 
@@ -50,7 +59,7 @@ void addVector(NVMatrix& target, NVMatrix& vec);
 void convLocalMaxPool(NVMatrix& images, NVMatrix& target, int numFilters,
                    int subsX, int startX, int strideX, int imageY, int outputsY, int outputsX);
 void convLocalAvgPool(NVMatrix& images, NVMatrix& target, int numFilters,
-                   int subsX, int startX, int strideX, int imageY, int outputsY, int outputsX);
+                   int subsX, int startX, int strideX, int imageY, int outputsY, int PoutputsX);
 void convLocalMaxUndo(NVMatrix& images, NVMatrix& maxGrads, NVMatrix& maxActs, NVMatrix& target,
                       int subsX, int startX, int strideX, int outputsY, int outputsX, int imageY);
 void convLocalMaxUndo(NVMatrix& images, NVMatrix& maxGrads, NVMatrix& maxActs, NVMatrix& target,
@@ -82,3 +91,10 @@ void convCrop(NVMatrix& imgs, NVMatrix& target, int imgSize, int tgtSize, int st
 void normalizeLocalWeights(NVMatrix& weights, int numModules, float norm);
 void convTICAGrad(NVMatrix& images, NVMatrix& ticas, NVMatrix& target, int numFilters, int sizeX, float scaleTarget, float scaleOutput);
 void convTICA(NVMatrix& images, NVMatrix& target, int numFilters, int sizeX, float scaleTarget, float scaleOutput);
+
+%inline %{
+PyObject* make_buffer(long offset, long size) {
+  return PyBuffer_FromReadWriteMemory((void*)offset, size);
+}
+
+%}

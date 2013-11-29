@@ -9,6 +9,8 @@ multi_gpu = False
 if os.environ.get('MULTIGPU', 'no') == 'yes':
   import varray as arr
   multi_gpu = True
+  import socket
+  print arr.rank, socket.gethostname()
   garray.device_init(arr.rank)
 else:
   import garray as arr
@@ -34,6 +36,15 @@ def zeros(shape, dtype = np.float32, unique = False):
     return garray.zeros((row, col), dtype = dtype)
   else:
     return arr.zeros(shape, dtype = dtype, unique = unique)
+
+
+def allocate(shape, dtype = np.float32, unique = False):
+  if not multi_gpu:
+    col = shape[-1]
+    row = int(np.prod(shape[:-1]))
+    return garray.GPUArray((row, col), dtype = dtype)
+  else:
+    return arr.allocate(shape, dtype, unique = unique)
 
 def convert_shape(shape):
   if not multi_gpu:
@@ -68,8 +79,8 @@ class Layer(object):
 
   def init_output(self, fc = False):
     out_shape = self.get_output_shape()
-    self.output = zeros(out_shape, unique = not fc)
-    self.output_grad = zeros(out_shape, unique = not fc)
+    self.output = allocate(out_shape, unique = not fc)
+    self.output_grad = allocate(out_shape, unique = not fc)
 
   def dump(self):
     attr = [att for att in dir(self) if not att.startswith('__')]
@@ -339,7 +350,7 @@ class ResponseNormLayer(Layer):
     image_shape = prev.get_output_shape()
     self.numColor, self.img_size, _, self.batch_size = image_shape
 
-    self.denom = zeros((self.numColor , self.img_size , self.img_size, self.batch_size), unique = True)
+    self.denom = allocate((self.numColor , self.img_size , self.img_size, self.batch_size), unique = True)
 
 
   def get_output_shape(self):
@@ -347,7 +358,7 @@ class ResponseNormLayer(Layer):
 
   def change_batch_size(self, batch_size):
     Layer.change_batch_size(self, batch_size)
-    self.denom = zeros((self.numColor , self.img_size , self.img_size, self.batch_size), unique = True)
+    self.denom = allocate((self.numColor , self.img_size , self.img_size, self.batch_size), unique = True)
 
   def fprop(self, input, output, train=TRAIN):
     arr.rnorm(input, self.denom, output, self.numColor, self.size, self.img_size, self.scaler,
@@ -419,7 +430,10 @@ class FCLayer(WeightedLayer):
         output *= (1.0 - self.dropRate)
     else:
       if self.dropRate > 0.0:
-        self.dropMask = arr.array(np.random.uniform(0, 1, output.size).astype(np.float32).reshape(output.shape))
+        if multi_gpu:
+          self.dropMask = arr.array(np.random.uniform(0, 1, output.size).astype(np.float32).reshape(output.shape), unique = False)
+        else:
+          self.dropMask = arr.array(np.random.uniform(0, 1, output.size).astype(np.float32).reshape(output.shape))
         arr.bigger_than_scaler(self.dropMask, self.dropRate)
         arr.copy_to(output * self.dropMask, output)
     if PFout:
@@ -453,7 +467,7 @@ class SoftmaxLayer(Layer):
     self.create_cost(self.batch_size)
 
   def create_cost(self, size):
-    self.cost = zeros((size, 1), unique = False)
+    self.cost = allocate((size, 1), unique = False)
 
   def get_output_shape(self):
     return (self.outputSize, self.batch_size)
@@ -484,10 +498,10 @@ class SoftmaxLayer(Layer):
     # only try multiview with test on single gpu
     unit = self.batch_size / num_view
     if self.cost.shape[0] != unit:
-      self.cost = garray.zeros((unit, 1), dtype = np.float32)
+      self.cost = garray.allocate((unit, 1), dtype = np.float32)
     maxid = garray.argmax(output, axis = 0)
     self.batchCorrect = garray.same_reduce_multiview(label, maxid, num_view)
-    tmp = garray.zeros((output.shape[0], unit), dtype = np.float32)
+    tmp = garray.allocate((output.shape[0], unit), dtype = np.float32)
     garray.partial_copy_to(output, tmp, 0, output.shape[0], 0, unit)
     garray.logreg_cost_col(tmp, label, self.cost)
 
