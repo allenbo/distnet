@@ -16,12 +16,14 @@ output_method = 'disk'
 
 train_range = range(101, 103) #1,2,3,....,40
 test_range = range(1, 101) #41, 42, ..., 48
-data_provider = 'imagenet'
+data_provider = 'dummy'
 
 
 multiview = False
-train_dp = data.get_by_name(data_provider)(data_dir,train_range)
-test_dp = data.get_by_name(data_provider)(data_dir, test_range)
+#train_dp = data.get_by_name(data_provider)(data_dir,train_range)
+#test_dp = data.get_by_name(data_provider)(data_dir, test_range)
+train_dp = data.get_by_name(data_provider)(224, 1000, batch_size = 1024)
+test_dp = data.get_by_name(data_provider)(224, 1000, batch_size = 1024)
 checkpoint_dumper = trainer.CheckpointDumper(checkpoint_dir, test_id)
 
 model = checkpoint_dumper.get_checkpoint()

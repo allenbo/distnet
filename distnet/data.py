@@ -235,6 +235,20 @@ class ImageNetDataProvider(DataProvider):
     return BatchData(cropped, labels, epoch)
 
 
+class DummyDataProvider(DataProvider):
+  def __init__(self, inner_size, output_size, batch_size = 1024):
+    DataProvider.__init__(self, '/tmp/', batch_range = range(1, 40))
+    self.inner_size = inner_size
+    self.output_size = output_size
+    self.batch_size = batch_size
+
+  def get_next_batch(self):
+    data = np.random.randn( 3, self.inner_size, self.inner_size,self.batch_size ).astype(np.float32) * 128
+    label = [np.random.choice(self.output_size) for i in range(self.batch_size)]
+    label = np.array(label).astype(np.float32)
+
+    return BatchData(data, label, 1)
+
 class CifarDataProvider(DataProvider):
   img_size = 32
   border_size = 0
@@ -451,6 +465,7 @@ def get_by_name(name):
 
 
 register_data_provider('cifar10', CifarDataProvider)
+register_data_provider('dummy', DummyDataProvider)
 register_data_provider('imagenet', ImageNetDataProvider)
 register_data_provider('intermediate', IntermediateDataProvider)
 register_data_provider('memory', MemoryDataProvider)

@@ -12,7 +12,7 @@ import numpy as np
 import pycuda
 import sys
 from cudaconv import *
-#cudaconv.init()
+cudaconv.init()
 
 sgemm = None
 def _initialize_cublas():

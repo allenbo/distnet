@@ -4,9 +4,10 @@ import numpy as np
 import time
 
 def test_imagenet_loader():
-  df = data.get_by_name('imagenet')(
-                                 '/ssd/nn-data/imagenet/', 
-                                 batch_range=range(1000))
+  #df = data.get_by_name('imagenet')(
+  #                               '/ssd/nn-data/imagenet/', 
+  #                               batch_range=range(1000))
+  df = data.get_by_name('dummy')(224, 1000)
   
   for i in range(32):
     st = time.time()
