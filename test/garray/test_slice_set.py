@@ -36,15 +36,15 @@ def test_3():
 
 
 def test_4():
-  a = np.random.randn(96, 32, 32, 128).astype(np.float32)
+  a = np.random.randn(94, 32, 32, 128).astype(np.float32)
   ga = garray.array(a)
-  b = np.random.randn(96, 16, 16, 128).astype(np.float32)
+  b = np.zeros((94, 1, 32, 128)).astype(np.float32)
   gb = garray.array(b)
 
-  a[:, 0:16, 0:16, :] = b
-
-  ga[:, 0:16, 0:16, :] = gb
-
-  print ga.get() - a
+  a[:, 2:3, :, :] = b
+  ga[:, 2:3, :, :] = gb
+  #print ga.get()[0,0,0, :]
+  #print a[0, 0, 0, :]
+  print (ga.get() - a)[0, 0, 0, :]
 
 test_4()

@@ -12,7 +12,7 @@ import numpy as np
 import pycuda
 import sys
 from cudaconv import *
-cudaconv.init()
+#cudaconv.init()
 
 sgemm = None
 def _initialize_cublas():
@@ -604,183 +604,38 @@ _stride_copy_3_channel_block_ = CompiledSource('''
     }''', 'stride_copy_3_channel_block')
 
 
-_stride_copy_4_roll_both_ = CompiledSource('''
-    __global__
-    void stride_copy_4_roll_both( float* input, float* output,
-      int start1, int stride1, int start2, int stride2,
-      int start3, int stride3, int start4, int stride4,
-      int col, int row, int step,
-      int ifleading, int isleading, int itleading,
-      int ofleading, int osleading, int otleading, int reversed) {
+_stride_copy_4 = ElementwiseKernel(
+    '''float* input, float* output, 
+    int start1, int start2, int start3, int start4,
+    int step1, int step2, int step3, int step4,
+    int sz1, int sz2, int sz3, int sz4,
+    int istride1, int istride2, int istride3,
+    int ostride1, int ostride2, int ostride3, int reversed
+    ''',
+    '''
+    int idx[4];
+    const int istride[] = { istride1, istride2, istride3, 1 };
+    const int ostride[] = { ostride1, ostride2, ostride3, 1 };
+    const int start[] = { start1, start2, start3, start4 };
+    const int sz[] = { sz1, sz2, sz3, sz4 };
+    const int step[4] = { step1, step2, step3, step4 };
 
-      int offset_dest, offset_src;
-      offset_dest = blockIdx.x * ofleading + blockIdx.y;
-      offset_src = (blockIdx.x * stride1 + start1) * ifleading + (blockIdx.y * stride4 + start4);
-      /*
-      int height = threadIdx.y;
-      const int stride_dest = blockDim.x * otleading;
-      const int stride_src = blockDim.x * stride3 * itleading;
-      int didx, sidx;
-      for(height = threadIdx.y; height < row; height += blockDim.y) {
-        int width = threadIdx.x;
-        didx = offset_dest + height*osleading + width * otleading;
-        sidx = offset_src + (height * stride2 + start2) * isleading + (width * stride3 + start3) * itleading;
-        for(width = threadIdx.x; width < col; width += blockDim.x) {
-          if (height >= row || width >= col ) continue;
-          if (reversed)
-            input[sidx] = output[didx];
-          else
-            output[didx] = input[sidx];
-          didx += stride_dest;
-          sidx += stride_src;
-        }
-      }
-      */
-      int height,width;
-      int didx, sidx;
-      const int height_to = threadIdx.y * step  + step < row ? threadIdx.y * step + step: row;
-      const int width_to = threadIdx.x * step  + step < col ? threadIdx.x * step + step: col;
-      for(height =  threadIdx.y * step; height < height_to; height ++) {
-        width = threadIdx.x * step;
-        didx = offset_dest + height*osleading + width * otleading;
-        sidx = offset_src + (height * stride2 + start2) * isleading + (width * stride3 + start3) * itleading;
-        for(; width < width_to; width ++, didx += otleading,sidx += stride3 * itleading) {
-          if (reversed )
-            input[sidx] = output[didx];
-          else
-            output[didx] = input[sidx];
-        }
-      }
-    }''', 'stride_copy_4_roll_both')
+    int rest = i;
+    int in_idx = 0;
+    #pragma unroll 4
+    for (int j = 0; j < 4; ++j) {
+      idx[j] = rest / ostride[j];
+      rest = rest % ostride[j];
+      in_idx += istride[j] * (idx[j] * step[j] + start[j]);
+    }
 
 
-_stride_copy_4_single_pixel_ = CompiledSource('''
-    __global__
-    void stride_copy_4_single_pixel( float* input, float* output,
-      int start1, int stride1, int start2,
-      int start3, int start4, int stride4,
-      int num_channel, int num_batch, int step,
-      int ifleading, int isleading, int itleading,
-      int ofleading, int osleading, int otleading, int reversed) {
-
-      const int x = blockDim.x * blockIdx.x + threadIdx.x;
-      const int y = blockDim.y * blockIdx.y + threadIdx.y;
-      int channel, batch;
-      int didx, sidx;
-      const int channel_to= x * step  + step < num_channel ? x* step + step: num_channel;
-      const int batch_to = y* step  + step < num_batch ? y* step + step: num_batch;
-      #pragma unroll
-      for(channel = x * step; channel < channel_to; channel ++) {
-        #pragma unroll
-        for(batch = y * step; batch < batch_to; batch ++) {
-          didx = channel * ofleading + batch;
-          sidx = (channel * stride1 + start1) * ifleading + start2 * isleading  + start3 * itleading + batch * stride4 + start4;
-          if (reversed)
-            input[sidx] = output[didx];
-          else
-            output[didx] = input[sidx];
-        }
-      }
-    }''', 'stride_copy_4_single_pixel')
-
-
-
-_stride_copy_4_fold_batch_ = CompiledSource('''
-    __global__
-    void stride_copy_4_fold_batch( float* input, float* output,
-      int start1, int stride1, int start2, int stride2,
-      int start3, int stride3, int start4, int stride4,
-      int col, int row, int batch, int step,
-      int ifleading, int isleading, int itleading,
-      int ofleading, int osleading, int otleading, int reversed) {
-
-
-      int offset_dest = blockIdx.x * ofleading;
-      int offset_src = (blockIdx.x * stride1 + start1 ) * ifleading;
-      int x, y;
-      int pixels = row * col;
-      int didx, sidx;
-      int height, width;
-      const int x_to = threadIdx.x * step + step < pixels ? threadIdx.x * step + step : pixels;
-      const int y_to = threadIdx.y * step + step < batch ? threadIdx.y * step + step : batch;
-      #pragma unroll
-      for(x = threadIdx.x * step; x < x_to; x ++ ) {
-        height = x / col;
-        width = x % col;
-        y = threadIdx.y * step;
-        didx = offset_dest + height*osleading + width * otleading + y;
-        sidx = offset_src + (height*stride2 + start2) * isleading + (width * stride3 + start3) * itleading + (y * stride4 + start4);
-        #pragma unroll
-        for(; y < y_to; y ++, didx ++, sidx += stride4) {
-          if (reversed)
-            input[sidx] = output[didx];
-          else
-            output[didx] = input[sidx];
-        }
-      }
-    }''', 'stride_copy_4_fold_batch')
-
-_stride_copy_4_fold_channel_ = CompiledSource('''
-    __global__
-    void stride_copy_4_fold_channel( float* input, float* output,
-      int start1, int stride1, int start2, int stride2,
-      int start3, int stride3, int start4, int stride4,
-      int col, int row, int channel, int step,
-      int ifleading, int isleading, int itleading,
-      int ofleading, int osleading, int otleading, int reversed) {
-
-      int x, y;
-      int pixels = row * col;
-      int didx, sidx;
-      int height, width;
-      const int x_to = threadIdx.x * step + step <  channel ? threadIdx.x * step + step : channel;
-      const int y_to = threadIdx.y * step + step <  pixels? threadIdx.y * step + step : pixels;
-      #pragma unroll
-      for(y = threadIdx.y * step; y < y_to; y ++ ) {
-        height = y / col;
-        width = y % col;
-        x = threadIdx.x * step;
-        didx = x * ofleading + height * osleading +  width * otleading + blockIdx.x;
-        sidx = (x * stride1 + start1) * ifleading + (height * stride2 + start2) * isleading + (width * stride3 + start3) * itleading + (blockIdx.x * stride4 + start4);
-        #pragma unroll
-        for(; x < x_to; x ++, didx += ofleading, sidx += ifleading * stride1) {
-          if (reversed)
-            input[sidx] = output[didx];
-          else
-            output[didx] = input[sidx];
-        }
-      }
-    }''', 'stride_copy_4_fold_channel')
-
-#_stride_copy_4_ = CompiledSource('''
-#    __global__
-#    void stride_copy_4( float* input, float* output, 
-#      int start1, int stride1, int start2, int stride2,
-#      int start3, int stride3, int start4, int stride4,
-#      int col, int row,
-#      int ifleading, int isleading, int itleading,
-#      int ofleading, int osleading, int otleading, int reversed) {
-#
-#      int channel = blockIdx.x;
-#      int batch = blockIdx.y;
-#      int height = threadIdx.y;
-#      int width = threadIdx.x;
-#
-#      int sidx, didx;
-#      for(height = threadIdx.y; height < row; height += blockDim.y) {
-#        for(width = threadIdx.x; width < col; width += blockDim.x) {
-#          if (height >= row || width >= col ) continue;
-#          didx = channel * ofleading + height * osleading + width * otleading + batch;
-#          sidx = (channel * stride1 + start1) * ifleading + (height * stride2 + start2) * isleading
-#          + (width * stride3 + start3) * itleading + (batch * stride4 + start4);
-#
-#          if ( ! reversed)
-#            output[didx] = input[sidx];
-#          else
-#            input[sidx] = output[didx];
-#        }
-#      }
-#    }''', 'stride_copy_4')
+    if(!reversed) 
+      output[i] = input[in_idx];
+    else
+      input[in_idx] = output[i];
+    ''',
+    name='stride_copy_4')
 
 _transpose_ = CompiledSource('''
   __global__
@@ -1259,64 +1114,24 @@ def stride_copy_4(input, output, slices):
   start3, _, stride3 = slices[2].indices(input.shape[2])
   start4, _, stride4 = slices[3].indices(input.shape[3])
 
-  channel, height, width, batch = output.shape
-
+  sz1, sz2, sz3, sz4 = output.shape
 
   ifleading, isleading, itleading = [x / 4 for x in input.strides[:3]]
   ofleading, osleading, otleading = [x / 4 for x in output.strides[:3]]
 
-
-  if height >= 8 and width >= 8:
-    grid = (channel, batch)
-    step = 4
-    block = (divup(height, step), divup(width, step), 1)
-    _stride_copy_4_roll_both_(input, output,
-        I(start1), I(stride1),
-        I(start2), I(stride2),
-        I(start3), I(stride3),
-        I(start4), I(stride4),
-        I(width), I(height), I(step),
-        I(ifleading), I(isleading), I(itleading),
-        I(ofleading), I(osleading), I(otleading), I(0),
-        block = block, grid = grid)
-  elif height == 1 and width == 1:
-    step = 16
-    block = (step, step, 1)
-    grid = (divup(channel, step), divup(batch, step))
-    _stride_copy_4_single_pixel_(input, output,
-        I(start1), I(stride1),
-        I(start2), I(start3),
-        I(start4), I(stride4),
-        I(channel), I(batch), I(step),
-        I(ifleading), I(isleading), I(itleading),
-        I(ofleading), I(osleading), I(otleading), I(0),
-        block = block, grid = grid)
-  else:
-    step = 4
-    if channel > batch:
-      grid = (channel, 1)
-      block = (divup(height * width, step), divup(batch, step), 1)
-      _stride_copy_4_fold_batch_(input, output,
-        I(start1), I(stride1),
-        I(start2), I(stride2),
-        I(start3), I(stride3),
-        I(start4), I(stride4),
-        I(width), I(height), I(batch), I(step),
-        I(ifleading), I(isleading), I(itleading),
-        I(ofleading), I(osleading), I(otleading), I(0),
-        block = block, grid = grid)
-    else:
-      grid = (batch, 1)
-      block = (divup(channel, step), divup(height* width, step), 1)
-      _stride_copy_4_fold_channel_(input, output,
-        I(start1), I(stride1),
-        I(start2), I(stride2),
-        I(start3), I(stride3),
-        I(start4), I(stride4),
-        I(width), I(height), I(channel),I(step),
-        I(ifleading), I(isleading), I(itleading),
-        I(ofleading), I(osleading), I(otleading), I(0),
-        block = block, grid = grid)
+#  print '-'* 10
+#  print input.shape
+#  print output.shape
+#  print slices
+  _stride_copy_4(input, output,
+      I(start1), I(start2), I(start3), I(start4),
+      I(stride1), I(stride2), I(stride3), I(stride4),
+      I(sz1), I(sz2), I(sz3), I(sz4),
+      I(ifleading), I(isleading), I(itleading),
+      I(ofleading), I(osleading), I(otleading),I(0),
+      range=slice(0, np.prod(output.shape), 1))
+  
+  driver.Context.synchronize()
 
 
 def stride_copy(input, output, slices):
@@ -1402,64 +1217,19 @@ def stride_write_4(data, container, slices):
   start3, _, stride3 = slices[2].indices(container.shape[2])
   start4, _, stride4 = slices[3].indices(container.shape[3])
 
-  channel, height, width, batch = data.shape
 
+  sz1, sz2, sz3, sz4 = data.shape
 
   ifleading, isleading, itleading = [x / 4 for x in container.strides[:3]]
   ofleading, osleading, otleading = [x / 4 for x in data.strides[:3]]
 
-
-  if height >= 8 and width >= 8:
-    grid = (channel, batch)
-    step = 4
-    block = (divup(height, step), divup(width, step), 1)
-    _stride_copy_4_roll_both_(container, data,
-        I(start1), I(stride1),
-        I(start2), I(stride2),
-        I(start3), I(stride3),
-        I(start4), I(stride4),
-        I(width), I(height), I(step),
-        I(ifleading), I(isleading), I(itleading),
-        I(ofleading), I(osleading), I(otleading), I(1),
-        block = block, grid = grid)
-  elif height == 1 and width == 1:
-    step = 16
-    block = (step, step, 1)
-    grid = (divup(channel, step), divup(batch, step))
-    _stride_copy_4_single_pixel_(container, data,
-        I(start1), I(stride1),
-        I(start2), I(start3),
-        I(start4), I(stride4),
-        I(channel), I(batch), I(step),
-        I(ifleading), I(isleading), I(itleading),
-        I(ofleading), I(osleading), I(otleading), I(1),
-        block = block, grid = grid)
-  else:
-    step = 4
-    if channel > batch:
-      grid = (channel, 1)
-      block = (divup(height * width, step), divup(batch, step), 1)
-      _stride_copy_4_fold_batch_(container, data,
-        I(start1), I(stride1),
-        I(start2), I(stride2),
-        I(start3), I(stride3),
-        I(start4), I(stride4),
-        I(width), I(height), I(batch), I(step),
-        I(ifleading), I(isleading), I(itleading),
-        I(ofleading), I(osleading), I(otleading), I(1),
-        block = block, grid = grid)
-    else:
-      grid = (batch, 1)
-      block = (divup(channel, step), divup(height* width, step), 1)
-      _stride_copy_4_fold_channel_(container, data,
-        I(start1), I(stride1),
-        I(start2), I(stride2),
-        I(start3), I(stride3),
-        I(start4), I(stride4),
-        I(width), I(height), I(channel),I(step),
-        I(ifleading), I(isleading), I(itleading),
-        I(ofleading), I(osleading), I(otleading), I(1),
-        block = block, grid = grid)
+  _stride_copy_4(container, data,
+      I(start1), I(start2), I(start3), I(start4),
+      I(stride1), I(stride2), I(stride3), I(stride4),
+      I(sz1), I(sz2), I(sz3), I(sz4),
+      I(ifleading), I(isleading), I(itleading),
+      I(ofleading), I(osleading), I(otleading),I(1),
+      range=slice(0, np.prod(data.shape), 1))
 
 def stride_write(data, container, slices):
   if len(data.strides) == 1:

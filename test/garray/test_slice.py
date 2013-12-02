@@ -32,10 +32,10 @@ def test_3():
 
 
 def test_4():
-  a = np.arange(84*32*32*4).astype(np.float32).reshape((84, 32, 32, 4))
+  a = np.random.randn(84, 32, 32, 4).astype(np.float32)
   ga = garray.array(a)
-  b = a[:, 0:16, 0:16, :]
-  gb = ga[:, 0:16, 0:16, :]
+  b = a[:, 1:16, 1:16, :]
+  gb = ga[:, 1:16, 1:16, :]
   
   print gb.get() - b
 test_4()
