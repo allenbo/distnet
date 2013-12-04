@@ -2,8 +2,9 @@ from pycuda import gpuarray, driver
 from pycuda.gpuarray import GPUArray, to_gpu, zeros, zeros_like, empty, empty_like
 import numpy as np
 from cuda_kernel import *
-from distnet.util import divup, make_copy
+from distnet.util import divup, make_copy, timer
 import time
+import traceback
 
 device_init = cudaconv.init
 
@@ -13,15 +14,22 @@ def sync_function(fn):
     result = fn(*args, **kw)
     driver.Context.synchronize()
     return result
-  
   return make_copy(_wrapper, fn.__name__)
 
 
 old_init = GPUArray.__init__
 @sync_function
-def new_init(*args, **kw):
-  #driver.Context.synchronize()
-  return old_init(*args, **kw)
+def new_init(self, *args, **kw):
+  #stack = ''.join(traceback.format_stack())
+  #timer.start()
+  #st = time.time()
+  #print '=' * 20 , str(args)+str(kw)
+  #traceback.print_stack()
+  result = old_init(self, *args, **kw)
+  #ed = time.time()
+  #timer.end(stack)
+  return result
+
 GPUArray.__init__ = new_init
 
 #@sync_function
@@ -29,6 +37,7 @@ def reshape_last(input):
   shape = input.shape
   row = int(np.prod(shape[:-1]))
   col = shape[-1]
+  #return gpuarray.GPUArray((row, col), dtype=input.dtype, dataptr=input.data)
   return input.reshape((row, col))
 
 
@@ -137,6 +146,46 @@ def new_setitem(self, index, data):
 GPUArray.__setitem__ = new_setitem
 
 
+@sync_function
+def setitem_sum(self, index, data):
+  assert len(self.shape) <= 4, str(self.shape)
+
+  if not isinstance(index, tuple):
+    index = (index, )
+
+  if not isinstance(data, GPUArray):
+    data = array(np.require(data, dtype = self.dtype, requirements = 'C'))
+
+  index_axis = 0
+  array_axis = 0
+  slices = []
+  new_shape = []
+  while index_axis < len(index):
+    index_entry = index[index_axis]
+
+    if array_axis > len(self.shape):
+      raise IndexError("too many axes in index")
+
+    if isinstance(index_entry, slice):
+      slices.append(index_entry)
+      start, stop, idx_stride = index_entry.indices(self.shape[array_axis])
+      new_shape.append(divup(stop-start, idx_stride))
+    else:
+      assert False
+
+    index_axis += 1
+    array_axis += 1
+
+  while array_axis < len(self.shape):
+    new_shape.append(self.shape[array_axis])
+    slices.append(slice(0, self.shape[array_axis]))
+    array_axis += 1
+
+  assert data.shape == tuple(new_shape)
+  stride_write_sum(data, self, slices)
+
+GPUArray.setitem_sum = setitem_sum
+
 
 @sync_function
 def concatenate(arrays, axis = 0):
@@ -177,7 +226,7 @@ partial_copy_to = sync_function(gpu_partial_copy_to)
 def partial_copy(input, f, t):
   shape = list(input.shape)
   shape[-1] = t - f
-  data = zeros(tuple(shape), dtype = np.float32)
+  data = empty(tuple(shape), dtype = np.float32)
   partial_copy_to(input, data, 0, shape[0], f, t)
   return data
 
@@ -224,7 +273,7 @@ def newadd(self, other):
   if other.shape == self.shape:
     return old_add(self, other)
   if len(other.shape) == 2:
-    rst = zeros_like(self)
+    rst = empty_like(self)
     copy_to(self, rst)
     if other.shape[0] == self.shape[0] and other.shape[1] == 1:
       add_vec_to_rows(rst, other)
@@ -250,7 +299,7 @@ def object_add(self, other, dst = None, shape = None, axis = 0):
   tmp = self.reshape(shape) if self.shape != shape else self
 
   if dst is None:
-    c = zeros_like(self)
+    c = empty_like(self)
   else:
     c = dst
   if axis == 0:
@@ -271,7 +320,7 @@ def newsub(self, other):
   if other.shape == self.shape:
     return old_add(self, other)
   if len(other.shape) == 2:
-    rst = zeros_like(self)
+    rst = empty_like(self)
     copy_to(self, rst)
     if other.shape[0] == self.shape[0] and other.shape[1] == 1:
       add_vec_to_rows(rst, other, alpha = -1)
@@ -293,7 +342,7 @@ def newdiv(self, other):
   if np.isscalar(other):
     return old_div(self, other)
   else:
-    rst = zeros_like(self)
+    rst = empty_like(self)
     if other.shape[0] == self.shape[0] and other.shape[1] == 1:
       div_vec_to_rows(self, other, rst)
     elif other.shape[1] == self.shape[1] and other.shape[0] == 1:
@@ -311,10 +360,10 @@ def max(input, axis = None):
   else:
     assert axis < 2
     if axis == 0:
-      rst = zeros((1, input.shape[1]), dtype=np.float32)
+      rst = empty((1, input.shape[1]), dtype=np.float32)
       col_max_reduce(rst, input)
     elif axis == 1:
-      rst = zeros((input.shape[0], 1), dtype = np.float32)
+      rst = empty((input.shape[0], 1), dtype = np.float32)
       row_max_reduce(rst, input)
     return rst
 
@@ -339,10 +388,10 @@ GPUArray.maxto = object_maxto
 @sync_function
 def argmax(input, axis):
   if axis == 0:
-    rst = zeros((1, input.shape[1]), dtype = np.float32)
+    rst = empty((1, input.shape[1]), dtype = np.float32)
     find_col_max_id(rst, input)
   elif axis == 1:
-    rst = zeros((input.shape[0], 1), dtype = np.float32)
+    rst = empty((input.shape[0], 1), dtype = np.float32)
     find_row_max_id(rst, input)
   else:
     assert False, 'Wrong axis'
@@ -368,7 +417,7 @@ GPUArray.argmaxto = object_argmaxto
 @sync_function
 def exp(input, output = None):
   if output is None:
-    output = zeros_like(input)
+    output = empty_like(input)
   copy_to(input, output)
   eltwise_exp(output)
   return output
@@ -387,10 +436,10 @@ def sum(input, axis = None):
   else:
     assert axis < 2
     if axis == 0:
-      rst = zeros((1, input.shape[1]), dtype = np.float32)
+      rst = empty((1, input.shape[1]), dtype = np.float32)
       add_col_sum_to_vec(rst, input)
     elif axis == 1:
-      rst = zeros((input.shape[0], 1), dtype = np.float32)
+      rst = empty((input.shape[0], 1), dtype = np.float32)
       add_row_sum_to_vec(rst, input)
     return rst
 

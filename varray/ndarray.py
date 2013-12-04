@@ -19,6 +19,8 @@ class DistMethod(object):
   Stripe = 'stripe'
 
 
+def barrier():
+  WORLD.Barrier()
 
 def tobuffer(gpuarray):
   dtype = np.dtype(gpuarray.dtype)
@@ -27,7 +29,7 @@ def tobuffer(gpuarray):
 class VArray(object):
   def __init__(self, array = None, unique = True,
                             slice_method = DistMethod.Square,
-                            slice_dim = None, shape = None):
+                            slice_dim = None, shape = None, local = False):
     start = time.time()
     self.rank = rank
     self.world_size = size
@@ -38,10 +40,10 @@ class VArray(object):
 
     self.area_dict = {}
 
-    if hasattr(array, 'shape'):
-      self.global_shape = array.shape
-    elif shape is not None:
+    if shape is not None:
       self.global_shape = shape
+    elif hasattr(array, 'shape'):
+      self.global_shape = array.shape
     else:
       assert False, 'Array has no shape attr'
 
@@ -60,6 +62,8 @@ class VArray(object):
       else:
         self.local_data = garray.array(array)
       self.local_area = Area.make_area(self.local_shape)
+      for i in range(self.world_size):
+        self.area_dict[i] = self.local_area
     else:
       if self.slice_method is None:
         self.slice_method = DistMethod.Square
@@ -71,34 +75,60 @@ class VArray(object):
 
         self.nprow = math.sqrt(self.world_size)
 
-        self.local_area = self.make_square_area()
+        self.local_area = self.make_square_area(self.rank)
         if array is not None:
           if isinstance(array, garray.GPUArray):
-            #driver.Context.synchronize()
-            self.local_data = array.__getitem__(self.local_area.slice)
+            if not local:
+              self.local_data = array.__getitem__(self.local_area.slice)
+            else:
+              self.local_data = array
           else:
             self.local_data = garray.array(array.__getitem__(self.local_area.slice).copy())
         else:
           assert shape is not None
-          self.local_data = garray.GPUArray(self.local_area.get_shape(), dtype = self.dtype)
+          self.local_data = garray.GPUArray(self.local_area.shape, dtype = self.dtype)
       elif self.slice_method == DistMethod.Stripe:
         if self.slice_dim is None:
           self.slice_dim = 0
         else:
           assert np.isscalar(self.slice_dim), 'SLice dim has to the a scalar'
 
-        self.local_area = self.make_stripe_area()
-        self.local_data = garray.array(array.__getitem__(self.local_area.slice).copy())
+        self.local_area = self.make_stripe_area(self.rank)
+        if array is not None:
+          if isinstance(array, garray.GPUArray):
+            if not local:
+              self.local_data = array.__getitem__(self.local_area.slice)
+            else:
+              self.local_data = array
+          else:
+            if not local:
+              self.local_data = garray.array(array.__getitem__(self.local_area.slice).copy())
+            else:
+              self.local_data = garray.array(array)
+        else:
+          assert shape is not None
+          self.local_data = garray.GPUArray(self.local_area.shape, dtype =self.dtype)
       else:
         assert False, 'No implementation'
 
-    self.area_dict[self.rank] = self.local_area
-    self.sync_area_dict()
+      self.area_dict[self.rank] = self.local_area
+      self.infer_area_dict()
 
-  def _log(self, fmt, *args):
-    util.D('%s :: %s' % (self.rank, fmt % args))
+    self.fetch_recv_cache = {}
+    self.fetch_sent_cache = {}
+    self.write_recv_cache = {}
+    self.write_sent_cache = {}
+
+
+  def infer_area_dict(self):
+    for i in range(self.world_size):
+      if self.slice_method == DistMethod.Square:
+        self.area_dict[i] = self.make_square_area(i)
+      elif self.slice_method == DistMethod.Stripe:
+        self.area_dict[i] = self.make_stripe_area(i)
 
   def sync_area_dict(self):
+    barrier()
     rev = WORLD.allgather(self.area_dict[self.rank])
     for i in range(self.world_size):
       self.area_dict[i] = rev[i]
@@ -109,7 +139,6 @@ class VArray(object):
 
 
   def copy_from_global(self, input):
-    #driver.Context.synchronize()
     tmp = input.__getitem__(self.local_area.slice)
     assert tmp.shape == self.local_shape, str(tmp.shape) + ' ' + str(self.local_shape)
     self.local_data = tmp
@@ -128,15 +157,19 @@ class VArray(object):
     self.local_data = self.fetch(global_area)
     self.local_area = global_area
 
-    self.area_dict[self.rank] = self.local_area
-    self.sync_area_dict()
+    for i in range(self.world_size):
+      self.area_dict[i] = self.local_area
 
   def fetch_local(self, area):
     if area is None:
       return None
     area = area.offset(self.local_area._from)
-    #driver.Context.synchronize()
-    data = self.local_data.__getitem__(area.slice)
+    if area.id not in self.fetch_sent_cache:
+      data = garray.GPUArray(area.shape, dtype = np.float32)
+      self.fetch_sent_cache[area.id] = data
+    else:
+      data = self.fetch_sent_cache[area.id]
+    garray.stride_copy(self.local_data, data, area.slice)
     return data
 
   def fetch_remote(self, reqs):
@@ -147,7 +180,9 @@ class VArray(object):
       if req is None:
         recv_data.append(None)
       else:
-        recv_data.append(garray.GPUArray(req.get_shape(), dtype = np.float32))
+        if req.id not in self.fetch_recv_cache:
+          self.fetch_recv_cache[req.id] = garray.GPUArray(req.shape, dtype = np.float32)
+        recv_data.append(self.fetch_recv_cache[req.id])
     req_list = WORLD.alltoall(req_list)
 
     send_data = [self.fetch_local(req_list[rank]) for rank in range(self.world_size)]
@@ -167,6 +202,7 @@ class VArray(object):
     return subs
 
   def fetch(self, area):
+    barrier()
     subs = {}
     reqs = [None] * self.world_size
     if area in self.local_area:
@@ -195,7 +231,7 @@ class VArray(object):
     if acc == 'overwrite':
       gpu_data.__setitem__(area.slice, data)
     elif acc == 'add':
-      gpu_data.__setitem__(area.slice, gpu_data.__getitem__(area.slice) + data)
+      garray.setitem_sum(gpu_data, area.slice, data)
     else:
       assert False
 
@@ -225,7 +261,9 @@ class VArray(object):
       if req is None:
         recv_data.append(None)
       else:
-        recv_data.append(garray.GPUArray(req.get_shape(), dtype = np.float32))
+        if req.id not in self.write_recv_cache:
+          self.write_recv_cache[req.id] = garray.GPUArray(req.shape, dtype = np.float32)
+        recv_data.append(self.write_recv_cache[req.id])
         size += req.size
     self.communicate_remote(sub_data, recv_data)
 
@@ -235,11 +273,10 @@ class VArray(object):
         self.write_local(req_list[rank], recv_data[rank], acc)
 
   def write(self, area, data, acc = 'add'):
-    WORLD.barrier()
+    barrier()
     start = time.time()
     if acc == 'no':
       sub_area = self.local_area & area
-      print sub_area.offset(area._from).slice
       sub_data = data.__getitem__(sub_area.offset(area._from).slice)
       self.write_local(sub_area, sub_data)
       return
@@ -252,7 +289,13 @@ class VArray(object):
       for rank, a in self.area_dict.iteritems():
         sub_area = a & area
         if sub_area is not None:
-          sub_data = data.__getitem__(sub_area.offset(area._from).slice)
+          offset_area = sub_area.offset(area._from)
+          if offset_area.id not in self.write_sent_cache:
+            sub_data = garray.GPUArray(offset_area.shape, dtype = np.float32)
+            self.write_sent_cache[offset_area.id] = sub_data
+          else:
+            sub_data = self.write_sent_cache[offset_area.id]
+          garray.stride_copy(data, sub_data, offset_area.slice)
         else:
           sub_data = None
         if rank == self.rank:
@@ -265,44 +308,39 @@ class VArray(object):
 
   def merge(self, subs, area):
     subs = {sub_area: sub_array for sub_area, sub_array in subs.iteritems() if sub_array is not None}
-    if self.slice_method == DistMethod.Square:
-      first, second = self.slice_dim
-      row_from = area._from.point[first]
-      a = sorted([sub_area for sub_area in subs if sub_area._from.point[first] == row_from], key = lambda x: x._to.point[second])
-      rst = garray.concatenate(tuple([subs[sub] for sub in a]), axis = second)
-      while True:
-        row_from = a[0]._to.point[first] + 1
-        a = sorted([sub_area for sub_area in subs if sub_area._from.point[first] == row_from], key = lambda x: x._to.point[second])
-        if not a: break;
-        else:
-          tmp = garray.concatenate(tuple([subs[sub] for sub in a]), axis = second)
-          rst = garray.concatenate((rst, tmp), axis = first)
-      return rst
-    elif self.slice_method == DistMethod.Stripe:
-      dim = self.slice_dim
-      a = sorted(subs.keys(), key = lambda x : x._from.point[dim])
-      rst = garray.concatenate(tuple([subs[sub] for sub in a]), axis = dim)
-      return rst
+    if len(subs) == 1:
+      return subs.values()[0]
+
+    min_from = Area.min_from(subs.keys())
+    #if self.slice_method == DistMethod.Square:
+    if area.id not in self.fetch_sent_cache:
+      rst = garray.GPUArray(area.shape, dtype = np.float32)
+      self.fetch_sent_cache[area.id] = rst
     else:
-      assert False, 'No implementation'
+      rst = self.fetch_sent_cache[area.id]
+    for sub_area, sub_array in subs.iteritems():
+      garray.stride_write(sub_array, rst, sub_area.offset(min_from).slice)
+    return rst
+    #else:
+    #  assert False
 
   @property
   def local_shape(self):
     return self.local_data.shape
 
-  def make_square_area(self):
+  def make_square_area(self, rank):
     first , second = self.slice_dim
     assert first < second < len(self.global_shape), 'Wrong slice_dim ' + str(len(self.global_shape))
     local_nrow = self.global_shape[first] / self.nprow
     local_ncol = local_nrow
 
-    first_pos = int(self.rank / self.nprow)
-    second_pos = int(self.rank % self.nprow)
+    first_pos = int(rank / self.nprow)
+    second_pos = int(rank % self.nprow)
 
     first_from  = first_pos * local_nrow
-    first_to = (first_pos + 1) * local_nrow  if self.world_size - self.rank >= self.nprow else self.global_shape[first]
+    first_to = (first_pos + 1) * local_nrow  if self.world_size - rank >= self.nprow else self.global_shape[first]
     second_from = second_pos * local_ncol
-    second_to = (second_pos + 1) * local_ncol if (self.rank + 1) % self.nprow != 0  else self.global_shape[second]
+    second_to = (second_pos + 1) * local_ncol if (rank + 1) % self.nprow != 0  else self.global_shape[second]
 
     _from = [0] * len(self.global_shape)
     _to = list(self.global_shape)
@@ -314,12 +352,12 @@ class VArray(object):
     _to = [x - 1 for x in _to]
     return Area(Point(*_from), Point(*_to))
 
-  def make_stripe_area(self):
+  def make_stripe_area(self, rank):
     assert self.slice_dim < len(self.global_shape), 'Wrong slice dim'
     nrow = util.divup(self.global_shape[self.slice_dim], self.world_size)
 
-    pos_from = nrow * self.rank
-    pos_to = min( (self.rank+ 1)* nrow , self.global_shape[self.slice_dim])
+    pos_from = nrow * rank
+    pos_to = min( (rank+ 1)* nrow , self.global_shape[self.slice_dim])
 
     _from = [0] * len(self.global_shape)
     _to = list(self.global_shape)
@@ -393,6 +431,7 @@ class VArray(object):
 
 
   def sum(self):
+    barrier()
     local_sum = garray.sum(self.local_data)
     if not self.unique:
       return local_sum
@@ -401,6 +440,7 @@ class VArray(object):
       return global_sum
 
   def max(self):
+    barrier()
     local_max = garray.max(self.local_data)
     if not self.unique:
       return local_max
@@ -579,6 +619,7 @@ class VArray(object):
     return c
 
   def sumto(self, shape = None, axis = 0):
+    barrier()
     assert 0 <= axis < len(self.local_shape)
     if axis == 0:
       c = garray.sum(garray.reshape_first(self.local_data), axis = 1)
@@ -600,6 +641,7 @@ class VArray(object):
       assert False
 
   def maxto(self, shape = None, axis = 0):
+    barrier()
     assert 0< axis < len(self.local_shape)
     if axis == 0:
       c = garray.max(garray.reshape_first(self.local_data), axis = 1)
@@ -674,3 +716,24 @@ def zeros_like(like):
   assert isinstance(like, VArray)
   a = np.zeros(like.global_shape).astype(like.dtype)
   return array(a, unique = like.unique, slice_method = like.slice_method, slice_dim = like.slice_dim)
+
+def from_stripe(data, to = 's'):
+  assert isinstance(data, np.ndarray)
+  recv = WORLD.allgather(data.shape)
+  shape_list = [None] * size
+  for i in range(size):
+    shape_list[i] = recv[i]
+  shape_len = np.array([len(s) for s in shape_list], dtype = np.int32)
+  assert any(shape_len - shape_len[0]) == False, 'Shapee must have same length'
+  shape_last = np.array([x[-1] for x in shape_list])
+  shape = tuple(shape_list[0][:-1]  +  (int(np.sum(shape_last)), ))
+
+  print np.prod(shape) * 4.0 / 1e9
+  rst = VArray(data, slice_method = DistMethod.Stripe, slice_dim = len(shape_list[0]) -1, shape = shape, local = True)
+  rst.local_data = garray.array(data)
+  rst.gather()
+  if to == 's':
+    rst = VArray(array = rst.local_data, slice_dim = (1, 2))
+  elif to == 'u':
+    rst = VArray(array = rst.local_data, unique = False)
+  return rst

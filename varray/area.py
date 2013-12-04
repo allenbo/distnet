@@ -17,13 +17,15 @@ class Point(object):
 
   def __getitem__(self, i):
     return self.point[i]
-  
+
+  def __le__(self, other):
+    return all([a <= b for a, b in zip(self.point, other.point)])
+
   def __setitem__(self, i, t):
     self.point[i] = t
 
   def expand(self, padding):
     assert len(padding) == len(self.point)
-
     return Point(*[a + b for a, b in zip(self.point, padding)])
 
 
@@ -65,6 +67,13 @@ class Area(object):
   def __str__(self):
     return str(self._from) + ' to ' + str(self._to)
 
+  @property
+  def id(self):
+    return (tuple(self._from), tuple(self._to))
+
+  def __eq__(self, other):
+    return self._from == other._from and self._to == other._to
+
   def offset(self, point):
     _from = Point(*[a - b for a, b in zip(self._from.point, point.point)])
     _to = Point(*[ a - b for a, b in zip(self._to.point , point.point)])
@@ -77,10 +86,18 @@ class Area(object):
     _to = Point(*[a + b for a , b in zip(point, _size)])
     return Area(_from, _to)
 
-
-  def get_shape(self):
+  @property
+  def shape(self):
     return tuple([ a - b + 1 for a, b in zip(self._to.point, self._from.point)])
   
   @property
   def size(self):
-    return np.prod(self.get_shape())
+    return np.prod(self.shape)
+
+  @staticmethod
+  def min_from(area_list):
+    rst = area_list[0]._from
+    for area in area_list[1:]:
+      if rst > area._from:
+        rst = area._from
+    return rst

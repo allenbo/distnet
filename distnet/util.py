@@ -73,6 +73,14 @@ class Timer:
     for key in sorted(dic):
       print key, ':', dic[key]
 
+  def dump(self, filename):
+    dic = self.func_time
+    keys  = sorted(dic, key = dic.get)
+    with open(filename, 'w') as f:
+      for key in keys:
+        print >> f, key, dic[key]
+
+
 timer = Timer()
 
 class EZTimer(object):

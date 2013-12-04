@@ -617,7 +617,7 @@ _stride_copy_4 = ElementwiseKernel(
     const int istride[] = { istride1, istride2, istride3, 1 };
     const int ostride[] = { ostride1, ostride2, ostride3, 1 };
     const int start[] = { start1, start2, start3, start4 };
-    const int sz[] = { sz1, sz2, sz3, sz4 };
+    //const int sz[] = { sz1, sz2, sz3, sz4 };
     const int step[4] = { step1, step2, step3, step4 };
 
     int rest = i;
@@ -637,6 +637,36 @@ _stride_copy_4 = ElementwiseKernel(
     ''',
     name='stride_copy_4')
 
+_stride_copy_sum = ElementwiseKernel(
+    '''float* input, float* data,
+    int start1, int start2, int start3, int start4,
+    int step1, int step2, int step3, int step4,
+    int sz1, int sz2, int sz3, int sz4,
+    int istride1, int istride2, int istride3,
+    int ostride1, int ostride2, int ostride3
+    ''',
+    '''
+    int idx[4];
+    const int istride[] = { istride1, istride2, istride3, 1 };
+    const int ostride[] = { ostride1, ostride2, ostride3, 1 };
+    const int start[] = { start1, start2, start3, start4 };
+    //const int sz[] = { sz1, sz2, sz3, sz4 };
+    const int step[4] = { step1, step2, step3, step4 };
+
+    int rest = i;
+    int in_idx = 0;
+    #pragma unroll 4
+    for (int j = 0; j < 4; ++j) {
+      idx[j] = rest / ostride[j];
+      rest = rest % ostride[j];
+      in_idx += istride[j] * (idx[j] * step[j] + start[j]);
+    }
+
+
+    input[in_idx] += data[i];
+    ''',
+    name='stride_copy_sum')
+
 _transpose_ = CompiledSource('''
   __global__
   void transpose(float * src, float* dst, int sleading, int dleading, int srows, int scols) {
@@ -652,6 +682,76 @@ _transpose_ = CompiledSource('''
     dst[dind] = src[sind];
   }''', 'transpose'
   )
+
+_transpose_coalesced_ = CompiledSource('''
+__global__ 
+void transposeCoalesced(const float *idata, float *odata,int rows, int cols)
+{
+  const int TILE_DIM = 32;
+  const int BLOCK_ROWS = 8;
+  __shared__ float tile[TILE_DIM][TILE_DIM];
+
+  int x = blockIdx.x * TILE_DIM + threadIdx.x;
+  int y = blockIdx.y * TILE_DIM + threadIdx.y;
+  if(x >= cols) return;
+
+  for (int j = 0; j < TILE_DIM; j += BLOCK_ROWS) {
+     if(y + j >= rows) break;
+     tile[threadIdx.y+j][threadIdx.x] = idata[(y+j)*cols + x];
+  }
+
+  __syncthreads();
+
+  //x = blockIdx.y * TILE_DIM + threadIdx.x;  // transpose block offset
+  //y = blockIdx.x * TILE_DIM + threadIdx.y;
+
+  for (int j = 0; j < TILE_DIM; j += BLOCK_ROWS) {
+    if(y + j >= rows) continue;
+     odata[x*rows + y + j] = tile[threadIdx.y+j][threadIdx.x];
+  }
+}
+    ''', 'transposeCoalesced')
+
+
+
+_transpose_diagonal_ = CompiledSource(
+'''
+__global__ void transposeDiagonal(float *idata,
+ float *odata, int height,int width)
+{
+  const int TILE_DIM = 32;
+  const int BLOCK_ROWS = 8;
+  __shared__ float tile[TILE_DIM][TILE_DIM+1];
+  int blockIdx_x, blockIdx_y;
+
+  // diagonal reordering
+  if (width == height) {
+    blockIdx_y = blockIdx.x;
+    blockIdx_x = (blockIdx.x+blockIdx.y)%gridDim.x;
+  } else {
+    int bid = blockIdx.x + gridDim.x*blockIdx.y;
+    blockIdx_y = bid%gridDim.y;
+    blockIdx_x = ((bid/gridDim.y)+blockIdx_y)%gridDim.x;
+  }
+
+  int xIndex = blockIdx_y*TILE_DIM + threadIdx.x;
+  int yIndex = blockIdx_x*TILE_DIM + threadIdx.y;
+  int index_out = xIndex + (yIndex)*height;
+
+  xIndex = blockIdx_x*TILE_DIM + threadIdx.x;
+  yIndex = blockIdx_y*TILE_DIM + threadIdx.y;
+  int index_in = xIndex + (yIndex)*width;
+  for (int i=0; i<TILE_DIM; i+=BLOCK_ROWS) {
+    tile[threadIdx.y+i][threadIdx.x] = idata[index_in+i*width];
+  }
+
+  __syncthreads();
+
+  for (int i=0; i<TILE_DIM; i+=BLOCK_ROWS) {
+    odata[index_out+i*height] = tile[threadIdx.x][threadIdx.y+i];
+  }
+}
+''', 'transposeDiagonal')
 
 _matrix_add_ = CompiledSource('''
   __global__
@@ -678,8 +778,7 @@ _gpu_partial_copy_to_ = CompiledSource('''
       int j = blockIdx.y * blockDim.y + threadIdx.y;
 
       if( i >= col_to - col_from) return;
-      if( j >= row_to - row_from) return;
-
+      if( j >= row_to - row_from) return; 
       int sidx = i+col_from  + (j+ row_from) * sleading;
       int didx = i+ j  * dleading;
 
@@ -1243,6 +1342,29 @@ def stride_write(data, container, slices):
   else:
     assert False
 
+def stride_write_sum(data, container, slices):
+  assert len(container.strides) == 4 and len(data.strides) == 4
+  assert len(slices) == 4
+
+  start1, _, stride1 = slices[0].indices(container.shape[0])
+  start2, _, stride2 = slices[1].indices(container.shape[1])
+  start3, _, stride3 = slices[2].indices(container.shape[2])
+  start4, _, stride4 = slices[3].indices(container.shape[3])
+
+
+  sz1, sz2, sz3, sz4 = data.shape
+
+  ifleading, isleading, itleading = [x / 4 for x in container.strides[:3]]
+  ofleading, osleading, otleading = [x / 4 for x in data.strides[:3]]
+
+  _stride_copy_sum(container, data,
+      I(start1), I(start2), I(start3), I(start4),
+      I(stride1), I(stride2), I(stride3), I(stride4),
+      I(sz1), I(sz2), I(sz3), I(sz4),
+      I(ifleading), I(isleading), I(itleading),
+      I(ofleading), I(osleading), I(otleading),
+      range=slice(0, np.prod(data.shape), 1))
+
 @util.timed_fn
 def gpu_copy_to(x, y):
   pycuda.driver.memcpy_dtod(y.gpudata, x.gpudata, x.nbytes)
@@ -1263,28 +1385,31 @@ def gpu_partial_copy_to(x, y, row_from, row_to, col_from, col_to):
 
 @util.lazyinit(_initialize_cublas)
 @util.timed_fn
-def matrixmult(x, y):
+def matrixmult(x, y, dest = None):
   if isinstance(x, GPUArray):
     result = GPUArray((y.shape[1], x.shape[0]), dtype=x.dtype)
     sgemm('t', 't', x.shape[0], y.shape[1], x.shape[1], 1.0,
           x.gpudata, x.shape[1], y.gpudata, y.shape[1], 0.0,
           result.gpudata, result.shape[1])
-    result = transpose(result)
-    return result
+
+    return transpose(result, dest)
   else:
     return np.dot(x, y)
-
 @util.timed_fn
 def transpose(mat, dst = None):
   mh, mw = mat.shape
   if dst is None:
     dst = gpuarray.empty((mw, mh), dtype=np.float32)
 
-  block = (32, 32, 1)
+  block = (32, 8, 1)
   grid = (divup(mw, 32), divup(mh, 32))
   sleading = mat.strides[0] / 4
   dleading = dst.strides[0] / 4
-  _transpose_(mat, dst, I(sleading), I(dleading), I(mh), I(mw), block=block, grid=grid)
+  #_transpose_(mat, dst, I(sleading), I(dleading), I(mh), I(mw), block=block, grid=grid)
+  if mh % 32 == 0 and mw % 32 == 0:
+    _transpose_diagonal_(mat, dst, I(mh), I(mw), block=block, grid=grid)
+  else:
+    _transpose_coalesced_(mat, dst, I(mh), I(mw), block=block, grid=grid)
 
   return dst
 

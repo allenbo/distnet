@@ -1,6 +1,6 @@
 from collections import deque
 from distnet import argparse, util, layer, data
-from distnet.util import log
+from distnet.util import log, timer
 from distnet.checkpoint import CheckpointDumper, DataDumper, MemoryDataHolder
 from distnet.layer import TRAIN, TEST
 from distnet.net import FastNet
@@ -159,7 +159,10 @@ class Trainer:
           self.should_continue_training()):
       util.dump_profile()
       batch_start = time.time()
+      st = time.time()
       train_data = self.train_dp.get_next_batch(self.batch_size)
+      print 'Minibatch fetch:', time.time() - st
+
       self.curr_epoch = train_data.epoch
       self.curr_batch += 1
 
@@ -190,7 +193,7 @@ class Trainer:
     rep = self.net.get_report()
     if rep is not None:
       log(rep)
-    #timer.report()
+    timer.dump('timer')
 
   @staticmethod
   def get_trainer_by_name(name, param_dict):
