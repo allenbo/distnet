@@ -423,7 +423,8 @@ class FCLayer(WeightedLayer):
     return (self.outputSize, self.batch_size)
 
   def fprop(self, input, output, train=TRAIN):
-    arr.copy_to(arr.matrixmult(self.weight.wt, input), output)
+    #arr.copy_to(arr.matrixmult(self.weight.wt, input), output)
+    arr.matrixmult(self.weight.wt, input,  dest = output)
     output.add(self.bias.wt, dst = output, axis = 0)
     if train == TEST:
       if self.dropRate > 0.0:
@@ -444,14 +445,18 @@ class FCLayer(WeightedLayer):
     if self.dropRate > 0.0:
       arr.copy_to(grad * self.dropMask, grad)
 
-    tmp = arr.transpose(arr.matrixmult(arr.transpose(grad), self.weight.wt))
-    #tmp = arr.matrixmult(self.weight.wt, grad, atrans='n')
-    #arr.transpose(self.weight.wt), grad)
-    arr.copy_to(tmp, outGrad)
+    #tmp = arr.transpose(arr.matrixmult(arr.transpose(grad), self.weight.wt))
+    #tmp = arr.matrixmult(arr.transpose(self.weight.wt), grad)
+    #arr.copy_to(tmp, outGrad)
 
-    self.weight.set_grad(arr.matrixmult(grad, arr.transpose(input)))
+
+    #self.weight.set_grad(arr.matrixmult(grad, arr.transpose(input)))
     #self.weight.set_grad(arr.matrixmult(grad, input, btrans='n'))
 
+    tmp = arr.matrixmult(arr.transpose(self.weight.wt), grad, dest = outGrad)
+    if tmp != outGrad:
+      arr.copy_to(tmp, outGrad)
+    arr.matrixmult(grad, arr.transpose(input), dest = self.weight.grad)
     self.bias.set_grad(grad.sumto(axis = 0))
 
 

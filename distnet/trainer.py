@@ -155,9 +155,11 @@ class Trainer:
     start_epoch = self.curr_epoch
     last_print_time = time.time()
 
+    min_time = 12
     while (self.curr_epoch - start_epoch <= num_epochs and 
           self.should_continue_training()):
-      util.dump_profile()
+      if min_time < 1.7:
+        util.dump_profile()
       batch_start = time.time()
       st = time.time()
       train_data = self.train_dp.get_next_batch(self.batch_size)
@@ -173,6 +175,7 @@ class Trainer:
 
       if time.time() - last_print_time > 1:
         log('%d.%d: error: %f logreg: %f time: %f', self.curr_epoch, self.curr_batch, 1 - correct, cost, time.time() - batch_start)
+        min_time = time.time() - batch_start
         last_print_time = time.time()
 
       if self.check_test_data():

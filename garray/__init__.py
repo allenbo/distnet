@@ -16,9 +16,10 @@ def sync_function(fn):
     return result
   return make_copy(_wrapper, fn.__name__)
 
-
+def sync():
+  driver.Context.synchronize()
 old_init = GPUArray.__init__
-@sync_function
+#@sync_function
 def new_init(self, *args, **kw):
   #stack = ''.join(traceback.format_stack())
   #timer.start()
@@ -26,6 +27,7 @@ def new_init(self, *args, **kw):
   #print '=' * 20 , str(args)+str(kw)
   #traceback.print_stack()
   result = old_init(self, *args, **kw)
+  sync()
   #ed = time.time()
   #timer.end(stack)
   return result
