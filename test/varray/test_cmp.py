@@ -20,8 +20,10 @@ print 'multi version shape', output2.shape
 if debug:
   print (output1[0, 0, :, 0] - output2[0, 0, :, 0])
 
+print output1[0, 0, :, 0]
+print output2[0, 0, :, 0]
 diff = abs(output1 - output2)
-print diff[0, 0, :, 0]
+#print diff[0, 0, :, 0]
 
 #print diff.flatten().argsort()[-100:]
 assert (diff < 1e-5).all()

@@ -34,11 +34,12 @@ p.dump_stats('./profile.%d' % rank)
 #a.gather()
 #print a.local_shape
 #print a.local_data
-
+print '*'* 10 , rank, '*' * 10
+np.random.seed(0)
 a = np.random.randn(4, 4).astype(np.float32)
 print a
 
-va = varray.array(a, slice_dim = (0, 1))
-va.gather()
-
-print va.local_data.get() - a
+tmp =  varray.array(a, slice_dim = (0, 1))
+data = tmp.fetch(varray.Area(varray.Point(0,0), varray.Point(2, 2)), padding = -1)
+print data
+#print va.local_data.get() - a

@@ -1,6 +1,6 @@
 import garray
 import numpy as np
-
+garray.device_init()
 
 def test_1():
   stop = 53
@@ -38,13 +38,10 @@ def test_3():
 def test_4():
   a = np.random.randn(94, 32, 32, 128).astype(np.float32)
   ga = garray.array(a)
-  b = np.zeros((94, 1, 32, 128)).astype(np.float32)
+  b = np.ones((94, 1, 32, 128)).astype(np.float32)
   gb = garray.array(b)
 
   a[:, 2:3, :, :] = b
   ga[:, 2:3, :, :] = gb
-  #print ga.get()[0,0,0, :]
-  #print a[0, 0, 0, :]
-  print (ga.get() - a)[0, 0, 0, :]
+  assert np.abs(ga.get() - a).sum() == 0
 
-test_4()

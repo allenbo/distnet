@@ -5,11 +5,13 @@ import time
 start = time.time()
 
 assert len(sys.argv) == 2
+def divup(x, base):
+  if x / base * base == x:
+    return int(x / base)
+  else:
+    return int(x / base + 1)
 
 # define the parameters
-padding = 0
-stride = 4
-out_shape = (96, 55, 55, 128)
 
 # get the input and filter
 import garray as arr
@@ -22,8 +24,16 @@ print  'read', time.time() - start
 print 'the shape of input', input.shape
 print 'the shape of filter', filter.shape
 
+input_c, input_x, _, _ =  input.shape
+_, filter_size, _, filter_channel = filter.shape
 
+padding = 0
+stride = 4
+out_x =  1 + divup(2 * padding + input_x - filter_size, stride)
+padding = -padding
+out_shape = (filter_channel, out_x, out_x, 128)
 
+print 'output shape', out_shape
 if sys.argv[1] == 'single':
   print 'single GPU version'
   # single GPU version
@@ -37,7 +47,7 @@ if sys.argv[1] == 'single':
       arr.reshape_last(input),
       arr.reshape_last(filter),
       output,
-      224, 55, 55, padding, stride, 3, 1)
+      input_x, out_x, out_x, padding, stride, input_c, 1)
   print  'convolution', time.time() - start
 
   output = output.reshape(out_shape)
@@ -57,7 +67,7 @@ else:
   filter = arr.square_array(filter, slice_dim = (), unique =False)
   output = arr.zeros(out_shape, slice_dim = (1, 2))
   arr.convolution(input, filter, output,
-      224, 55, 55, padding, stride, 3, 1)
+      input_x, out_x, out_x, padding, stride, input_c, 1)
   print 'convolution', time.time() - start
   output.gather()
   if rank == 0:

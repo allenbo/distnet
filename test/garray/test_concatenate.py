@@ -1,6 +1,6 @@
 import garray
 import numpy as np
-
+garray.device_init()
 
 def test_1():
   a = np.random.randn(10).astype(np.float32)
@@ -14,7 +14,7 @@ def test_1():
   a = np.concatenate((a, b, c), axis = 0)
   ga = garray.concatenate((ga, gb, gc), axis = 0)
 
-  print ga.get() - a
+  assert np.abs(ga.get() - a).sum() == 0, a
 
 
 def test_2():
@@ -29,7 +29,7 @@ def test_2():
   a = np.concatenate((a, b, c), axis = 1)
   ga = garray.concatenate((ga, gb, gc), axis = 1)
 
-  print ga.get() - a
+  assert np.abs(ga.get() - a).sum() == 0, a
 
 
 
@@ -43,9 +43,6 @@ def test_4():
   a = np.concatenate((a, b), axis = 2)
   ga = garray.concatenate((ga, gb), axis = 2)
 
-  
-  print ga.get() - a
-  print ga.shape
+  assert np.abs(ga.get() - a).sum() == 0, a
 
-test_4()
-
+#test_4()
