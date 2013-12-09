@@ -9,6 +9,20 @@ import garray
 from pycuda import driver
 
 
+gpu_cache = {}
+
+def get_from_cache(shape):
+  if shape in gpu_cache:
+    c = gpu_cache[shape]
+    del gpu_cache[shape]
+  else:
+    c = garray.GPUArray(shape, dtype = np.float32)
+
+  return c
+
+def put_to_cache(shape, c):
+  gpu_cache[shape] = c
+
 def copy_to(input, output):
   if output.unique:
     if not input.unique:
@@ -32,7 +46,7 @@ def partial_copy(input, f, t):
 def bigger_than_scaler(input, scaler):
   garray.bigger_than_scaler(input.local_data, scaler)
 
-def matrixmult(x, y, atrans = 't', btrans = 't'):
+def matrixmult(x, y, dest = None):
   assert isinstance(x, VArray)
   assert isinstance(y, VArray)
 
@@ -44,9 +58,17 @@ def matrixmult(x, y, atrans = 't', btrans = 't'):
     y = garray.reshape_last(y.fetch(y.global_area))
   else:
     y = y.local_data
-
-  c = garray.matrixmult(x, y, atrans = atrans, btrans = btrans)
-  return VArray(c, unique = False)
+  shape = (x.shape[0], y.shape[1])
+  #c = garray.matrixmult(x, y, atrans = atrans, btrans = btrans)
+  if dest is None or dest.unique == True:
+    c = get_from_cache(shape)
+    garray.matrixmult(x, y, c)
+    rst = VArray(c, unique = False)
+    put_to_cache(shape, c)
+    return rst
+  else:
+    garray.matrixmult(x, y, dest.local_data)
+    return dest
 
 
 def matrix_add(incr, grad ,alpha = 1.0, beta = 1.0):
