@@ -1218,10 +1218,32 @@ def stride_copy_4(input, output, slices):
   ifleading, isleading, itleading = [x / 4 for x in input.strides[:3]]
   ofleading, osleading, otleading = [x / 4 for x in output.strides[:3]]
 
-#  print '-'* 10
-#  print input.shape
-#  print output.shape
-#  print slices
+  if start4 == 0 and stride4 == 1:
+    copy = driver.Memcpy3D()
+    copy.set_src_device(input.ptr)
+    copy.set_dst_device(output.ptr)
+    
+    copy.width_in_bytes = 4 * sz4 * sz3
+    copy.height = sz2
+    copy.depth = sz1
+
+    copy.src_pitch = 4 * input.shape[3] * input.shape[2]
+    copy.dst_pitch = 4 * output.shape[3] * output.shape[2]
+    
+    copy.src_height = input.shape[1]
+    copy.dst_height = output.shape[1]
+  
+    copy.src_z = start1
+    copy.src_y = start2
+    copy.src_x_in_bytes = 4 * (start3 * input.shape[3])
+    
+    copy.dst_z = 0
+    copy.dst_y = 0
+    copy.dst_x_in_bytes = 0
+
+    
+    copy()
+    return
   _stride_copy_4(input, output,
       I(start1), I(start2), I(start3), I(start4),
       I(stride1), I(stride2), I(stride3), I(stride4),
@@ -1230,7 +1252,6 @@ def stride_copy_4(input, output, slices):
       I(ofleading), I(osleading), I(otleading),I(0),
       range=slice(0, np.prod(output.shape), 1))
   
-  driver.Context.synchronize()
 
 
 def stride_copy(input, output, slices):
@@ -1321,6 +1342,31 @@ def stride_write_4(data, container, slices):
 
   ifleading, isleading, itleading = [x / 4 for x in container.strides[:3]]
   ofleading, osleading, otleading = [x / 4 for x in data.strides[:3]]
+  if start4 == 0 and stride4 == 1:
+    copy.set_dst_device(container.ptr)
+
+    copy.width_in_bytes = 4 * sz4 * sz3
+    copy.height = sz2
+    copy.depth = sz1
+
+    copy.src_pitch = data.strides[1]
+    copy.dst_pitch = container.strides[1]
+
+    copy.src_height = data.shape[1]
+    copy.dst_height = container.shape[1]
+
+    copy.src_z = 0
+    copy.src_y = 0
+    copy.src_x_in_bytes = 0
+
+    copy.dst_z = start1
+    copy.dst_y = start2
+    copy.dst_x_in_bytes = 4 * (start3 * container.shape[3])
+
+    copy()
+    return
+  else:
+    assert False
 
   _stride_copy_4(container, data,
       I(start1), I(start2), I(start3), I(start4),
@@ -1385,16 +1431,35 @@ def gpu_partial_copy_to(x, y, row_from, row_to, col_from, col_to):
 
 @util.lazyinit(_initialize_cublas)
 @util.timed_fn
-def matrixmult(x, y, dest = None):
+def matrixmult(x, y, atrans='t', btrans='t'):
   if isinstance(x, GPUArray):
-    result = GPUArray((y.shape[1], x.shape[0]), dtype=x.dtype)
-    sgemm('t', 't', x.shape[0], y.shape[1], x.shape[1], 1.0,
-          x.gpudata, x.shape[1], y.gpudata, y.shape[1], 0.0,
-          result.gpudata, result.shape[1])
+    if atrans == 'n':
+      shape = x.shape
+      shape = (shape[1], shape[0])
+      x = x.reshape(shape)
 
-    return transpose(result, dest)
+    if btrans == 'n':
+      shape = y.shape
+      shape = (shape[1], shape[0])
+      y = y.reshape(shape)
+
+    m = x.shape[0]
+    n = y.shape[1]
+    k = x.shape[1]
+
+    assert k == y.shape[0], (x.shape, y.shape)
+
+    xleading = x.shape[1] if atrans == 't' else x.shape[0]
+    yleading = y.shape[1] if btrans == 't' else y.shape[0]
+
+    result = GPUArray((n, m), dtype=x.dtype)
+    sgemm(atrans, btrans, x.shape[0], y.shape[1], x.shape[1], 1.0, x.gpudata,xleading, y.gpudata, yleading, 0.0, result.gpuda
+
+    return transpose(result)
   else:
     return np.dot(x, y)
+
+
 @util.timed_fn
 def transpose(mat, dst = None):
   mh, mw = mat.shape
@@ -1405,7 +1470,6 @@ def transpose(mat, dst = None):
   grid = (divup(mw, 32), divup(mh, 32))
   sleading = mat.strides[0] / 4
   dleading = dst.strides[0] / 4
-  #_transpose_(mat, dst, I(sleading), I(dleading), I(mh), I(mw), block=block, grid=grid)
   if mh % 32 == 0 and mw % 32 == 0:
     _transpose_diagonal_(mat, dst, I(mh), I(mw), block=block, grid=grid)
   else:
