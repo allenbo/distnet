@@ -1222,26 +1222,26 @@ def stride_copy_4(input, output, slices):
     copy = driver.Memcpy3D()
     copy.set_src_device(input.ptr)
     copy.set_dst_device(output.ptr)
-    
+
     copy.width_in_bytes = 4 * sz4 * sz3
     copy.height = sz2
     copy.depth = sz1
 
     copy.src_pitch = 4 * input.shape[3] * input.shape[2]
     copy.dst_pitch = 4 * output.shape[3] * output.shape[2]
-    
+
     copy.src_height = input.shape[1]
     copy.dst_height = output.shape[1]
-  
+
     copy.src_z = start1
     copy.src_y = start2
     copy.src_x_in_bytes = 4 * (start3 * input.shape[3])
-    
+
     copy.dst_z = 0
     copy.dst_y = 0
     copy.dst_x_in_bytes = 0
 
-    
+
     copy()
     return
   _stride_copy_4(input, output,
@@ -1343,6 +1343,8 @@ def stride_write_4(data, container, slices):
   ifleading, isleading, itleading = [x / 4 for x in container.strides[:3]]
   ofleading, osleading, otleading = [x / 4 for x in data.strides[:3]]
   if start4 == 0 and stride4 == 1:
+    copy = driver.Memcpy3D()
+    copy.set_src_device(data.ptr)
     copy.set_dst_device(container.ptr)
 
     copy.width_in_bytes = 4 * sz4 * sz3
@@ -1453,7 +1455,8 @@ def matrixmult(x, y, atrans='t', btrans='t'):
     yleading = y.shape[1] if btrans == 't' else y.shape[0]
 
     result = GPUArray((n, m), dtype=x.dtype)
-    sgemm(atrans, btrans, x.shape[0], y.shape[1], x.shape[1], 1.0, x.gpudata,xleading, y.gpudata, yleading, 0.0, result.gpuda
+    sgemm(atrans, btrans, x.shape[0], y.shape[1], x.shape[1], 1.0, x.gpudata,xleading, y.gpudata,
+        yleading, 0.0, result.gpudata, m)
 
     return transpose(result)
   else:
