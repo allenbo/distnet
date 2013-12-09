@@ -26,6 +26,8 @@ def tobuffer(gpuarray):
   dtype = np.dtype(gpuarray.dtype)
   return garray.make_buffer(gpuarray.ptr, gpuarray.size * dtype.itemsize)
 
+
+
 class VArray(object):
   def __init__(self, array = None, unique = True,
                             slice_method = DistMethod.Square,
@@ -201,7 +203,7 @@ class VArray(object):
     subs = { reqs[rank]: recv_data[rank] for rank in range(self.world_size)}
     return subs
 
-  def fetch(self, area):
+  def fetch(self, area, padding = 0):
     barrier()
     subs = {}
     reqs = [None] * self.world_size
@@ -220,7 +222,7 @@ class VArray(object):
         else:
           reqs[rank] = sub_area
     subs.update(self.fetch_remote(reqs))
-    return self.merge(subs, area)
+    return self.merge(subs, area, padding)
 
 
   def write_local(self, area,  data, acc = 'overwrite'):
@@ -306,23 +308,47 @@ class VArray(object):
           local_subs[rank] = sub_data
     self.write_remote(reqs, local_subs, acc)
 
-  def merge(self, subs, area):
+  def merge(self, subs, area, padding = 0):
     subs = {sub_area: sub_array for sub_area, sub_array in subs.iteritems() if sub_array is not None}
-    if len(subs) == 1:
-      return subs.values()[0]
-
-    min_from = Area.min_from(subs.keys())
-    #if self.slice_method == DistMethod.Square:
-    if area.id not in self.fetch_sent_cache:
-      rst = garray.GPUArray(area.shape, dtype = np.float32)
-      self.fetch_sent_cache[area.id] = rst
+    if padding == 0:
+      if len(subs) == 1:
+        return subs.values()[0]
+      min_from = Area.min_from(subs.keys())
+      #if self.slice_method == DistMethod.Square:
+      if area.id not in self.fetch_sent_cache:
+        rst = garray.GPUArray(area.shape, dtype = np.float32)
+        self.fetch_sent_cache[area.id] = rst
+      else:
+        rst = self.fetch_sent_cache[area.id]
+      for sub_area, sub_array in subs.iteritems():
+        garray.stride_write(sub_array, rst, sub_area.offset(min_from).slice)
+      return rst
     else:
-      rst = self.fetch_sent_cache[area.id]
-    for sub_area, sub_array in subs.iteritems():
-      garray.stride_write(sub_array, rst, sub_area.offset(min_from).slice)
-    return rst
-    #else:
-    #  assert False
+
+      def get_new_min_from(min_from, slices):
+        for i, s in enumerate(slices):
+          start = s.start
+          if start != 0:
+            min_from[i] -= start
+
+        return min_from
+
+      assert padding < 0
+      padding = -padding
+      new_shape, slices = self.get_pad_info(padding, area.shape, area)
+      min_from = Area.min_from(subs.keys())
+      if len(subs) == 1:
+        rst = stride_write(subs.values()[0], rst, slices)
+        return rst
+      min_from = get_new_min_from(min_from, slices)
+      if area.id not in self.fetch_sent_cache:
+        rst = garray.zeros(new_shape, dtype = np.float32)
+        self.fetch_sent_cache[area.id] = rst
+      else:
+        rst = self.fetch_sent_cache[area.id]
+      for sub_area, sub_array in subs.iteritems():
+        garray.stride_write(sub_array, rst, sub_area.offset(min_from).slice)
+      return rst
 
   @property
   def local_shape(self):
@@ -449,6 +475,7 @@ class VArray(object):
       return global_max
 
   def cross_communicate(self, stride, filter_size, padding = 0, num_output = None):
+    assert padding <= 0, str(padding)
     r, c = self.slice_dim
 
     half_filter_size = (filter_size - 1) /2
@@ -511,50 +538,52 @@ class VArray(object):
     if self.local_area._to[c] != self.global_area._to[c]:
       cross_to[c] += col_right
 
-
     self.tmp_local_area = Area(cross_from, cross_to)
-    self.tmp_local_data = self.fetch(self.tmp_local_area)
+    self.tmp_local_data = self.fetch(self.tmp_local_area, padding = padding)
+    #self.tmp_local_data = self.fetch(self.tmp_local_area)
+
+  def get_pad_info(self, padding, old_shape, old_area):
+    row, col = self.slice_dim
+    u, d, l, r = [padding] * 4
+    new_shape = list(old_shape)
+    new_area = copy.deepcopy(old_area)
+
+    #not most top
+    if self.local_area._from[row] != 0:
+      u = 0
+    else:
+      new_shape[row] += padding
+      new_area._from[row] += padding
+      new_area._to[row] += padding
+    #not most left
+    if self.local_area._from[col] != 0:
+      l = 0
+    else:
+      new_shape[col] += padding
+      new_area._from[col] += padding
+      new_area._to[col] += padding
+    #not most down
+    if self.local_area._to[row] != self.global_area._to[row]:
+      d = 0
+    else:
+      new_shape[row] += padding
+    #not most right
+    if self.local_area._to[col] != self.global_area._to[col]:
+      r = 0
+    else:
+      new_shape[col] += padding
+
+    return tuple(new_shape), new_area.offset(old_area._from).slice
 
   def pad(self, padding):
     assert padding <= 0
     padding = -padding
-    if padding:
-      row, col = self.slice_dim
-      u, d, l, r = [padding] * 4
-      old_shape = list(self.tmp_local_data.shape)
-      old_area = copy.deepcopy(self.tmp_local_area)
+    new_shape, slices = self.get_pad_info(padding, self.tmp_local_data.shape, self.tmp_local_area)
 
-      #not most top
-      if self.local_area._from[row] != 0:
-        u = 0
-      else:
-        old_shape[row] += padding
-        old_area._from[row] += padding
-        old_area._to[row] += padding
-      #not most left
-      if self.local_area._from[col] != 0:
-        l = 0
-      else:
-        old_shape[col] += padding
-        old_area._from[col] += padding
-        old_area._to[col] += padding
-      #not most down
-      if self.local_area._to[row] != self.global_area._to[row]:
-        d = 0
-      else:
-        old_shape[row] += padding
-      #not most right
-      if self.local_area._to[col] != self.global_area._to[col]:
-        r = 0
-      else:
-        old_shape[col] += padding
-
-
-      if u or d or l or r:
-        tmp = garray.GPUArray(tuple(old_shape), dtype = np.float32)
-        slices = old_area.offset(self.tmp_local_area._from).slice
-        tmp[slices] = self.tmp_local_data
-        self.tmp_local_data = tmp
+    if new_shape != self.tmp_local_data.shape:
+      tmp = garray.zeros(new_shape, dtype = np.float32)
+      tmp[slices] = self.tmp_local_data
+      self.tmp_local_data = tmp
 
   def unpad(self, data, padding):
     if padding == 0:

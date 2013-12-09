@@ -21,6 +21,9 @@ class Point(object):
   def __le__(self, other):
     return all([a <= b for a, b in zip(self.point, other.point)])
 
+  def __gt__(self, other):
+    return all([a >= b for a, b in zip(self.point, other.point)])
+
   def __setitem__(self, i, t):
     self.point[i] = t
 
@@ -100,4 +103,5 @@ class Area(object):
     for area in area_list[1:]:
       if rst > area._from:
         rst = area._from
-    return rst
+    import copy
+    return copy.deepcopy(rst)
