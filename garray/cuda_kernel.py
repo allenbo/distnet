@@ -1429,8 +1429,7 @@ def gpu_partial_copy_to(x, y, row_from, row_to, col_from, col_to):
   grid = (divup(c, 32), divup(r, 32))
   sleading, dleading = x.strides[0] / 4, y.strides[0] / 4
   _gpu_partial_copy_to_(x, y, I(row_from), I(row_to), I(col_from), I(col_to), I(sleading), I(dleading), block=block, grid=grid)
-  
-
+'''
 @util.lazyinit(_initialize_cublas)
 @util.timed_fn
 def matrixmult(x, y, atrans='t', btrans='t'):
@@ -1458,7 +1457,30 @@ def matrixmult(x, y, atrans='t', btrans='t'):
     sgemm(atrans, btrans, x.shape[0], y.shape[1], x.shape[1], 1.0, x.gpudata,xleading, y.gpudata,
         yleading, 0.0, result.gpudata, m)
 
+    driver.Context.synchronize()
     return transpose(result)
+  else:
+    return np.dot(x, y)
+'''
+@util.lazyinit(_initialize_cublas)
+@util.timed_fn
+def matrixmult(x, y, dest = None):
+  if isinstance(x, GPUArray):
+    m = y.shape[1]
+    n = x.shape[0]
+    k = x.shape[1]
+
+    assert k == y.shape[0], (x.shape, y.shape)
+
+    if dest is None:
+      result = GPUArray((n, m), dtype=x.dtype)
+    else:
+      result = dest
+    sgemm('n', 'n', m, n, k, 1.0, y.gpudata, m, x.gpudata,
+        k, 0.0, result.gpudata, m)
+
+    driver.Context.synchronize()
+    return result
   else:
     return np.dot(x, y)
 
