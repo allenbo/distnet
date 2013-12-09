@@ -161,7 +161,7 @@ class Trainer:
       batch_start = time.time()
       st = time.time()
       train_data = self.train_dp.get_next_batch(self.batch_size)
-      print 'Minibatch fetch:', time.time() - st
+      #print 'Minibatch fetch:', time.time() - st
 
       self.curr_epoch = train_data.epoch
       self.curr_batch += 1

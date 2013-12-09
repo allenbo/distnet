@@ -444,15 +444,15 @@ class FCLayer(WeightedLayer):
     if self.dropRate > 0.0:
       arr.copy_to(grad * self.dropMask, grad)
 
-    #tmp = arr.transpose(arr.matrixmult(arr.transpose(grad), self.weight.wt))
-    tmp = arr.matrixmult(arr.transpose(self.weight.wt), grad)
+    tmp = arr.transpose(arr.matrixmult(arr.transpose(grad), self.weight.wt))
+    #tmp = arr.matrixmult(self.weight.wt, grad, atrans='n')
+    #arr.transpose(self.weight.wt), grad)
     arr.copy_to(tmp, outGrad)
 
     self.weight.set_grad(arr.matrixmult(grad, arr.transpose(input)))
+    #self.weight.set_grad(arr.matrixmult(grad, input, btrans='n'))
+
     self.bias.set_grad(grad.sumto(axis = 0))
-
-
-
 
 
 class SoftmaxLayer(Layer):

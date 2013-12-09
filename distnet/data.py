@@ -161,12 +161,13 @@ class ImageNetDataProvider(DataProvider):
     self.batches = []
     index = 0
     while index < len(self.images):
-      if not multi_gpu:
-        self.batches.append(image_index[index: index + self.batch_size])
-      else:
-        num_images = min(self.batch_size, len(image_index) - index)
-        num_images = util.divup(num_images, num_gpu)
-        self.batches.append(image_index[index + rank * num_images: index + (rank+1) * num_images ])
+      #if not multi_gpu:
+      #  self.batches.append(image_index[index: index + self.batch_size])
+      #else:
+      #  num_images = min(self.batch_size, len(image_index) - index)
+      #  num_images = util.divup(num_images, num_gpu)
+      #  self.batches.append(image_index[index + rank * num_images: index + (rank+1) * num_images ])
+      self.batches.append(image_index[index: index + self.batch_size])
       index += self.batch_size
     #self.batches = np.array_split(image_index,
     #                              util.divup(len(self.images), self.batch_size))
@@ -395,10 +396,10 @@ class ParallelDataProvider(DataProvider):
     self.curr_epoch = batch_data.epoch
     if not self.multiview:
       if multi_gpu:
-        #batch_data.data = arr.array(batch_data.data, dtype = np.float32)
-        #batch_data.labels = arr.array(batch_data.labels, dtype = np.float32, unique = False)
-        batch_data.data = arr.from_stripe(batch_data.data)
-        batch_data.labels = arr.from_stripe(batch_data.labels, to = 'u')
+        batch_data.data = arr.array(batch_data.data, dtype = np.float32)
+        batch_data.labels = arr.array(batch_data.labels, dtype = np.float32, unique = False)
+        #batch_data.data = arr.from_stripe(batch_data.data)
+        #batch_data.labels = arr.from_stripe(batch_data.labels, to = 'u')
       else:
         batch_data.data = arr.array(batch_data.data, dtype = np.float32, to2dim = True)
         batch_data.labels = arr.array(batch_data.labels, dtype = np.float32)
