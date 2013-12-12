@@ -6,14 +6,7 @@ import numpy as np
 
 import os
 
-multi_gpu = False
-if os.environ.get('MULTIGPU', 'no') == 'yes':
-  import varray as arr
-  multi_gpu = True
-else:
-  import garray as arr
-
-
+from multigpu import uniformed_array, arr, allocate
 
 def update(wts, grad, incr, epsilon, momentum, decay, batch_size):
   #assert weight.incr.get().mean() < 1
@@ -48,10 +41,7 @@ def to_gpu(obj, unique = False):
     return obj
 
   assert obj.dtype == np.float32
-  if not multi_gpu:
-    result = arr.array(obj, dtype = np.float32)
-  else:
-    result = arr.array(obj, dtype = np.float32, unique = unique)
+  result = uniformed_array(obj, unique = unique)
   assert result.dtype == np.float32
   return result
 
@@ -79,13 +69,15 @@ class Weight(object):
   @property
   def grad(self):
     if self._grad is None or self._grad.shape != self.shape:
-      self._grad = to_gpu(np.zeros(self.shape).astype(np.float32), self.unique)
+      #self._grad = to_gpu(np.ndarray(shape = self.shape).astype(np.float32), self.unique)
+      self._grad = allocate(shape = self.shape, unique = self.unique)
     return self._grad
 
   @property
   def incr(self):
     if (self._incr is None or self._incr.shape != self.shape) and self.momentum > 0:
-      self._incr = to_gpu(np.zeros(self.shape).astype(np.float32), self.unique)
+      #self._incr = to_gpu(np.zeros(self.shape).astype(np.float32), self.unique)
+      self._grad = allocate(shape = self.shape, unique = self.unique)
     return self._incr
 
   @property

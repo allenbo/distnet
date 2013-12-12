@@ -3,19 +3,9 @@ from distnet.weights import WEIGHTS, to_gpu
 from distnet import util
 import os
 import numpy as np
-
 import garray
-multi_gpu = False
-if os.environ.get('MULTIGPU', 'no') == 'yes':
-  import varray as arr
-  multi_gpu = True
-  import socket
-  print arr.rank, socket.gethostname()
-  garray.device_init(arr.rank)
-else:
-  import garray as arr
-  garray.device_init()
 
+from multigpu import convert_shape, allocate, arr, uniformed_array
 
 PFout = False
 PBout = False
@@ -28,30 +18,6 @@ def col_rand(shape, dtype):
 def col_randn(shape, dtype):
   return np.require(np.random.randn(*shape), dtype=dtype, requirements='C')
 
-
-def zeros(shape, dtype = np.float32, unique = False):
-  if not multi_gpu:
-    col = shape[-1]
-    row = int(np.prod(shape[:-1]))
-    return garray.zeros((row, col), dtype = dtype)
-  else:
-    return arr.zeros(shape, dtype = dtype, unique = unique)
-
-
-def allocate(shape, dtype = np.float32, unique = False):
-  if not multi_gpu:
-    col = shape[-1]
-    row = int(np.prod(shape[:-1]))
-    return garray.GPUArray((row, col), dtype = dtype)
-  else:
-    return arr.allocate(shape, dtype, unique = unique)
-
-def convert_shape(shape):
-  if not multi_gpu:
-    col = shape[-1]
-    row = int(np.prod(shape[:-1]))
-    return (row, col)
-  return shape
 
 class Layer(object):
   def __init__(self, name, type, disable_bprop=False):
@@ -213,11 +179,12 @@ class ConvLayer(WeightedLayer):
     self.sharedBiases = sharedBiases
 
     if weight is not None:
-      if len(weight.shape) == 2 and multi_gpu:
+      if len(weight.shape) == 2:
         num_filter = weight.shape[-1]
         num_color = weight.shape[0] / (self.filterSize ** 2)
-        weight = weight.reshape((num_color, self.filterSize, self.filterSize, self.numFilter))
-        weightIncr = weightIncr.reshape((num_color, self.filterSize, self.filterSize, self.numFilter))
+        new_shape = convert_shape((num_color, self.filterSize, self.filterSize, num_filter))
+        weight = weight.reshape(new_shape)
+        weightIncr = weightIncr.reshape(new_shape)
 
     WeightedLayer.__init__(self, name, 'conv',
                            epsW, epsB, initW, initB, momW, momB, wc, weight,
@@ -431,10 +398,7 @@ class FCLayer(WeightedLayer):
         output *= (1.0 - self.dropRate)
     else:
       if self.dropRate > 0.0:
-        if multi_gpu:
-          self.dropMask = arr.array(np.random.uniform(0, 1, output.size).astype(np.float32).reshape(output.shape), unique = False)
-        else:
-          self.dropMask = arr.array(np.random.uniform(0, 1, output.size).astype(np.float32).reshape(output.shape))
+        self.dropMask = uniformed_array(np.random.uniform(0, 1, output.size).astype(np.float32).reshape(output.shape), unique = False)
         arr.bigger_than_scaler(self.dropMask, self.dropRate)
         arr.copy_to(output * self.dropMask, output)
     if PFout:
@@ -504,10 +468,10 @@ class SoftmaxLayer(Layer):
     # only try multiview with test on single gpu
     unit = self.batch_size / num_view
     if self.cost.shape[0] != unit:
-      self.cost = garray.allocate((unit, 1), dtype = np.float32)
+      self.cost = allocate((unit, 1), dtype = np.float32)
     maxid = garray.argmax(output, axis = 0)
     self.batchCorrect = garray.same_reduce_multiview(label, maxid, num_view)
-    tmp = garray.allocate((output.shape[0], unit), dtype = np.float32)
+    tmp = allocate((output.shape[0], unit), dtype = np.float32)
     garray.partial_copy_to(output, tmp, 0, output.shape[0], 0, unit)
     garray.logreg_cost_col(tmp, label, self.cost)
 
