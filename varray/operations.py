@@ -161,14 +161,17 @@ def convolution(input, filter ,output, image_y, output_y, output_x, padding, str
   assert isinstance(input, VArray) and isinstance(filter, VArray) and isinstance(output, VArray)
   assert input.slice_method == DistMethod.Square and filter.unique == False and output.slice_method == DistMethod.Square
 
+  #print input.local_data.shape
+  #print input.local_data.get()[0, 0, :, 0]
   input.cross_communicate(padding = padding, stride = stride, filter_size = filter.local_shape[1])
+  #print input.tmp_local_data.shape
+  #print input.tmp_local_data.get()[0, 0, :, 0]
 
   r, c = output.slice_dim
   image_y = input.tmp_local_data.shape[r]
   output_y = output.local_shape[r]
   output_x = output.local_shape[c]
-
-  old_shape = output.local_data.shape
+  #print filter.local_data.shape
 
   garray.convolution(
       input.tmp_local_data,

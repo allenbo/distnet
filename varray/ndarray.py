@@ -337,15 +337,18 @@ class VArray(object):
       padding = -padding
       new_shape, slices = self.get_pad_info(padding, area.shape, area)
       min_from = Area.min_from(subs.keys())
-      if len(subs) == 1:
-        rst = stride_write(subs.values()[0], rst, slices)
-        return rst
-      min_from = get_new_min_from(min_from, slices)
+      area = Area.make_area(new_shape)
       if area.id not in self.fetch_sent_cache:
         rst = garray.zeros(new_shape, dtype = np.float32)
         self.fetch_sent_cache[area.id] = rst
       else:
         rst = self.fetch_sent_cache[area.id]
+
+      if len(subs) == 1:
+        garray.stride_write(subs.values()[0], rst, slices)
+        return rst
+      min_from = get_new_min_from(min_from, slices)
+
       for sub_area, sub_array in subs.iteritems():
         garray.stride_write(sub_array, rst, sub_area.offset(min_from).slice)
       return rst
@@ -480,13 +483,13 @@ class VArray(object):
 
     half_filter_size = (filter_size - 1) /2
     if stride != 1:
-      global_row_begin_centroid = global_col_begin_centroid = half_filter_size - padding
+      global_row_begin_centroid = global_col_begin_centroid = half_filter_size + padding
 
       row_begin_centroid = global_row_begin_centroid
       col_begin_centroid = global_col_begin_centroid
 
-      while row_begin_centroid <= self.local_area._from[r]: row_begin_centroid += stride
-      while col_begin_centroid <= self.local_area._from[c]: col_begin_centroid += stride
+      while row_begin_centroid < self.local_area._from[r]: row_begin_centroid += stride
+      while col_begin_centroid < self.local_area._from[c]: col_begin_centroid += stride
 
       row_end_centroid = row_begin_centroid
       col_end_centroid = col_begin_centroid
@@ -522,6 +525,10 @@ class VArray(object):
     else:
       row_up = row_down = col_left = col_right = half_filter_size
 
+    #print 'row_begin_centroid', row_begin_centroid
+    #print 'row_end_centroid', row_end_centroid
+    #print 'col_begin_centroid', col_begin_centroid
+    #print 'col_end_centroid', col_end_centroid
     import copy
     cross_from = copy.deepcopy(self.local_area._from)
     cross_to = copy.deepcopy(self.local_area._to)
@@ -538,41 +545,40 @@ class VArray(object):
     if self.local_area._to[c] != self.global_area._to[c]:
       cross_to[c] += col_right
 
+    #print cross_from, cross_to
+
     self.tmp_local_area = Area(cross_from, cross_to)
     self.tmp_local_data = self.fetch(self.tmp_local_area, padding = padding)
     #self.tmp_local_data = self.fetch(self.tmp_local_area)
 
   def get_pad_info(self, padding, old_shape, old_area):
     row, col = self.slice_dim
-    u, d, l, r = [padding] * 4
     new_shape = list(old_shape)
     new_area = copy.deepcopy(old_area)
 
-    #not most top
-    if self.local_area._from[row] != 0:
-      u = 0
-    else:
+    #most top
+    if self.local_area._from[row] == 0:
       new_shape[row] += padding
       new_area._from[row] += padding
       new_area._to[row] += padding
-    #not most left
-    if self.local_area._from[col] != 0:
-      l = 0
-    else:
+      #print 'most top add padding', new_shape
+    #most left
+    if self.local_area._from[col] == 0:
       new_shape[col] += padding
       new_area._from[col] += padding
       new_area._to[col] += padding
-    #not most down
-    if self.local_area._to[row] != self.global_area._to[row]:
-      d = 0
-    else:
-      new_shape[row] += padding
-    #not most right
-    if self.local_area._to[col] != self.global_area._to[col]:
-      r = 0
-    else:
-      new_shape[col] += padding
+      #print 'most left add padding', new_shape
 
+    #most down
+    if self.local_area._to[row] == self.global_area._to[row]:
+      new_shape[row] += padding
+      #print 'most down add padding', new_shape
+    #most right
+    if self.local_area._to[col] == self.global_area._to[col]:
+      new_shape[col] += padding
+      #print 'most right add padding', new_shape
+
+    #print 'new shape', new_shape
     return tuple(new_shape), new_area.offset(old_area._from).slice
 
   def pad(self, padding):
@@ -757,7 +763,7 @@ def from_stripe(data, to = 's'):
   shape_last = np.array([x[-1] for x in shape_list])
   shape = tuple(shape_list[0][:-1]  +  (int(np.sum(shape_last)), ))
 
-  print np.prod(shape) * 4.0 / 1e9
+  #print np.prod(shape) * 4.0 / 1e9
   rst = VArray(data, slice_method = DistMethod.Stripe, slice_dim = len(shape_list[0]) -1, shape = shape, local = True)
   rst.local_data = garray.array(data)
   rst.gather()

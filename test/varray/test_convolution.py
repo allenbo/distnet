@@ -27,8 +27,8 @@ print 'the shape of filter', filter.shape
 input_c, input_x, _, _ =  input.shape
 _, filter_size, _, filter_channel = filter.shape
 
-padding = 0
-stride = 4
+padding = 1
+stride = 2
 out_x =  1 + divup(2 * padding + input_x - filter_size, stride)
 padding = -padding
 out_shape = (filter_channel, out_x, out_x, 128)
@@ -40,7 +40,6 @@ if sys.argv[1] == 'single':
   input = arr.array(input, dtype = np.float32)
   filter = arr.array(filter, dtype = np.float32)
   output = arr.zeros(out_shape, dtype = np.float32)
-
   output = arr.reshape_last(output)
 
   arr.convolution(
@@ -62,6 +61,7 @@ else:
   import varray as arr
   from varray import rank
 
+  print 'rank', rank
   # multi GPU version
   input = arr.square_array(input, slice_dim = (1, 2))
   filter = arr.square_array(filter, slice_dim = (), unique =False)

@@ -22,13 +22,19 @@
     PyArg_ParseTuple(shape, "ll", &rows, &cols);
     PyArg_ParseTuple(strides, "ll", &stride, &itemsize);
     stride = stride / itemsize;
+    //printf("The shape is (%ld, %ld)\n", rows, cols);
+    //printf("The stride is %ld\n", stride);
   }else if (len == 4) {
     PyArg_ParseTuple(shape, "llll", &channel, &rows, &cols, &batch_size);
+    //printf("The size of shape is 4, and the shape is (%ld, %ld, %ld, %ld)\n", channel, rows, cols, batch_size);
     rows = channel * rows * cols;
     cols = batch_size;
+    //printf("Shape changes to (%ld, %ld)\n", rows, cols);
     long stride0, stride1, stride2, itemsize;
     PyArg_ParseTuple(strides, "llll", &stride0, &stride1, &stride2, &itemsize);
+    //printf("The strides is (%ld, %ld, %ld, %ld)\n", stride0, stride1, stride2, itemsize);
     stride = stride2/itemsize;
+    //printf("Strides change to %ld\n", stride);
   }
   $1 = new NVMatrix(gpudata, rows, cols, stride);
 }
