@@ -29,9 +29,24 @@ def tobuffer(gpuarray):
 
 
 class VArray(object):
+  '''A VArray is used to do distributed array based communication on GPU.
+
+  With slice_method and slice_dim, GPU should know the distribute state
+  of VArray, and with area, GPU should know what to send out or receive.
+  '''
+
   def __init__(self, array = None, unique = True,
                             slice_method = DistMethod.Square,
                             slice_dim = None, shape = None, local = False):
+    '''Have to provider array or shape.
+
+      Array could be a numpy ndarray or GPUArray. The parameter local indicates the array is
+      global array or local array. When local is true, the array is local data.
+
+      The given shape has to be the global shape.
+
+      When shape is given, the global shape is determined it, even if the array is given.
+      '''
     start = time.time()
     self.rank = rank
     self.world_size = size
@@ -89,6 +104,7 @@ class VArray(object):
         else:
           assert shape is not None
           self.local_data = garray.GPUArray(self.local_area.shape, dtype = self.dtype)
+
       elif self.slice_method == DistMethod.Stripe:
         if self.slice_dim is None:
           self.slice_dim = 0
@@ -387,10 +403,13 @@ class VArray(object):
 
   def make_stripe_area(self, rank):
     assert self.slice_dim < len(self.global_shape), 'Wrong slice dim'
-    nrow = util.divup(self.global_shape[self.slice_dim], self.world_size)
+    #nrow = util.divup(self.global_shape[self.slice_dim], self.world_size)
+    nrow = self.global_shape[self.slice_dim] / self.world_size
 
     pos_from = nrow * rank
-    pos_to = min( (rank+ 1)* nrow , self.global_shape[self.slice_dim])
+    pos_to = (rank+ 1)* nrow
+    if rank == self.world_size -1 :
+      pos_to = self.global_shape[self.slice_dim]
 
     _from = [0] * len(self.global_shape)
     _to = list(self.global_shape)
@@ -482,8 +501,11 @@ class VArray(object):
       return global_max
 
   def cross_communicate(self, stride, filter_size, padding = 0, num_output = None):
+    ''' When cross communicate is being called, FastNet is distribued the image cross height and width'''
     assert padding <= 0, str(padding)
-    r, c = self.slice_dim
+    #r, c = self.slice_dim
+    #The dimension of height and width
+    r, c =  1, 2
 
     half_filter_size = (filter_size - 1) /2
     if stride != 1:
@@ -556,7 +578,8 @@ class VArray(object):
     #self.tmp_local_data = self.fetch(self.tmp_local_area)
 
   def get_pad_info(self, padding, old_shape, old_area):
-    row, col = self.slice_dim
+    #row, col = self.slice_dim
+    row, col = 1, 2
     new_shape = list(old_shape)
     new_area = copy.deepcopy(old_area)
 
@@ -600,7 +623,8 @@ class VArray(object):
       return data
     assert padding <= 0
     padding = -padding
-    row, col = self.slice_dim
+    #row, col = self.slice_dim
+    row, col = 1, 2
     u, d, l, r = [padding] * 4
     old_shape = list(data.shape)
     old_area = Area.make_area(data.shape)
@@ -765,6 +789,9 @@ def zeros(shape, dtype = np.float32, unique = True, slice_method = DistMethod.Sq
 
 
 def allocate(shape, dtype = np.float32, unique = True, slice_method = DistMethod.Square, slice_dim = (1, 2)):
+  if not issquare(size):
+    slice_method = DistMethod.Stripe
+    slice_dim = 1
   return VArray(array = None, unique =  unique, slice_method = slice_method, slice_dim = slice_dim, shape = shape)
 
 def allocate_like(input):

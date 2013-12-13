@@ -5,6 +5,7 @@ cudaconv.init(MPI.COMM_WORLD.Get_rank())
 import varray
 import numpy as np
 import cProfile
+from varray import DistMethod
 p = cProfile.Profile()
 p.enable()
 
@@ -36,10 +37,14 @@ p.dump_stats('./profile.%d' % rank)
 #print a.local_data
 print '*'* 10 , rank, '*' * 10
 np.random.seed(0)
-a = np.random.randn(4, 4).astype(np.float32)
-print a
+a = np.random.randn(3, 224, 224, 3).astype(np.float32)
 
-tmp =  varray.array(a, slice_dim = (0, 1))
-data = tmp.fetch(varray.Area(varray.Point(0,0), varray.Point(2, 2)), padding = -1)
-print data
+tmp =  varray.array(a, slice_method = DistMethod.Stripe, slice_dim = 1)
+padding = 0
+stride = 4
+filter_size = 11
+tmp.cross_communicate(padding = padding, stride = stride,filter_size = filter_size)
+#data = tmp.fetch(varray.Area(varray.Point(0,0), varray.Point(2, 2)), padding = -1)
+print rank
+print tmp.tmp_local_data.shape
 #print va.local_data.get() - a

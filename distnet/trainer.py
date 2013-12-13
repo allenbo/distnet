@@ -158,6 +158,7 @@ class Trainer:
     min_time = 12
     while (self.curr_epoch - start_epoch <= num_epochs and 
           self.should_continue_training()):
+      util.dump_profile()
       batch_start = time.time()
       st = time.time()
       train_data = self.train_dp.get_next_batch(self.batch_size)

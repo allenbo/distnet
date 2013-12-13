@@ -2,8 +2,7 @@ import varray
 import time
 import util
 import numpy as np
-from varray.ndarray import VArray, DistMethod, zeros_like, WORLD, zeros, allocate_like, allocate,\
-WORLD
+from varray.ndarray import VArray, DistMethod, zeros_like, WORLD, zeros, allocate_like, allocate, WORLD
 from varray.area import Area
 import garray
 from pycuda import driver
@@ -159,11 +158,11 @@ def tanh_compute_grad(grad, output, out_grad, a, b):
 
 def convolution(input, filter ,output, image_y, output_y, output_x, padding, stride, channel, group):
   assert isinstance(input, VArray) and isinstance(filter, VArray) and isinstance(output, VArray)
-  assert input.slice_method == DistMethod.Square and filter.unique == False and output.slice_method == DistMethod.Square
 
   input.cross_communicate(padding = padding, stride = stride, filter_size = filter.local_shape[1])
 
-  r, c = output.slice_dim
+  #r, c = output.slice_dim
+  r, c = 1, 2
   image_y = input.tmp_local_data.shape[r]
   output_y = output.local_shape[r]
   output_x = output.local_shape[c]
@@ -178,7 +177,6 @@ def convolution(input, filter ,output, image_y, output_y, output_x, padding, str
 
 def bconvolution(input, grad, filter, out_grad, image_y, image_x, output_size, padding, stride, channel):
   assert isinstance(grad, VArray) and isinstance(filter, VArray) and isinstance(out_grad, VArray)
-  assert grad.slice_method == DistMethod.Square and filter.unique == False and out_grad.slice_method == DistMethod.Square
 
   start = time.time()
   if not hasattr(input, 'tmp_local_data'):
@@ -188,7 +186,8 @@ def bconvolution(input, grad, filter, out_grad, image_y, image_x, output_size, p
     out_grad.tmp_out_grad = tmp_out_grad
   else:
     tmp_out_grad = out_grad.tmp_out_grad
-  r, c  = input.slice_dim
+  #r, c  = input.slice_dim
+  r, c = 1, 2
   image_y = input.tmp_local_data.shape[r]
   image_x = input.tmp_local_data.shape[c]
   output_size = grad.local_shape[r]
@@ -206,7 +205,8 @@ def bconvolution(input, grad, filter, out_grad, image_y, image_x, output_size, p
 def wconvolution(input, grad, weight_grad, image_y, output_y, output_x, filter_size, padding, stride, channel):
   if not hasattr(input, 'tmp_local_data'):
     input.cross_communicate(padding = padding, stride = stride, filter_size = filter_size)
-  r,c = input.slice_dim
+  #r,c = input.slice_dim
+  r, c = 1, 2
   image_y = input.tmp_local_data.shape[r]
   output_y = grad.local_shape[r]
   output_x = grad.local_shape[c]
@@ -226,7 +226,8 @@ def wconvolution(input, grad, weight_grad, image_y, output_y, output_x, filter_s
   weight_grad.write(weight_grad.global_area, tmp_weight_grad)
 
 def maxpool(input, output, channel, pool_size, start, stride, input_y, output_y, output_x):
-  r,c = output.slice_dim
+  #r,c = output.slice_dim
+  r, c = 1, 2
   num_row = output.local_shape[r]
   num_col = output.local_shape[c]
   input.cross_communicate(stride = stride, filter_size = pool_size, num_output = (num_row, num_col))
@@ -244,7 +245,8 @@ def maxpool(input, output, channel, pool_size, start, stride, input_y, output_y,
 
 
 def maxundo(input, grad, output, out_grad, pool_size, start, stride, output_y, output_x, input_y):
-  r, c = input.slice_dim
+  #r, c = input.slice_dim
+  r, c = 1, 2
   if not hasattr(input, 'tmp_local_data'):
     num_row = output.local_shape[r]
     num_col = output.local_shape[c]
@@ -270,7 +272,8 @@ def maxundo(input, grad, output, out_grad, pool_size, start, stride, output_y, o
 
 def avgpool(input, output, channel, pool_size, start, stride, input_y, output_y, output_x):
   # same as max pooling layer
-  r,c = output.slice_dim
+  #r,c = output.slice_dim
+  r, c = 1, 2
   num_row = output.local_shape[r]
   num_col = output.local_shape[c]
   input.cross_communicate(stride = stride, filter_size = pool_size, num_output = (num_row, num_col))
@@ -287,7 +290,8 @@ def avgpool(input, output, channel, pool_size, start, stride, input_y, output_y,
       channel, pool_size, start, stride, input_y, output_y, output_x)
 
 def avgundo(input, grad, out_grad, pool_size, start, stride, output_y, output_x, image_y, image_x):
-  r, c = input.slice_dim
+  #r, c = input.slice_dim
+  r, c = 1, 2
   if not hasattr(input, 'tmp_local_data'):
     num_row = output.local_shape[r]
     num_col = output.local_shape[c]
@@ -314,7 +318,8 @@ def avgundo(input, grad, out_grad, pool_size, start, stride, output_y, output_x,
 
 def rnorm(input, denom, output, channel, size, image_y, scaler, pow):
   input.cross_communicate(filter_size = size, stride = 1)
-  r, c = output.slice_dim
+  #r, c = output.slice_dim
+  r, c = 1, 2
 
   tmp_out_data = garray.empty_like(input.tmp_local_data)
   tmp_denom_data = garray.empty_like(input.tmp_local_data)
@@ -346,7 +351,8 @@ def rnormundo(grad, denom, input, output, out_grad, channel, size, image_y, scal
 
   tmp_out_grad = garray.empty_like(input.tmp_local_data)
 
-  r, c = output.slice_dim
+  #r, c = output.slice_dim
+  r, c = 1 , 2
   image_y = input.tmp_local_data.shape[r]
 
   garray.rnormundo(
@@ -359,7 +365,8 @@ def rnormundo(grad, denom, input, output, out_grad, channel, size, image_y, scal
   out_grad.write(data = tmp_out_grad, area = input.tmp_local_area, acc = 'no')
 
 def rnormcrossmap(input, denom, output, channel, size,image_y, scaler, pow, blocked):
-  r, c = input.slice_dim
+  #r, c = input.slice_dim
+  r, c = 1, 2
 
   image_y = input.local_data.shape[r]
   garray.rnormcrossmap(
@@ -369,7 +376,8 @@ def rnormcrossmap(input, denom, output, channel, size,image_y, scaler, pow, bloc
       channel, size, image_y, scaler, pow, blocked)
 
 def rnormcrossmapundo(grad, denom, input, output, out_grad, channel, size, image_y, scaler, pow, blocked):
-  r, c = input.slice_dim
+  #r, c = input.slice_dim
+  r, c = 1, 2
   image_y = input.local_data.shape[r]
 
   garray.rnormcrossmapundo(

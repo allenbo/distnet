@@ -15,14 +15,7 @@ import sys
 import threading
 import time
 
-multi_gpu = False
-if os.environ.get('MULTIGPU', 'no') == 'yes':
-  import varray as arr
-  from varray import rank, size as num_gpu
-  multi_gpu = True
-else:
-  import garray as arr
-
+from multigpu import uniformed_array, arr
 
 
 seed = arr.get_seed()
@@ -396,14 +389,10 @@ class ParallelDataProvider(DataProvider):
       if self._gpu_batch is not None:
         self._gpu_batch.data.mem_free()
         del self._gpu_batch
-      if multi_gpu:
-        batch_data.data = arr.array(batch_data.data, dtype = np.float32)
-        batch_data.labels = arr.array(batch_data.labels, dtype = np.float32, unique = False)
-        #batch_data.data = arr.from_stripe(batch_data.data)
-        #batch_data.labels = arr.from_stripe(batch_data.labels, to = 'u')
-      else:
-        batch_data.data = arr.array(batch_data.data, dtype = np.float32, to2dim = True)
-        batch_data.labels = arr.array(batch_data.labels, dtype = np.float32)
+      batch_data.data = uniformed_array(batch_data.data, dtype = np.float32, to2dim = True)
+      batch_data.labels =uniformed_array(batch_data.labels, dtype = np.float32, unique = False)
+      #batch_data.data = arr.from_stripe(batch_data.data)
+      #batch_data.labels = arr.from_stripe(batch_data.labels, to = 'u')
       self._gpu_batch = batch_data
     else:
       self._cpu_batch = batch_data
@@ -450,12 +439,8 @@ class ParallelDataProvider(DataProvider):
         data[:, :, :, i* batch_size: (i+ 1) * batch_size] = cpu_data[:, :, :, self.index + width * i : self.index + width * i + batch_size]
 
       self.index = (self.index + batch_size) / width
-      if not multi_gpu:
-        data = garray.array(np.require(data, requirements = 'C'), to2dim = True)
-        labels = garray.array(np.require(labels, requirements = 'C'))
-      else:
-        data = arr.array(np.require(data, requirements = 'C'))
-        labels = arr.array(np.require(labels, requirements = 'C'), unique = False)
+      data = uniformed_array(np.require(data, requirements = 'C'), to2dim = True)
+      labels = uniformed_array(np.require(labels, requirements = 'C'), unique = False)
 
     return BatchData(data, labels, epoch)
 
