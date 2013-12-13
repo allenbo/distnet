@@ -316,6 +316,10 @@ class VArray(object):
       min_from = Area.min_from(subs.keys())
       #if self.slice_method == DistMethod.Square:
       if area.id not in self.fetch_sent_cache:
+        free, total = driver.mem_get_info()
+        MB = 1024 * 1024
+        mem_size = int(np.prod(area.shape) * 4)
+        assert mem_size < free, str(free / MB) + str(mem_size/ MB)
         rst = garray.GPUArray(area.shape, dtype = np.float32)
         self.fetch_sent_cache[area.id] = rst
       else:
@@ -714,7 +718,6 @@ class VArray(object):
 
   def __getitem__(self, key):
     if not self.unique:
-      #driver.Context.synchronize()
       local_data = self.local_data.__getitem__(key)
       c = VArray(local_data, unique = False)
       return c
@@ -729,6 +732,26 @@ class VArray(object):
     assert not self.unique
     data = self.local_data
     return VArray(data.reshape(shape), unique = False)
+
+
+  def mem_free(self):
+    #free, total = driver.mem_get_info()
+    #MB = 1024 * 1024
+    #print 'free space', free / MB
+    self.local_data.gpudata.free()
+    for key, value in self.fetch_recv_cache.iteritems():
+      value.free()
+    for key, value in self.fetch_sent_cache.iteritems():
+      value.free()
+    for key, value in self.write_recv_cache.iteritems():
+      value.free()
+    for key, value in self.write_sent_cache.iteritems():
+      value.free()
+    #free, total = driver.mem_get_info()
+    #MB = 1024 * 1024
+    #print 'free space', free / MB
+
+
 
 def array(a, dtype = np.float32,unique = True, slice_method = DistMethod.Square, slice_dim = (1, 2)):
   return VArray(a, unique, slice_method, slice_dim)
@@ -763,9 +786,9 @@ def from_stripe(data, to = 's'):
   shape_last = np.array([x[-1] for x in shape_list])
   shape = tuple(shape_list[0][:-1]  +  (int(np.sum(shape_last)), ))
 
-  #print np.prod(shape) * 4.0 / 1e9
   rst = VArray(data, slice_method = DistMethod.Stripe, slice_dim = len(shape_list[0]) -1, shape = shape, local = True)
-  rst.local_data = garray.array(data)
+  #rst.local_data = garray.array(data)
+
   rst.gather()
   if to == 's':
     rst = VArray(array = rst.local_data, slice_dim = (1, 2))

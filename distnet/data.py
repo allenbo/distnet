@@ -169,8 +169,7 @@ class ImageNetDataProvider(DataProvider):
       #  self.batches.append(image_index[index + rank * num_images: index + (rank+1) * num_images ])
       self.batches.append(image_index[index: index + self.batch_size])
       index += self.batch_size
-    #self.batches = np.array_split(image_index,
-    #                              util.divup(len(self.images), self.batch_size))
+    #self.batches = np.array_split(image_index, util.divup(len(self.images), self.batch_size))
 
     self.batch_range = range(len(self.batches))
     #np.random.shuffle(self.batch_range)
@@ -232,7 +231,6 @@ class ImageNetDataProvider(DataProvider):
       labels[0, idx] = label
 
     st = time.time()
-    #cropped = cropped.astype(np.single)
     cropped = np.require(cropped, dtype=np.single, requirements='C')
     old_shape = cropped.shape
     cropped = garray.reshape_last(cropped) - self.data_mean
@@ -395,6 +393,9 @@ class ParallelDataProvider(DataProvider):
 
     self.curr_epoch = batch_data.epoch
     if not self.multiview:
+      if self._gpu_batch is not None:
+        self._gpu_batch.data.mem_free()
+        del self._gpu_batch
       if multi_gpu:
         batch_data.data = arr.array(batch_data.data, dtype = np.float32)
         batch_data.labels = arr.array(batch_data.labels, dtype = np.float32, unique = False)
