@@ -6,7 +6,7 @@ import numpy as np
 
 import os
 
-from multigpu import uniformed_array, arr, allocate
+from multigpu import uniformed_array, arr, allocate, zeros
 
 def update(wts, grad, incr, epsilon, momentum, decay, batch_size):
   #assert weight.incr.get().mean() < 1
@@ -77,7 +77,7 @@ class Weight(object):
   def incr(self):
     if (self._incr is None or self._incr.shape != self.shape) and self.momentum > 0:
       #self._incr = to_gpu(np.zeros(self.shape).astype(np.float32), self.unique)
-      self._grad = allocate(shape = self.shape, unique = self.unique)
+      self._incr = zeros(shape = self.shape, unique = self.unique)
     return self._incr
 
   @property

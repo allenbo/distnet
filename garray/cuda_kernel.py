@@ -1367,8 +1367,6 @@ def stride_write_4(data, container, slices):
 
     copy()
     return
-  else:
-    assert False
 
   _stride_copy_4(container, data,
       I(start1), I(start2), I(start3), I(start4),

@@ -38,6 +38,5 @@ def convert_shape(shape):
 
 def uniformed_array(array, unique = False):
   if not multi_gpu:
-    return arr.array(array)
-  return arr.array(array, unique = unique)
-    
+    return arr.array(array, dtype = np.float32)
+  return arr.array(array, unique = unique, dtype = np.float32)
