@@ -158,6 +158,8 @@ class Trainer:
     min_time = 12
     while (self.curr_epoch - start_epoch <= num_epochs and 
           self.should_continue_training()):
+      #if min_time < 1.55:
+      #  util.dump_profile()
       util.dump_profile()
       batch_start = time.time()
       st = time.time()
@@ -195,7 +197,21 @@ class Trainer:
     rep = self.net.get_report()
     if rep is not None:
       log(rep)
-    timer.dump('timer')
+
+    #import numpy as np
+    #fc_time_fprop = np.array(self.net.fc_time_fprop[1:10])
+    #fc_time_bprop = np.array(self.net.fc_time_bprop[1:10])
+    #conv_time_fprop = np.array(self.net.conv_time_fprop[1:10])
+    #conv_time_bprop = np.array(self.net.conv_time_bprop[1:10])
+    #print 'fc time fprop', fc_time_fprop, 'average',  np.mean(fc_time_fprop)
+    #print 'fc time bprop', fc_time_bprop, 'average',  np.mean(fc_time_bprop)
+    #print 'conv time fprop', conv_time_fprop, 'average',  np.mean(conv_time_fprop)
+    #print 'conv time bprop', conv_time_bprop, 'average',  np.mean(conv_time_bprop)
+    ##timer.dump('timer')
+
+    #from varray import send_data_size, recv_data_size
+    #print 'send data', send_data_size
+    #print 'recv data', recv_data_size
 
   @staticmethod
   def get_trainer_by_name(name, param_dict):

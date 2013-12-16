@@ -15,7 +15,7 @@ import sys
 import threading
 import time
 
-from multigpu import uniformed_array, arr
+from multigpu import uniformed_array, arr, rank, num_gpu, multi_gpu
 
 
 seed = arr.get_seed()
@@ -154,13 +154,13 @@ class ImageNetDataProvider(DataProvider):
     self.batches = []
     index = 0
     while index < len(self.images):
-      #if not multi_gpu:
-      #  self.batches.append(image_index[index: index + self.batch_size])
-      #else:
-      #  num_images = min(self.batch_size, len(image_index) - index)
-      #  num_images = util.divup(num_images, num_gpu)
-      #  self.batches.append(image_index[index + rank * num_images: index + (rank+1) * num_images ])
-      self.batches.append(image_index[index: index + self.batch_size])
+      if not multi_gpu:
+        self.batches.append(image_index[index: index + self.batch_size])
+      else:
+        num_images = min(self.batch_size, len(image_index) - index)
+        num_images = util.divup(num_images, num_gpu)
+        self.batches.append(image_index[index + rank * num_images: index + (rank+1) * num_images ])
+      #self.batches.append(image_index[index: index + self.batch_size])
       index += self.batch_size
     #self.batches = np.array_split(image_index, util.divup(len(self.images), self.batch_size))
 
@@ -389,10 +389,12 @@ class ParallelDataProvider(DataProvider):
       if self._gpu_batch is not None:
         self._gpu_batch.data.mem_free()
         del self._gpu_batch
-      batch_data.data = uniformed_array(batch_data.data, dtype = np.float32, to2dim = True)
-      batch_data.labels =uniformed_array(batch_data.labels, dtype = np.float32, unique = False)
-      #batch_data.data = arr.from_stripe(batch_data.data)
-      #batch_data.labels = arr.from_stripe(batch_data.labels, to = 'u')
+      if not multi_gpu:
+        batch_data.data = uniformed_array(batch_data.data, dtype = np.float32, to2dim = True)
+        batch_data.labels =uniformed_array(batch_data.labels, dtype = np.float32, unique = False)
+      else:
+        batch_data.data = arr.from_stripe(batch_data.data)
+        batch_data.labels = arr.from_stripe(batch_data.labels, to = 'u')
       self._gpu_batch = batch_data
     else:
       self._cpu_batch = batch_data

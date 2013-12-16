@@ -464,5 +464,6 @@ GPUArray.sumto = object_sumto
 
 
 def mem_free(self):
+  return 0
   self.gpudata.free()
 GPUArray.mem_free = mem_free

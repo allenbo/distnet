@@ -15,6 +15,10 @@ class FastNet(object):
 
     self.numCase = self.cost = self.correct = 0.0
     self.numConv = 0
+    self.fc_time_fprop = []
+    self.fc_time_bprop = []
+    self.conv_time_fprop = []
+    self.conv_time_bprop = []
   
   def __getitem__(self, name):
     for layer in self.layers:
@@ -84,25 +88,49 @@ class FastNet(object):
   def fprop(self, data, train=TRAIN):
     assert len(self.layers) > 0, 'No outputs: uninitialized network!'
     input = data
+    fc = False
+    fc_time = 0
+    conv_time = 0
     for layer in self.layers:
+      if layer.type == 'fc':
+        fc = True
       start = time.time()
       layer.fprop(input, layer.output, train)
       input = layer.output
       driver.Context.synchronize()
-      #print 'fprop', layer.name, time.time() - start
+      if fc:
+        fc_time += time.time() - start
+      else:
+        conv_time += time.time() - start
+    #print 'conv time', conv_time
+    #print 'fc time', fc_time
+    self.fc_time_fprop.append(fc_time)
+    self.conv_time_fprop.append(conv_time)
     return self.layers[-1].output
 
   def bprop(self, label, train=TRAIN):
     grad = label
+    fc_time  = 0
+    conv_time = 0
+    conv = False
     for i in range(1, len(self.layers) + 1):
       start = time.time()
       curr = self.layers[-i]
-      if curr.disable_bprop: return
+      if curr.disable_bprop: break
       prev = self.layers[-(i + 1)]
+      if curr.type == 'pool':
+        conv = True
       curr.bprop(grad, prev.output, curr.output, prev.output_grad)
       driver.Context.synchronize()
-      #print 'bprop', curr.name, time.time() - start
       grad = prev.output_grad
+      if conv:
+        conv_time += time.time() -start
+      else:
+        fc_time += time.time() - start
+    #print 'fc time', fc_time
+    #print 'conv time', conv_time
+    self.fc_time_bprop.append(fc_time)
+    self.conv_time_bprop.append(conv_time)
 
   def update(self):
     for layer in self.layers:

@@ -3,6 +3,8 @@
 This test is for naive trainer to traine a full imagenet model
 '''
 
+import pyximport
+pyximport.install()
 from distnet import data, trainer, net, parser, util
 
 

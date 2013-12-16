@@ -12,6 +12,8 @@ if os.environ.get('MULTIGPU', 'no') == 'yes':
 else:
   import garray as arr
   garray.device_init()
+  rank = 0
+  num_gpu = 1
 
 def zeros(shape, dtype = np.float32, unique = False):
   if not multi_gpu:

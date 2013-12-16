@@ -14,6 +14,12 @@ MASTER = 0
 size = WORLD.Get_size()
 rank = WORLD.Get_rank()
 
+send_data_size = 0
+recv_data_size = 0
+
+
+write_time = 0
+fetch_time = 0
 class DistMethod(object):
   Square = 'square'
   Stripe = 'stripe'
@@ -191,6 +197,8 @@ class VArray(object):
     return data
 
   def fetch_remote(self, reqs):
+    global send_data_size
+    global recv_data_size
     subs = {}
     recv_data = []
     req_list = reqs[:]
@@ -204,6 +212,8 @@ class VArray(object):
     req_list = WORLD.alltoall(req_list)
 
     send_data = [self.fetch_local(req_list[rank]) for rank in range(self.world_size)]
+    send_data_size += sum([int(np.prod(x.shape)) * 4 for x in send_data if x is not None])
+    #print 'send out data', send_data_size
     send_req = []
     recv_req = []
     for i,data in enumerate(send_data):
@@ -216,10 +226,15 @@ class VArray(object):
 
     for req in send_req: req.wait()
     for req in recv_req: req.wait()
+    recv_data_size += sum([int(np.prod(x.shape)) * 4 for x in recv_data if x is not None])
+    #print 'recv data', recv_data_size
+
     subs = { reqs[rank]: recv_data[rank] for rank in range(self.world_size)}
     return subs
 
   def fetch(self, area, padding = 0):
+    global fetch_time
+    start = time.time()
     barrier()
     subs = {}
     reqs = [None] * self.world_size
@@ -238,7 +253,10 @@ class VArray(object):
         else:
           reqs[rank] = sub_area
     subs.update(self.fetch_remote(reqs))
-    return self.merge(subs, area, padding)
+    rst = self.merge(subs, area, padding)
+    fetch_time += time.time() - start
+    #print 'fetch time', fetch_time
+    return rst
 
 
   def write_local(self, area,  data, acc = 'overwrite'):
@@ -256,8 +274,12 @@ class VArray(object):
 
 
   def communicate_remote(self, sub_data, recv_data):
+    global send_data_size
+    global recv_data_size
     send_req = []
     recv_req = []
+    send_data_size += sum([int(np.prod(x.shape)) * 4 for x in sub_data if x is not None])
+    #print 'send out data', send_data_size
     for i,data in enumerate(sub_data):
       if i == self.rank or data is None:continue
       send_req.append(WORLD.Isend(tobuffer(data), dest = i))
@@ -268,6 +290,9 @@ class VArray(object):
 
     for req in send_req: req.wait()
     for req in recv_req: req.wait()
+    recv_data_size += sum([int(np.prod(x.shape)) * 4 for x in recv_data if x is not None])
+    #print 'recv data', recv_data_size
+
 
 
   def write_remote(self, reqs, sub_data, acc):
@@ -291,6 +316,8 @@ class VArray(object):
         self.write_local(req_list[rank], recv_data[rank], acc)
 
   def write(self, area, data, acc = 'add'):
+    global write_time
+    start = time.time()
     barrier()
     start = time.time()
     if acc == 'no':
@@ -323,6 +350,8 @@ class VArray(object):
           reqs[rank] = sub_area
           local_subs[rank] = sub_data
     self.write_remote(reqs, local_subs, acc)
+    write_time += time.time() - start
+    #print 'write time', write_time
 
   def merge(self, subs, area, padding = 0):
     subs = {sub_area: sub_array for sub_area, sub_array in subs.iteritems() if sub_array is not None}
@@ -803,6 +832,8 @@ def zeros_like(like):
   return array(a, unique = like.unique, slice_method = like.slice_method, slice_dim = like.slice_dim)
 
 def from_stripe(data, to = 's'):
+  global fetch_time
+  old_fetch_time = fetch_time
   assert isinstance(data, np.ndarray)
   recv = WORLD.allgather(data.shape)
   shape_list = [None] * size
@@ -814,11 +845,14 @@ def from_stripe(data, to = 's'):
   shape = tuple(shape_list[0][:-1]  +  (int(np.sum(shape_last)), ))
 
   rst = VArray(data, slice_method = DistMethod.Stripe, slice_dim = len(shape_list[0]) -1, shape = shape, local = True)
-  #rst.local_data = garray.array(data)
 
   rst.gather()
   if to == 's':
-    rst = VArray(array = rst.local_data, slice_dim = (1, 2))
+    if issquare(size):
+      rst = VArray(array = rst.local_data, slice_dim = (1, 2))
+    else:
+      rst = VArray(array = rst.local_data, slice_dim = 1, slice_method = DistMethod.Stripe)
   elif to == 'u':
     rst = VArray(array = rst.local_data, unique = False)
+  fetch_time = old_fetch_time
   return rst
