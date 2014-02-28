@@ -1,0 +1,5 @@
+num_worker=9
+GPUcomputability=1.5*1024*1024*1024*1024
+latency=0.005
+bandwidth=128*1024*1024
+disk_bandwidth=60*1024*1024

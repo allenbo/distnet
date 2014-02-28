@@ -1,6 +1,9 @@
 #!/usr/bin/python2.7
 
+import pyximport
+pyximport.install()
 from distnet import data, trainer, net, parser
+from mpi4py import MPI
 
 test_id = 'cifar-test-2'
 

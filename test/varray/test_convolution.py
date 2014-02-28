@@ -15,6 +15,7 @@ def divup(x, base):
 
 # get the input and filter
 import garray as arr
+arr.device_init(0)
 with open('filter') as f, open('input') as i:
   import cPickle as pickle
   filter =  pickle.load(f)

@@ -1,3 +1,5 @@
+import pyximport
+pyximport.install()
 from mpi4py import MPI
 from varray.area import Area, Point
 import util
@@ -18,8 +20,6 @@ send_data_size = 0
 recv_data_size = 0
 
 
-write_time = 0
-fetch_time = 0
 class DistMethod(object):
   Square = 'square'
   Stripe = 'stripe'
@@ -213,7 +213,6 @@ class VArray(object):
 
     send_data = [self.fetch_local(req_list[rank]) for rank in range(self.world_size)]
     send_data_size += sum([int(np.prod(x.shape)) * 4 for x in send_data if x is not None])
-    #print 'send out data', send_data_size
     send_req = []
     recv_req = []
     for i,data in enumerate(send_data):
@@ -227,13 +226,11 @@ class VArray(object):
     for req in send_req: req.wait()
     for req in recv_req: req.wait()
     recv_data_size += sum([int(np.prod(x.shape)) * 4 for x in recv_data if x is not None])
-    #print 'recv data', recv_data_size
 
     subs = { reqs[rank]: recv_data[rank] for rank in range(self.world_size)}
     return subs
 
   def fetch(self, area, padding = 0):
-    global fetch_time
     start = time.time()
     barrier()
     subs = {}
@@ -254,8 +251,6 @@ class VArray(object):
           reqs[rank] = sub_area
     subs.update(self.fetch_remote(reqs))
     rst = self.merge(subs, area, padding)
-    fetch_time += time.time() - start
-    #print 'fetch time', fetch_time
     return rst
 
 
@@ -279,7 +274,6 @@ class VArray(object):
     send_req = []
     recv_req = []
     send_data_size += sum([int(np.prod(x.shape)) * 4 for x in sub_data if x is not None])
-    #print 'send out data', send_data_size
     for i,data in enumerate(sub_data):
       if i == self.rank or data is None:continue
       send_req.append(WORLD.Isend(tobuffer(data), dest = i))
@@ -291,7 +285,6 @@ class VArray(object):
     for req in send_req: req.wait()
     for req in recv_req: req.wait()
     recv_data_size += sum([int(np.prod(x.shape)) * 4 for x in recv_data if x is not None])
-    #print 'recv data', recv_data_size
 
 
 
@@ -351,7 +344,6 @@ class VArray(object):
           local_subs[rank] = sub_data
     self.write_remote(reqs, local_subs, acc)
     write_time += time.time() - start
-    #print 'write time', write_time
 
   def merge(self, subs, area, padding = 0):
     subs = {sub_area: sub_array for sub_area, sub_array in subs.iteritems() if sub_array is not None}
@@ -359,7 +351,6 @@ class VArray(object):
       if len(subs) == 1:
         return subs.values()[0]
       min_from = Area.min_from(subs.keys())
-      #if self.slice_method == DistMethod.Square:
       if area.id not in self.fetch_sent_cache:
         free, total = driver.mem_get_info()
         MB = 1024 * 1024
@@ -369,6 +360,8 @@ class VArray(object):
         self.fetch_sent_cache[area.id] = rst
       else:
         rst = self.fetch_sent_cache[area.id]
+      if self.slice_method == DistMethod.Square and self.slice_dim = len(self.local_shape) - 1:
+        # can't use fast stride_write
       for sub_area, sub_array in subs.iteritems():
         garray.stride_write(sub_array, rst, sub_area.offset(min_from).slice)
       return rst
@@ -405,6 +398,10 @@ class VArray(object):
   @property
   def local_shape(self):
     return self.local_data.shape
+
+  @property
+  def shape(self):
+    return self.global_shape
 
   def make_square_area(self, rank):
     first , second = self.slice_dim
@@ -580,10 +577,6 @@ class VArray(object):
     else:
       row_up = row_down = col_left = col_right = half_filter_size
 
-    #print 'row_begin_centroid', row_begin_centroid
-    #print 'row_end_centroid', row_end_centroid
-    #print 'col_begin_centroid', col_begin_centroid
-    #print 'col_end_centroid', col_end_centroid
     import copy
     cross_from = copy.deepcopy(self.local_area._from)
     cross_to = copy.deepcopy(self.local_area._to)
@@ -600,7 +593,6 @@ class VArray(object):
     if self.local_area._to[c] != self.global_area._to[c]:
       cross_to[c] += col_right
 
-    #print cross_from, cross_to
 
     self.tmp_local_area = Area(cross_from, cross_to)
     self.tmp_local_data = self.fetch(self.tmp_local_area, padding = padding)
@@ -617,24 +609,19 @@ class VArray(object):
       new_shape[row] += padding
       new_area._from[row] += padding
       new_area._to[row] += padding
-      #print 'most top add padding', new_shape
     #most left
     if self.local_area._from[col] == 0:
       new_shape[col] += padding
       new_area._from[col] += padding
       new_area._to[col] += padding
-      #print 'most left add padding', new_shape
 
     #most down
     if self.local_area._to[row] == self.global_area._to[row]:
       new_shape[row] += padding
-      #print 'most down add padding', new_shape
     #most right
     if self.local_area._to[col] == self.global_area._to[col]:
       new_shape[col] += padding
-      #print 'most right add padding', new_shape
 
-    #print 'new shape', new_shape
     return tuple(new_shape), new_area.offset(old_area._from).slice
 
   def pad(self, padding):
@@ -788,9 +775,6 @@ class VArray(object):
 
 
   def mem_free(self):
-    #free, total = driver.mem_get_info()
-    #MB = 1024 * 1024
-    #print 'free space', free / MB
     self.local_data.gpudata.free()
     for key, value in self.fetch_recv_cache.iteritems():
       value.free()
@@ -800,9 +784,6 @@ class VArray(object):
       value.free()
     for key, value in self.write_sent_cache.iteritems():
       value.free()
-    #free, total = driver.mem_get_info()
-    #MB = 1024 * 1024
-    #print 'free space', free / MB
 
 
 
@@ -832,21 +813,25 @@ def zeros_like(like):
   return array(a, unique = like.unique, slice_method = like.slice_method, slice_dim = like.slice_dim)
 
 def from_stripe(data, to = 's'):
-  global fetch_time
-  old_fetch_time = fetch_time
   assert isinstance(data, np.ndarray)
   recv = WORLD.allgather(data.shape)
   shape_list = [None] * size
   for i in range(size):
     shape_list[i] = recv[i]
   shape_len = np.array([len(s) for s in shape_list], dtype = np.int32)
-  assert any(shape_len - shape_len[0]) == False, 'Shapee must have same length'
+  assert any(shape_len - shape_len[0]) == False, 'Shape must have same length'
   shape_last = np.array([x[-1] for x in shape_list])
   shape = tuple(shape_list[0][:-1]  +  (int(np.sum(shape_last)), ))
 
   rst = VArray(data, slice_method = DistMethod.Stripe, slice_dim = len(shape_list[0]) -1, shape = shape, local = True)
 
   rst.gather()
+  import sys
+  sys.exit(2)
+
+  if rank == 0:
+    from distnet.util import print_matrix
+    print_matrix(garray.reshape_last(rst.local_data), 'data0')
   if to == 's':
     if issquare(size):
       rst = VArray(array = rst.local_data, slice_dim = (1, 2))
@@ -854,5 +839,4 @@ def from_stripe(data, to = 's'):
       rst = VArray(array = rst.local_data, slice_dim = 1, slice_method = DistMethod.Stripe)
   elif to == 'u':
     rst = VArray(array = rst.local_data, unique = False)
-  fetch_time = old_fetch_time
   return rst

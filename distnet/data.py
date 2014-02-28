@@ -19,6 +19,7 @@ from multigpu import uniformed_array, arr, rank, num_gpu, multi_gpu
 
 
 seed = arr.get_seed()
+seed = 0
 assert type(seed) == int
 random.seed(seed)
 np.random.seed(seed)
@@ -48,7 +49,7 @@ class DataProvider(object):
       self.batch_range = self.get_batch_indexes()
     else:
       self.batch_range = batch_range
-    random.shuffle(self.batch_range)
+    #random.shuffle(self.batch_range)
 
     self.index = 0
 
@@ -56,12 +57,12 @@ class DataProvider(object):
     self.curr_batch_index = 0
     self.curr_batch = None
     self.curr_epoch = 1
-    random.shuffle(self.batch_range)
+    #random.shuffle(self.batch_range)
 
   def get_next_index(self):
     self.curr_batch_index = self.curr_batch_index + 1
     if self.curr_batch_index == len(self.batch_range) + 1:
-      random.shuffle(self.batch_range)
+      #random.shuffle(self.batch_range)
       self.curr_epoch += 1
       self.curr_batch_index = 1
 
@@ -149,7 +150,7 @@ class ImageNetDataProvider(DataProvider):
   def _shuffle_batches(self):
     # build index vector into 'images' and split into groups of batch-size
     image_index = np.arange(len(self.images))
-    np.random.shuffle(image_index)
+    #np.random.shuffle(image_index)
 
     self.batches = []
     index = 0
@@ -185,10 +186,12 @@ class ImageNetDataProvider(DataProvider):
           target[:, :, :, (self.num_view/2 +i) * num_image + idx] = pic[:, :, ::-1]
     else:
       for idx, img in enumerate(images):
-        startY, startX = np.random.randint(0, self.border_size * 2 + 1), np.random.randint(0, self.border_size * 2 + 1)
+        #startY, startX = np.random.randint(0, self.border_size * 2 + 1), np.random.randint(0, self.border_size * 2 + 1)
+        startY, startX = 0, 0
         endY, endX = startY + self.inner_size, startX + self.inner_size
         pic = img[:, startY:endY, startX:endX]
-        if np.random.randint(2) == 0:  # also flip the image with 50% probability
+        #if np.random.randint(2) == 0:  # also flip the image with 50% probability
+        if False:
           pic = pic[:, :, ::-1]
         target[:,:, :, idx] = pic
 
@@ -228,7 +231,7 @@ class ImageNetDataProvider(DataProvider):
     old_shape = cropped.shape
     cropped = garray.reshape_last(cropped) - self.data_mean
     cropped = cropped.reshape(old_shape)
-
+    
     align_time = time.time() - st
 
     labels = np.array(labels)
