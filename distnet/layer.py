@@ -70,18 +70,6 @@ class DataLayer(Layer):
   def fprop(self, input, output, train=TRAIN):
     arr.copy_to(input, output)
 
-    if isinstance(output, garray.GPUArray):
-      print 'output shape', output.shape
-      print_matrix(output, self.name)
-    else:
-      #output.gather()
-      from varray.ndarray import rank
-      if rank == 0:
-        print 'output shape', output.shape
-        print_matrix(garray.reshape_last(output.local_data), self.name)
-    import sys
-    sys.exit(2)
-
     if PFout:
       print_matrix(output, self.name)
 

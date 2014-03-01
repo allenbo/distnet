@@ -1335,14 +1335,14 @@ def stride_write_4(data, container, slices):
   start1, _, stride1 = slices[0].indices(container.shape[0])
   start2, _, stride2 = slices[1].indices(container.shape[1])
   start3, _, stride3 = slices[2].indices(container.shape[2])
-  start4, _, stride4 = slices[3].indices(container.shape[3])
+  start4, end4, stride4 = slices[3].indices(container.shape[3])
 
 
   sz1, sz2, sz3, sz4 = data.shape
 
   ifleading, isleading, itleading = [x / 4 for x in container.strides[:3]]
   ofleading, osleading, otleading = [x / 4 for x in data.strides[:3]]
-  if start4 == 0 and stride4 == 1:
+  if start4 == 0 and stride4 == 1 and end4 == container.shape[3]:
     copy = driver.Memcpy3D()
     copy.set_src_device(data.ptr)
     copy.set_dst_device(container.ptr)

@@ -267,9 +267,17 @@ class CifarDataProvider(DataProvider):
 
     data = util.load(filename)
     img = data['data'] - self.batch_meta['data_mean']
+    num_image = img.shape[-1]
+    label = data['labels']
+    if multi_gpu:
+      num_image = img.shape[-1] / num_gpu
+      img = img[:, rank * num_image : (rank + 1) * num_image if rank != num_gpu - 1 else img.shape[-1]]
+      label = label[rank * num_image : (rank + 1) * num_image if rank != num_gpu -1 else len(label)]
+      assert img.shape[-1] == len(label)
+      num_image = img.shape[-1]
     img_size = CifarDataProvider.img_size
-    return BatchData(np.require(img.reshape(3, img_size, img_size, len(data['labels'])), requirements='C', dtype=np.float32),
-                     np.array(data['labels']),
+    return BatchData(np.require(img.reshape(3, img_size, img_size, num_image), requirements='C', dtype=np.float32),
+                     np.array(label),
                      self.curr_epoch)
 
   def get_batch_indexes(self):

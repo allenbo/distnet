@@ -309,8 +309,6 @@ class VArray(object):
         self.write_local(req_list[rank], recv_data[rank], acc)
 
   def write(self, area, data, acc = 'add'):
-    global write_time
-    start = time.time()
     barrier()
     start = time.time()
     if acc == 'no':
@@ -343,7 +341,6 @@ class VArray(object):
           reqs[rank] = sub_area
           local_subs[rank] = sub_data
     self.write_remote(reqs, local_subs, acc)
-    write_time += time.time() - start
 
   def merge(self, subs, area, padding = 0):
     subs = {sub_area: sub_array for sub_area, sub_array in subs.iteritems() if sub_array is not None}
@@ -360,13 +357,11 @@ class VArray(object):
         self.fetch_sent_cache[area.id] = rst
       else:
         rst = self.fetch_sent_cache[area.id]
-      if self.slice_method == DistMethod.Square and self.slice_dim = len(self.local_shape) - 1:
-        # can't use fast stride_write
+      stride_func = garray.stride_write
       for sub_area, sub_array in subs.iteritems():
         garray.stride_write(sub_array, rst, sub_area.offset(min_from).slice)
       return rst
     else:
-
       def get_new_min_from(min_from, slices):
         for i, s in enumerate(slices):
           start = s.start
@@ -824,14 +819,7 @@ def from_stripe(data, to = 's'):
   shape = tuple(shape_list[0][:-1]  +  (int(np.sum(shape_last)), ))
 
   rst = VArray(data, slice_method = DistMethod.Stripe, slice_dim = len(shape_list[0]) -1, shape = shape, local = True)
-
   rst.gather()
-  import sys
-  sys.exit(2)
-
-  if rank == 0:
-    from distnet.util import print_matrix
-    print_matrix(garray.reshape_last(rst.local_data), 'data0')
   if to == 's':
     if issquare(size):
       rst = VArray(array = rst.local_data, slice_dim = (1, 2))
