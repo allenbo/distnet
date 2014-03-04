@@ -5,7 +5,7 @@ import os
 import numpy as np
 import garray
 
-from multigpu import convert_shape, allocate, arr, uniformed_array
+from multigpu import convert_shape, allocate, arr, uniformed_array, rank, multi_gpu
 
 PFout = False
 PBout = False
@@ -21,12 +21,14 @@ def col_randn(shape, dtype):
 
 class Layer(object):
   def __init__(self, name, type, disable_bprop=False):
+    self.merge_neuron = False
     self.name = name
     self.type = type
     self.disable_bprop = disable_bprop
 
     self.output = None
     self.output_grad = None
+    self.neuron = None
 
   def disable_bprop(self):
     self.disable_bprop = True
@@ -193,6 +195,7 @@ class ConvLayer(WeightedLayer):
     util.log('numFilter:%s padding:%s stride:%s initW:%s initB:%s, w: %s, b: %s',
              self.numFilter, self.padding, self.stride, self.initW, self.initB,
              self.weight, self.bias)
+    self.merge_neuron = True
 
   def attach(self, prev_layer):
     image_shape = prev_layer.get_output_shape()
@@ -223,6 +226,8 @@ class ConvLayer(WeightedLayer):
         self.outputSize, -self.padding, self.stride, self.numColor, 1)
 
     output.add(self.bias.wt, dst = output, shape = self.get_output_shape(), axis = 0)
+    if self.neuron == 'relu':
+      arr.relu_activate(output, output, 0)
 
     if PFout:
       print_matrix(output, self.name)
@@ -232,6 +237,8 @@ class ConvLayer(WeightedLayer):
     self.weight.grad.fill(0)
     self.bias.grad.fill(0)
 
+    if self.neuron == 'relu':
+      arr.relu_compute_grad(grad, output, grad, 0)
     # bprop to next layer
     arr.bconvolution(input, grad, self.weight.wt, outGrad, self.img_size, self.img_size,
         self.outputSize, -self.padding, self.stride, self.numColor)
@@ -373,6 +380,7 @@ class FCLayer(WeightedLayer):
         bias, weightIncr, biasIncr, disable_bprop)
     util.log('outputSize:%s initW:%s initB:%s dropRate:%s w: %s, b: %s',
         self.outputSize, self.initW, self.initB, self.dropRate, self.weight, self.bias)
+    self.merge_neuron = True
 
   def attach(self, prev):
     input_shape = prev.get_output_shape()
@@ -390,7 +398,6 @@ class FCLayer(WeightedLayer):
     return (self.outputSize, self.batch_size)
 
   def fprop(self, input, output, train=TRAIN):
-    #arr.copy_to(arr.matrixmult(self.weight.wt, input), output)
     arr.matrixmult(self.weight.wt, input,  dest = output)
     output.add(self.bias.wt, dst = output, axis = 0)
     if train == TEST:
@@ -401,25 +408,23 @@ class FCLayer(WeightedLayer):
         self.dropMask = uniformed_array(np.random.uniform(0, 1, output.size).astype(np.float32).reshape(output.shape), unique = False)
         arr.bigger_than_scaler(self.dropMask, self.dropRate)
         arr.copy_to(output * self.dropMask, output)
+
+    if self.neuron == 'relu':
+      arr.relu_activate(self.output, self.output, 0)
     if PFout:
       print_matrix(output, self.name)
 
 
   def bprop(self, grad, input, output, outGrad):
+    if self.neuron == 'relu':
+      arr.relu_compute_grad(grad, output, grad, 0)
     if self.dropRate > 0.0:
       arr.copy_to(grad * self.dropMask, grad)
-
-    #tmp = arr.transpose(arr.matrixmult(arr.transpose(grad), self.weight.wt))
-    #tmp = arr.matrixmult(arr.transpose(self.weight.wt), grad)
-    #arr.copy_to(tmp, outGrad)
-
-
-    #self.weight.set_grad(arr.matrixmult(grad, arr.transpose(input)))
-    #self.weight.set_grad(arr.matrixmult(grad, input, btrans='n'))
 
     tmp = arr.matrixmult(arr.transpose(self.weight.wt), grad, dest = outGrad)
     if tmp != outGrad:
       arr.copy_to(tmp, outGrad)
+    
     arr.matrixmult(grad, arr.transpose(input), dest = self.weight.grad)
     self.bias.set_grad(grad.sumto(axis = 0))
 

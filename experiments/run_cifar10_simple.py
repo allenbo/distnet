@@ -5,7 +5,7 @@ pyximport.install()
 from distnet import data, trainer, net, parser
 from mpi4py import MPI
 
-test_id = 'cifar-test-multi'
+test_id = 'cifar-test'
 
 data_dir = '/ssd/nn-data/cifar-10.old/'
 checkpoint_dir = 'checkpoint/'

@@ -8,13 +8,14 @@ import sys
 import time
 
 class FastNet(object):
-  def __init__(self, image_shape):
+  def __init__(self, image_shape, neuron_merged = True):
     self.batch_size = -1
     self.layers = []
     self.image_shape = image_shape
 
     self.numCase = self.cost = self.correct = 0.0
     self.numConv = 0
+    self.neuron_merged = neuron_merged
     self.fc_time_fprop = []
     self.fc_time_bprop = []
     self.conv_time_fprop = []
@@ -29,11 +30,14 @@ class FastNet(object):
     return iter(self.layers)
 
   def append_layer(self, layer):
-    if self.layers:
-      layer.attach(self.layers[-1])
-
-    self.layers.append(layer)
-    util.log_info('Append: %s  [%s] : %s', layer.name, layer.type, layer.get_output_shape())
+    if self.neuron_merged == True and layer.type == 'neuron'  and self.layers[-1].merge_neuron == True:
+      self.layers[-1].neuron = layer.neuron.type
+      util.log_info('Attach %s to %s', layer.neuron.type, self.layers[-1].name)
+    else:
+      if self.layers:
+        layer.attach(self.layers[-1])
+      self.layers.append(layer)
+      util.log_info('Append: %s  [%s] : %s', layer.name, layer.type, layer.get_output_shape())
     return layer
 
   def drop_layer_from(self, name):
@@ -120,6 +124,8 @@ class FastNet(object):
       prev = self.layers[-(i + 1)]
       if curr.type == 'pool':
         conv = True
+      if prev.output_grad is None:
+        prev.eval()
       curr.bprop(grad, prev.output, curr.output, prev.output_grad)
       driver.Context.synchronize()
       grad = prev.output_grad
