@@ -10,8 +10,7 @@ color = 3
 input_shape = (color, image_size, image_size, batch_size)
 
 filter_size  = 11
-channel = 96
-filter_shape = (color, filter_size, filter_size, channel)
+channel = 96 filter_shape = (color, filter_size, filter_size, channel)
 
 padding = 0
 stride = 4

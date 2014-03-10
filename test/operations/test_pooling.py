@@ -61,5 +61,3 @@ diff = output.get()[:, :, :, 0] - output_local[:, :, :, 0]
 diff = diff / np.abs(output_local[:, :, :, 0])
 assert (diff < 1e3).all()
 print 'Avgpooling passed the test'
-
-

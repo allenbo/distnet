@@ -68,4 +68,3 @@ diff = denom.get()[:, :, :, 0] = denom_local[:, :, :, 0]
 diff = diff / np.abs(denom_local[:, :, :, 0])
 assert(diff < 1e5).all()
 print 'Response Norm Cross Map passed the test'
-
