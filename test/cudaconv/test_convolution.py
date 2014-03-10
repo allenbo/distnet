@@ -4,7 +4,7 @@ import numpy as np
 from distnet.util import divup
 np.set_printoptions(threshold = np.nan)
 
-batch_size = 8
+batch_size = 128
 image_size = 224
 color = 3
 input_shape = (color, image_size, image_size, batch_size)
@@ -38,8 +38,6 @@ if padding != 0:
   input = tmp_input
 
 
-starts = [stride * i for i in range(output_size)]
-
 batch_size = 1
 for b in range(batch_size):
   for c in range(channel):
@@ -61,4 +59,7 @@ for b in range(batch_size):
   print '%d image finished' % b
 
 #print output_local[0, :, :, 0]
-assert (output.get()[:, :, :, 0] - output_local[:, :, :, 0]).sum() < 1e-3
+diff = output.get()[:, :, :, 0] - output_local[:, :, :, 0]
+diff = diff / np.abs(output_local[:, :, :, 0])
+assert (diff < 1e-3).all()
+print 'Convolution passed the test'
