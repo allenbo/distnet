@@ -14,6 +14,9 @@ import sys
 from cudaconv import *
 #cudaconv.init()
 
+ELTWISE_X = 32
+ELTWISE_Y = 8
+
 sgemm = None
 def _initialize_cublas():
   global sgemm
@@ -471,6 +474,7 @@ _relu_activate_ = CompiledSource('''
     int idx = i + j * leading;
 
     output[idx] = fmaxf(input[idx], e);
+    //output[idx] = input[idx];
   }''', 'relu_activate'
   )
 
@@ -911,8 +915,8 @@ def add_vec_to_rows(mat, vec, dest=None, alpha=1.0, beta=1.0):
 
   if dest is None:
     dest = mat
-  block = (32, 32, 1)
-  grid = (divup(mw, 32), divup(mh, 32))
+  block = (ELTWISE_X, ELTWISE_Y, 1)
+  grid = (divup(mw, ELTWISE_X), divup(mh, ELTWISE_Y))
   leading = mat.strides[0] / 4
   _add_vec_to_rows_(F(alpha), vec, F(beta), mat, dest, I(leading), I(mh), I(mw), block=block, grid=grid)
   
@@ -930,8 +934,8 @@ def add_vec_to_cols(mat, vec, dest=None, alpha=1.0, beta=1.0):
 
   if not dest:
     dest = mat
-  block = (32, 32, 1)
-  grid = (divup(mw, 32), divup(mh, 32))
+  block = (ELTWISE_X, ELTWISE_Y, 1)
+  grid = (divup(mw, ELTWISE_X), divup(mh, ELTWISE_Y))
   leading = mat.strides[0] / 4
   _add_vec_to_cols_(F(alpha), vec, F(beta), mat, dest, I(leading), I(mh), I(mw), block=block, grid=grid)
   
@@ -947,8 +951,8 @@ def div_vec_to_rows(mat, vec, dest=None):
 
   if not dest:
     dest = mat
-  block = (32, 32, 1)
-  grid = (divup(mw, 32), divup(mh, 32))
+  block = (ELTWISE_X, ELTWISE_Y, 1)
+  grid = (divup(mw, ELTWISE_X), divup(mh, ELTWISE_Y))
   leading = mat.strides[0] / 4
   _div_vec_to_rows_(vec, mat, dest, I(leading), I(mh), I(mw), block=block, grid=grid)
   
@@ -965,8 +969,8 @@ def div_vec_to_cols(mat, vec, dest=None):
 
   if not dest:
     dest = mat
-  block = (32, 32, 1)
-  grid = (divup(mw , 32), divup(mh, 32))
+  block = (ELTWISE_X, ELTWISE_Y, 1)
+  grid = (divup(mw , ELTWISE_X), divup(mh, ELTWISE_Y))
   leading = mat.strides[0] / 4
   _div_vec_to_cols_(vec, mat, dest, I(leading), I(mh), I(mw), block=block, grid=grid)
   
@@ -1090,8 +1094,8 @@ def softmax_bprop(mat, label, grad):
 
   assert((vh == 1 and vw == mw) or (vw == 1 and vh == mw)), (vh, vw, mw)
 
-  block = (32, 32, 1)
-  grid = (divup(mw, 32), divup(mh, 32))
+  block = (ELTWISE_X, ELTWISE_Y, 1)
+  grid = (divup(mw, ELTWISE_X), divup(mh, ELTWISE_Y))
   _softmax_bprop_(mat, label, grad, I(mat.strides[0] / 4), I(mh), I(mw), block=block, grid=grid)
   
 
@@ -1099,8 +1103,8 @@ def softmax_bprop(mat, label, grad):
 def relu_activate(input, output, e):
   mh, mw = input.shape
 
-  block = (32, 32, 1)
-  grid = (divup(mw, 32), divup(mh, 32))
+  block = (ELTWISE_X, ELTWISE_Y, 1)
+  grid = (divup(mw, ELTWISE_X), divup(mh, ELTWISE_Y))
   leading = input.strides[0] / 4
   _relu_activate_(input, output, F(e), I(leading), I(mh), I(mw), block=block , grid=grid)
   
@@ -1110,8 +1114,8 @@ def relu_activate(input, output, e):
 def relu_compute_grad(grad, output, outGrad, e):
   mh, mw = grad.shape
 
-  block = (32, 32, 1)
-  grid = (divup(mw, 32), divup(mh, 32))
+  block = (ELTWISE_X, ELTWISE_Y, 1)
+  grid = (divup(mw, ELTWISE_X), divup(mh, ELTWISE_Y))
   leading = grad.strides[0] / 4
   _relu_compute_grad_(grad, output, outGrad, F(e), I(leading), I(mh), I(mw), block=block, grid=
       grid)
@@ -1121,8 +1125,8 @@ def relu_compute_grad(grad, output, outGrad, e):
 def tanh_activate(input, output, a, b):
   mh, mw = input.shape
 
-  block = (32, 32, 1)
-  grid = (divup(mw, 32), divup(mh, 32))
+  block = (ELTWISE_X, ELTWISE_Y, 1)
+  grid = (divup(mw, ELTWISE_X), divup(mh, ELTWISE_Y))
   leading = input.strides[0] / 4
   _n2b = -2.0 * b
   _tanh_activate_(input, output, F(a), F(_n2b), I(leading), I(mh), I(mw), block=block , grid=grid)
@@ -1133,8 +1137,8 @@ def tanh_activate(input, output, a, b):
 def tanh_compute_grad(grad, output, outGrad, a, b):
   mh, mw = output.shape
 
-  block = (32, 32, 1)
-  grid = (divup(mw, 32), divup(mh, 32))
+  block = (ELTWISE_X, ELTWISE_Y, 1)
+  grid = (divup(mw, ELTWISE_X), divup(mh, ELTWIS_Y))
   leading = output.strides[0] / 4
   _n4ab = -4.0 * a * b
   _tanh_compute_grad_(grad, output, outGrad, F(a), F(_n4ab), I(leading), I(mh), I(mw), block=block , grid=grid)
@@ -1167,8 +1171,8 @@ def stride_copy_2(input, output, slices):
     gpu_partial_copy_to(input, output, row_from = start1, row_to = stop1, col_from = start2, col_to = stop2)
   else:
     h, w = output.shape
-    block = (32, 32, 1)
-    grid = (divup(w, 32), divup(h, 32))
+    block = (ELTWISE_X, ELTWISE_Y, 1)
+    grid = (divup(w, ELTWISE_X), divup(h, ELTWISE_Y))
     ileading, oleading = input.strides[0] / 4, output.strides[0] / 4
     _stride_copy_2_(input, output,
         I(start1), I(stride1), I(start2), I(stride2),
@@ -1195,8 +1199,8 @@ def stride_copy_3(input, output, slices):
         I(ifleading), I(isleading), I(ofleading), I(osleading), I(0),
         block = block, grid = grid)
   else:
-    block = (32, 32, 1)
-    grid = (divup(w, 32), divup(h, 32))
+    block = (ELTWISE_X, ELTWISE_Y, 1)
+    grid = (divup(w, ELTWISE_X), divup(h, ELTWISE_Y))
     ifleading, isleading = input.strides[0]/4, input.strides[1]/4
     ofleading, osleading = output.strides[0]/4, output.strides[1]/4
     _stride_copy_3_channel_block_(input, output,
@@ -1291,8 +1295,8 @@ def stride_write_2(data, container, slices):
   start2, stop2, stride2 = slices[1].indices(container.shape[1])
 
   h, w = data.shape
-  block = (32, 32, 1)
-  grid = (divup(w, 32), divup(h, 32))
+  block = (ELTWISE_X, ELTWISE_Y, 1)
+  grid = (divup(w, ELTWISE_X), divup(h, ELTWISE_Y))
   ileading, oleading = container.strides[0] / 4, data.strides[0] / 4
   _stride_copy_2_(container, data,
       I(start1), I(stride1), I(start2), I(stride2),
@@ -1319,8 +1323,8 @@ def stride_write_3(data, container, slices):
         I(ifleading), I(isleading), I(ofleading), I(osleading), I(1),
         block = block, grid = grid)
   else:
-    block = (32, 32, 1)
-    grid = (divup(w, 32), divup(h, 32))
+    block = (ELTWISE_X, ELTWISE_Y, 1)
+    grid = (divup(w, ELTWISE_X), divup(h, ELTWISE_Y))
     ifleading, isleading = container.strides[0]/4, container.strides[1]/4
     ofleading, osleading = data.strides[0]/4, data.strides[1]/4
     _stride_copy_3_channel_block_(container, data,
@@ -1423,8 +1427,8 @@ def gpu_partial_copy_to(x, y, row_from, row_to, col_from, col_to):
   col_to = min(col_to, mw)
   r, c = row_to - row_from, col_to - col_from
 
-  block = (32, 32, 1)
-  grid = (divup(c, 32), divup(r, 32))
+  block = (ELTWISE_X, ELTWISE_Y, 1)
+  grid = (divup(c, ELTWISE_X), divup(r, ELTWISE_Y))
   sleading, dleading = x.strides[0] / 4, y.strides[0] / 4
   _gpu_partial_copy_to_(x, y, I(row_from), I(row_to), I(col_from), I(col_to), I(sleading), I(dleading), block=block, grid=grid)
 
@@ -1477,8 +1481,8 @@ def matrix_add(src, v, dest=None, alpha=1.0, beta=1.0):
   if sh != vh or sw != vw:
     assert False, '(%s, %s) + (%s, %s)' % (sh, sw, vh, vw)
 
-  block = (32, 32, 1)
-  grid = (divup(sw, 32), divup(sh, 32))
+  block = (ELTWISE_X, ELTWISE_Y, 1)
+  grid = (divup(sw, ELTWISE_X), divup(sh, ELTWISE_Y))
   leading = src.strides[0] / 4
   if dest is None:
     dest = src
@@ -1495,8 +1499,8 @@ def bigger_than_scaler(src, scaler, dest=None):
 
   mh, mw = src.shape
 
-  block = (32, 32, 1)
-  grid = (divup(mw, 32), divup(mh, 32))
+  block = (ELTWISE_X, ELTWISE_Y, 1)
+  grid = (divup(mw, ELTWISE_X), divup(mh, ELTWISE_Y))
   leading = src.strides[0] / 4
   _bigger_than_scaler_(src, dest, F(scaler), I(mh), I(mw), I(leading), block=block , grid=grid)
 
@@ -1506,8 +1510,8 @@ def eltwise_exp(src, dest = None):
     dest = src
   mh, mw = src.shape
 
-  block = (32, 32, 1)
-  grid =  (divup(mw, 32), divup(mh, 32))
+  block = (ELTWISE_X, ELTWISE_Y, 1)
+  grid =  (divup(mw, ELTWISE_X), divup(mh, ELTWISE_Y))
   leading = src.strides[0] / 4
   _eltwise_exp_(src, dest, I(mh), I(mw), I(leading), block = block, grid = grid)
 
@@ -1518,7 +1522,7 @@ def eltwise_mul(src, right, dest = None):
     dest = src
   mh, mw = src.shape
 
-  block = (32, 32, 1)
-  grid = (divup(mw, 32), divup(mh, 32))
+  block = (ELTWISE_X, ELTWISE_Y, 1)
+  grid = (divup(mw, ELTWISE_X), divup(mh, ELTWISE_Y))
   leading = src.strides[0] / 4
   _eltwise_mul_(src, right, dest, I(mh), I(mw), I(leading), block = block, grid = grid)
