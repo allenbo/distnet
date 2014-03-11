@@ -103,6 +103,7 @@ __global__ void filterActs_YxX_color(float* images, float* filters, float* targe
 
 
     float prod[filtersPerThread][imgsPerThread];
+    /*
     #pragma unroll
     for(int f = 0; f < filtersPerThread; f++) {
         #pragma unroll
@@ -110,6 +111,7 @@ __global__ void filterActs_YxX_color(float* images, float* filters, float* targe
             prod[f][g] = 0;
         }
     }
+    */
 
     for (int p = 0; p < filterPixels; p += B_Y) {
         /*
@@ -164,6 +166,7 @@ __global__ void filterActs_YxX_color(float* images, float* filters, float* targe
                 }
             }
         }
+        /*
         __syncthreads();
         #pragma unroll
         for (int i = 0; i < B_Y*numColors; i++) {
@@ -177,6 +180,7 @@ __global__ void filterActs_YxX_color(float* images, float* filters, float* targe
 
         }
         __syncthreads();
+        */
     }
     
     if (scale) {
@@ -195,7 +199,8 @@ __global__ void filterActs_YxX_color(float* images, float* filters, float* targe
             if (!checkImgBounds || myImgIdx + g * B_X < numImages) {
                 #pragma unroll
                 for (int f = 0; f < filtersPerThread; f++) {
-                    targets[g * B_X + f * B_Y * numImages * numModulesY * numModulesX] = scaleOutputs * prod[f][g];
+                    //targets[g * B_X + f * B_Y * numImages * numModulesY * numModulesX] = scaleOutputs * prod[f][g];
+                    targets[g * B_X + f * B_Y * numImages * numModulesY * numModulesX] = prod[f][g];
                 }
             }
         }
