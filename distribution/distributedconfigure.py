@@ -4,7 +4,7 @@ import sys
 
 class SettingReader(object):
   @staticmethod
-  def read(file):
+ ; def read(file):
     rst = {}
     with open(file) as f:
       for line in f:
@@ -170,14 +170,22 @@ def getlocalcost(model, image_shape):
 
 
 class State(object):
-  dist = 'dist'
+  dist   = 'dist'
+  dist-b = 'dist-by-batch'
+  dist-i = 'dist-by-image'
+  dist-f = 'dist-by-first'
   shared = 'shared'
 
 
 state0 = (0, 0)
-disw = (State.dist, State.shared)
-sidw = (State.shared, State.dist)
 sisw = (State.shared, State.shared)
+#for conv layer
+sidw = (State.shared, State.dist)
+disw-i = (State.dist-i, State.shared)
+#for fc layer
+sidw-f = (State.shared, State.dist-f)
+#for both
+disw-b = (State.dist-b, State.shared)
 
 combinations = (disw, sidw, sisw)
 
