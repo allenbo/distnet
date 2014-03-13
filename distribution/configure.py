@@ -4,34 +4,14 @@ import pickle
 import reader
 import numpy as np
 from util import divup
-
-class State(object):
-  dist   = 'dist'
-  dist_b = 'dist-by-batch'
-  dist_i = 'dist-by-image'
-  dist_f = 'dist-by-first'
-  shared = 'shared'
-
-
-state0 = (0, 0)
-sisw = (State.shared, State.shared)
-#for conv layer
-sidw = (State.shared, State.dist)
-disw_i = (State.dist_i, State.shared)
-#for fc layer
-sidw_f = (State.shared, State.dist_f)
-#for both
-disw_b = (State.dist_b, State.shared)
-
-combination_conv =(sisw, sidw, disw_b, disw_i)
-combination_fc = (sisw, sidw_f, disw_b)
-
+from state import State, combination_conv, combination_fc
+import request
 
 def device_name():
   return driver.Device(0).name().replace(' ', '')
 
 
-def computation_cost(model, image_shape, comp_cost, fout = None):
+def computation_cost(model, image_shape, comp_cost, req = None):
   conv_end = False
   comb = combination_conv
   input_shape = image_shape
@@ -68,6 +48,7 @@ def computation_cost(model, image_shape, comp_cost, fout = None):
       image_size = np.prod(input_shape[:-1])
       batch_size = input_shape[-1]
       output_size = layer['outputSize']
+      layer['input_shape'] = (image_size, batch_size)
       layer['weight_shape'] = (output_size, image_size)
       layer['weight_size'] = np.prod(layer['weight_shape']) * 4
       layer['output_shape'] = (output_size, batch_size)
@@ -83,6 +64,8 @@ def computation_cost(model, image_shape, comp_cost, fout = None):
     layer['output_size'] = np.prod(layer['output_shape']) * 4
     layer['comp_cost'] = {}
     
+    input_shape = layer['output_shape']
+    
     if conv_end == True:
       comb = combination_fc
     
@@ -91,10 +74,10 @@ def computation_cost(model, image_shape, comp_cost, fout = None):
         layer['comp_cost'][(s, n)] = comp_cost[layer['name']][(s,n)]
 
     else:
-      if fout == None:
+      if req == None:
         assert False, 'Have to specify a file'
       for s in comb:
-        print >> fout,'?req', layer['name'], layer['input_shape'], s
+        req.write_request(layer, s, n, conv_end)
 
 
 
@@ -167,4 +150,6 @@ if os.path.exists(filename):
   cost, states = find_best(model, s0, ConvFC.conv)
 else:
   with open(filename+'-req', 'w') as fout:
-    computation_cost(model, image_shape, None, fout)
+    req =  request.RequestProxy(fout)
+    computation_cost(model, image_shape, None, req)
+    req.finish()
