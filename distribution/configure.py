@@ -1,11 +1,12 @@
 from pycuda import driver, autoinit
 import os
-import pickle
+import cPickle as pickle
 import reader
 import numpy as np
 from util import divup
 from state import State, combination_conv, combination_fc
 import request
+from execute import RequestExecuter
 
 def device_name():
   return driver.Device(0).name().replace(' ', '')
@@ -136,20 +137,24 @@ def find_best(model, init_state, cfs):
 
 
 name = device_name()
-n = 4
+n = 2
 
 model_file = '../config/imagenet.cfg'
 image_shape = (3, 224, 224, 128)
 
 model = reader.getmodel(model_file)
 filename = '%s-%d.%s' % (name, n, os.path.basename(model_file))
-if os.path.exists(filename):
-  with open(filename) as f:
-    dic = pickle.load(f)
-  computation_cost(model, image_shape, comp_cost)
-  cost, states = find_best(model, s0, ConvFC.conv)
-else:
-  with open(filename+'-req', 'w') as fout:
+if not os.path.exists(filename):
+  req_filename = filename + '-req'
+  with open(req_filename, 'w') as fout:
     req =  request.RequestProxy(fout)
     computation_cost(model, image_shape, None, req)
     req.finish()
+  executer = RequestExecuter(req_filename, filename)
+  executer.execute()
+
+with open(filename) as f:
+  comp_cost = pickle.load(f)
+computation_cost(model, image_shape, comp_cost)
+cost, states = find_best(model, s0, ConvFC.conv)
+

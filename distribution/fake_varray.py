@@ -161,7 +161,7 @@ class VArray(object):
 
     pos_from = nrow * rank
     pos_to = (rank+ 1)* nrow
-    if rank == self.world_size -1 :
+    if rank == self.num_worker-1 :
       pos_to = self.global_shape[self.slice_dim]
 
     _from = [0] * len(self.global_shape)
@@ -239,5 +239,19 @@ class VArray(object):
 
 
     self.tmp_local_area = Area(cross_from, cross_to)
-    rst_shape = self.tmp_local_area.shape
-    return self.tmp_local_area.shape, (np.prod(rst_shape) - np.prod(self.local_shape)) * 4
+    rst_shape = self.pad(padding, self.tmp_local_area.shape)
+    return rst_shape, (np.prod(rst_shape) - np.prod(self.local_shape)) * 4
+
+  def pad(self, padding, old_shape):
+    assert padding <= 0
+    padding = -padding
+    row, col = 1, 2
+    new_shape = list(old_shape)
+    #most down
+    if self.local_area._to[row] == self.global_area._to[row]:
+      new_shape[row] += padding
+    #most right
+    if self.local_area._to[col] == self.global_area._to[col]:
+      new_shape[col] += padding
+
+    return tuple(new_shape)

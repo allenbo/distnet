@@ -8,21 +8,22 @@ from fake_varray import VArray
 
 
 class Request(object):
-  def __init__(self, id, name, type, num_worker, state, list):
+  def __init__(self, id, name, layer_name, type, num_worker, state, list):
     self.id = id
     self.name = name
     self.type = type
     self.list = list
     self.num_worker = num_worker
     self.state = state
+    self.layer_name = layer_name
 
   def write_request(self, fout):
     string_out = StringIO.StringIO()
-    decr_dic = {'id': self.id, 'op':self.name, 'type':self.type, 'workers':self.num_worker,
+    decr_dic = {'id': self.id, 'op':self.name, 'layer_name':self.layer_name, 'type':self.type, 'workers':self.num_worker,
         'state':self.state, 'tests':len(self.list)}
     item = {'decr': decr_dic, 'param': self.list}
-    json.dump(item, string_out, sort_keys = True, indent = 2, separators = (',', ': '))
-    #json.dump(item, string_out)
+    #json.dump(item, string_out, sort_keys = True, indent = 2, separators = (',', ': '))
+    json.dump(item, string_out)
     print >> fout , string_out.getvalue(), ','
 
 class RequestWriter(object):
@@ -30,6 +31,7 @@ class RequestWriter(object):
     self.state = state
     self.num_worker = num_worker
     self.name = layer['type']
+    self.layer_name = layer['name']
 
     self.input_shape = layer['input_shape']
     self.output_shape = layer['output_shape']
@@ -61,7 +63,7 @@ class RequestWriter(object):
 
   def write_request(self, id, fout):
     self.define_request()
-    Request(id, self.name, self.type, self.num_worker, self.state, self.list).write_request(fout)
+    Request(id, self.name, self.layer_name, self.type, self.num_worker, self.state, self.list).write_request(fout)
 
 
 class ConvRequestWriter(RequestWriter):
@@ -106,12 +108,14 @@ class ConvRequestWriter(RequestWriter):
         last_num_filter = self.num_filter - num_filter * (self.num_worker - 1)
         dict = copy.deepcopy(self.dict)
         dict['filter_shape'] = self.weight_shape[:-1] + (num_filter,)
+        dict['output_shape'] = (num_filter, ) + self.output_shape[1:]
         self.list.append(dict)
 
         if num_filter != last_num_filter:
           self.type = 'max'
           dict2 = copy.deepcopy(dict)
           dict2['filter_shape'] = self.filter_shape[:-1] + (last_num_filter, )
+          dict['output_shape'] = (last_num_filter, ) + self.output_shape[1:]
           self.list.append(dict2)
     
     elif self.state == disw_i:
@@ -127,17 +131,20 @@ class ConvRequestWriter(RequestWriter):
           else:
             num_output = None
           input_shape = input_varray.cross_communicate(self.stride, self.filter_size, -self.padding, num_output)[0]
+          if self.name in ['rnorm', 'cmrnorm']:
+            output_shape = input_shape
+        
         dic_set.add((input_shape, output_shape))
 
       for input_shape, output_shape in dic_set:
         dict = copy.deepcopy(self.dict)
         dict['input_shape'] = input_shape
         dict['output_shape'] = output_shape
+        dict['padding'] = 0
         self.list.append(dict)
       
       if len(dic_set) != 1:
-        self.type = 'max'
-        
+        self.type = 'max'    
     else:
       assert False, 'Distribution Error for ' + self.name + str(self.state)
 
@@ -150,6 +157,8 @@ class FCRequestWriter(RequestWriter):
       self.output_size = layer['outputSize']
       self.input_size = layer['input_shape'][0]
       self.weight_shape = layer['weight_shape']
+      self.drop_out = layer.get('dropRate', 0)
+      self.dict.update({'weight_shape': self.weight_shape, 'drop_out':self.drop_out})
 
   def define_request(self):
     self.type = 'share'
@@ -166,12 +175,14 @@ class FCRequestWriter(RequestWriter):
         last_output_size = self.output_size - output_size * (self.num_worker - 1)
         dict = copy.deepcopy(self.dict)
         dict['weight_shape'] = (output_size, self.input_size)
+        dict['output_shape'] = (output_size, self.batch_size)
         self.list.append(dict)
 
         if output_size != last_output_size:
           self.type = 'max'
           dict2 = copy.deepcopy(dict)
           dict2['weight_shape'] = (last_output_size, self.input_size)
+          dict2['output_shape'] = (last_output_size, self.batch_size)
           self.list.append(dict2)
 
     else:
@@ -194,4 +205,4 @@ class RequestProxy(object):
     self.id += 1
   
   def finish(self):
-    print >> self.writer, {'end':'true'}, ']'
+    print >> self.writer, "{\"end\":\"true\"}]"
