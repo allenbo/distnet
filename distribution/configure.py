@@ -142,7 +142,7 @@ model_file = '../config/imagenet.cfg'
 image_shape = (3, 224, 224, 128)
 
 model = reader.getmodel(model_file)
-filename = '%s-%d' % (name, n)
+filename = '%s-%d.%s' % (name, n, os.path.basename(model_file))
 if os.path.exists(filename):
   with open(filename) as f:
     dic = pickle.load(f)

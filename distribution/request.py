@@ -136,7 +136,7 @@ class ConvRequestWriter(RequestWriter):
         self.list.append(dict)
       
       if len(dic_set) != 1:
-        self.type == 'max'
+        self.type = 'max'
         
     else:
       assert False, 'Distribution Error for ' + self.name + str(self.state)
