@@ -4,9 +4,10 @@ import cPickle as pickle
 import reader
 import numpy as np
 from util import divup
-from state import State, combination_conv, combination_fc
+from state import State, combination_conv, combination_fc, state0, disw_i
 import request
 from execute import RequestExecuter
+from communicat import ConvFC, comm_cost
 
 def device_name():
   return driver.Device(0).name().replace(' ', '')
@@ -18,6 +19,7 @@ def computation_cost(model, image_shape, comp_cost, req = None):
   input_shape = image_shape
   for layer in model:
     layer['input_shape'] = input_shape
+    layer['overlapping'] = 0
 
     if layer['type'] == 'conv':
       channel, image_size, image_size, batch_size = input_shape
@@ -26,13 +28,12 @@ def computation_cost(model, image_shape, comp_cost, req = None):
       filter_size = layer['filterSize']
       stride = layer['stride']
       num_filter = layer['numFilter']
-      layer['weight_size'] = filter_size * filter_size, num_filter * channel * 4
+      layer['weight_size'] = filter_size * filter_size * num_filter * channel * 4
       layer['weight_shape'] = (channel, filter_size, filter_size, num_filter)
 
       output_size = 1 + divup(2 * padding + image_size - filter_size, stride)
       layer['output_shape'] = (num_filter, output_size, output_size, batch_size)
 
-      layer['overlapping'] = 0
       
  
     elif layer['type'] in ['rnorm', 'cmrnorm', 'neuron']:
@@ -73,6 +74,7 @@ def computation_cost(model, image_shape, comp_cost, req = None):
     if comp_cost is not None:
       for s in comb:
         layer['comp_cost'][(s, n)] = comp_cost[layer['name']][(s,n)]
+        layer['overlapping'] = comp_cost[layer['name']].get('overlapping', 0)
 
     else:
       if req == None:
@@ -80,17 +82,6 @@ def computation_cost(model, image_shape, comp_cost, req = None):
       for s in comb:
         req.write_request(layer, s, n, conv_end)
 
-
-
-conv_conv_comm_cost = {}
-conv_fc_comm_cost = {}
-fc_fc_comm_cost = {}
-
-
-class ConvFC:
-  conv = 0
-  conv_fc = 1
-  fc = 2
 
 def find_best(model, init_state, cfs):
   if len(model) == 0:
@@ -104,43 +95,43 @@ def find_best(model, init_state, cfs):
   weight_size = layer.get('weight_size', 0)
   overlapping = layer.get('overlapping', 0)
 
-  if cfs == ConvFC.conv:
-    comm_cost = conv_conv_comm_cost
-  elif cfs == ConvFC.conv_fc:
-    comm_cost = conv_fc_comm_cost
-  else:
-    comm_cost = fc_fc_comm_cost
-
+  communicat_cost = comm_cost[cfs]
   comb = combination_conv
   if cfs != ConvFC.conv:
     comb = combination_fc
 
-  next_layer = model[1]
   if cfs == ConvFC.conv_fc or cfs == ConvFC.fc:
     cfs = ConvFC.fc
   else:
+    next_layer = model[1]
     if next_layer['type'] == 'fc':
       cfs = ConvFC.conv_fc
     else:
       cfs = ConvFC.conv
 
-  for s in combinations:
+  if layer['type'] not in ['fc', 'conv', 'softmax']:
+    cost, state_list = find_best(model[1:], init_state, cfs)
+    communicat_cost = 0 if init_state != disw_i else overlapping * 2
+    return (layer['comp_cost'][(init_state, n)] + communicat_cost * 1.0 / bandwidth + cost, [init_state] + state_list)
+
+  for s in comb:
     cost, state_list = find_best(model[1:], s, cfs)
-    costs.append(comm_cost[(init_state, s)](input_size, weight_size, overlapping, n) +
-        layer['comp_cost'][(s, n)])
+    cm_cost = communicat_cost[(init_state, s)](input_size, weight_size, overlapping, n) * 1.0 / bandwidth
+    cp_cost = layer['comp_cost'][(s, n)]
+    cost = cm_cost + cp_cost + cost
+    costs.append(cost)
     states.append(state_list)
- 
-  index = np.array(costs).argmin()
-  return (costs[index], [combination_conv_conv[index]] + states[index])
+  
+    index = np.array(costs).argmin()
+  return (costs[index], [comb[index]] + states[index])
     
   
-
-
 name = device_name()
 n = 2
 
 model_file = '../config/imagenet.cfg'
 image_shape = (3, 224, 224, 128)
+bandwidth = 1e9
 
 model = reader.getmodel(model_file)
 filename = '%s-%d.%s' % (name, n, os.path.basename(model_file))
@@ -156,5 +147,7 @@ if not os.path.exists(filename):
 with open(filename) as f:
   comp_cost = pickle.load(f)
 computation_cost(model, image_shape, comp_cost)
-cost, states = find_best(model, s0, ConvFC.conv)
-
+cost, states = find_best(model, state0, ConvFC.conv)
+print 'cost', cost
+for i, state in enumerate(states):
+  print model[i]['name'], state

@@ -103,39 +103,48 @@ class ConvRequestWriter(RequestWriter):
       self.define_disw_b()
 
     elif self.state == sidw:
+      total_filter = self.output_shape[0]
+      num_filter = divup(total_filter, self.num_worker)
+      last_num_filter = total_filter - num_filter * (self.num_worker - 1)
+      dict = copy.deepcopy(self.dict)
       if self.name == 'conv':
-        num_filter = divup(self.num_filter, self.num_worker)
-        last_num_filter = self.num_filter - num_filter * (self.num_worker - 1)
-        dict = copy.deepcopy(self.dict)
         dict['filter_shape'] = self.weight_shape[:-1] + (num_filter,)
-        dict['output_shape'] = (num_filter, ) + self.output_shape[1:]
-        self.list.append(dict)
+      else:
+        dict['input_shape'] = (num_filter, ) + self.input_shape[1:]
+      dict['output_shape'] = (num_filter, ) + self.output_shape[1:]
+      self.list.append(dict)
 
-        if num_filter != last_num_filter:
-          self.type = 'max'
-          dict2 = copy.deepcopy(dict)
-          dict2['filter_shape'] = self.filter_shape[:-1] + (last_num_filter, )
-          dict['output_shape'] = (last_num_filter, ) + self.output_shape[1:]
-          self.list.append(dict2)
+      if num_filter != last_num_filter:
+        self.type = 'max'
+        dict2 = copy.deepcopy(dict)
+        if self.name == 'conv':
+          dict2['filter_shape'] = self.weight_shape[:-1] + (last_num_filter, )
+        else:
+          dict['input_shape'] = (num_filter, ) + self.input_shape[1:]
+        dict['output_shape'] = (last_num_filter, ) + self.output_shape[1:]
+        self.list.append(dict2)
     
     elif self.state == disw_i:
+      overlapping_max =  0
       dic_set = set()
       for i in range(self.num_worker):
         input_varray = VArray(self.input_shape, self.num_worker, i)
         output_varray = VArray(self.output_shape, self.num_worker, i)
         output_shape = output_varray.local_shape
         input_shape = input_varray.local_shape
-        if self.name != 'neuron':
+        if self.name not in ['neuron', 'cmrnorm']:
           if self.name == 'pool':
             num_output = tuple(output_shape[1:3])
           else:
             num_output = None
-          input_shape = input_varray.cross_communicate(self.stride, self.filter_size, -self.padding, num_output)[0]
-          if self.name in ['rnorm', 'cmrnorm']:
+          input_shape, overlapping = input_varray.cross_communicate(self.stride, self.filter_size, -self.padding, num_output)
+          overlapping_max = max(overlapping, overlapping_max)
+          if self.name in ['rnorm']:
             output_shape = input_shape
         
         dic_set.add((input_shape, output_shape))
 
+      self.dict['overlapping'] = overlapping_max
       for input_shape, output_shape in dic_set:
         dict = copy.deepcopy(self.dict)
         dict['input_shape'] = input_shape
@@ -170,18 +179,24 @@ class FCRequestWriter(RequestWriter):
       self.define_disw_b()
 
     elif self.state == sidw_f:
-      if self.name == 'fc':
-        output_size = divup(self.output_size, self.num_worker)
-        last_output_size = self.output_size - output_size * (self.num_worker - 1)
+      if self.name in ['fc', 'neuron']:
+        output_size = divup(self.output_shape[0], self.num_worker)
+        last_output_size = self.output_shape[0] - output_size * (self.num_worker - 1)
         dict = copy.deepcopy(self.dict)
-        dict['weight_shape'] = (output_size, self.input_size)
+        if self.name == 'fc':
+          dict['weight_shape'] = (output_size, self.input_size)
+        else:
+          dict['input_shape'] = (output_size, self.batch_size)
         dict['output_shape'] = (output_size, self.batch_size)
         self.list.append(dict)
 
         if output_size != last_output_size:
           self.type = 'max'
           dict2 = copy.deepcopy(dict)
-          dict2['weight_shape'] = (last_output_size, self.input_size)
+          if self.name == 'fc':
+            dict2['weight_shape'] = (last_output_size, self.input_size)
+          else:
+            dict['input_shape'] = (output_size, self.batch_size)
           dict2['output_shape'] = (last_output_size, self.batch_size)
           self.list.append(dict2)
 

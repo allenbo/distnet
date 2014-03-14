@@ -390,6 +390,8 @@ class RequestExecuter(object):
         if layer_name not in self.comput_cost:
           self.comput_cost[layer_name] = {}
         self.comput_cost[layer_name][(state, num_worker)] = elapsed
+        if param and param[0].get('overlapping', 0) !=  0:
+          self.comput_cost[layer_name]['overlapping'] = param[0]['overlapping']
 
   def write_cost(self):
     with open(self.output_filename, 'w') as f:
