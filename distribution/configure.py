@@ -112,11 +112,12 @@ def find_best(model, init_state, cfs):
   if layer['type'] not in ['fc', 'conv', 'softmax']:
     cost, state_list = find_best(model[1:], init_state, cfs)
     communicat_cost = 0 if init_state != disw_i else overlapping * 2
-    return (layer['comp_cost'][(init_state, n)] + communicat_cost * 1.0 / bandwidth + cost, [init_state] + state_list)
+    communicat_latency = 0 if communicat_cost == 0 else latency * 2
+    return (layer['comp_cost'][(init_state, n)] + communicat_cost * 1.0 / bandwidth + communicat_latency + cost, [init_state] + state_list)
 
   for s in comb:
     cost, state_list = find_best(model[1:], s, cfs)
-    cm_cost = communicat_cost[(init_state, s)](input_size, weight_size, overlapping, n) * 1.0 / bandwidth
+    cm_cost = communicat_cost[(init_state, s)](input_size, weight_size, overlapping, n) * 1.0 / bandwidth + latency * (n-1) * 2
     cp_cost = layer['comp_cost'][(s, n)]
     cost = cm_cost + cp_cost + cost
     costs.append(cost)
@@ -152,10 +153,13 @@ def print_details(model, states):
         cfs = ConvFC.conv
 
     if layer['type'] not in ['fc', 'conv', 'softmax']:
-      cm_cost = 0 if curr_state != disw_i else overlapping * 2
+      cm_cost = 0 if curr_state != disw_i else overlapping * 2.0 / bandwidth
+      communicat_latency = 0 if cm_cost == 0 else latency * 2
+      cm_cost += communicat_latency
     else:
-      cm_cost = communicat_cost[(prev_state, curr_state)](input_size, weight_size, overlapping, n)
-    cm_cost = cm_cost * 1.0 / bandwidth
+      cm_cost = communicat_cost[(prev_state, curr_state)](input_size, weight_size, overlapping, n) * 1.0 / bandwidth
+      communicat_latency = 0 if cm_cost == 0 else latency * 2 * (n-1)
+      cm_cost += communicat_latency
     cp_cost = layer['comp_cost'][(curr_state, n)]
 
     prev_state = curr_state
@@ -168,11 +172,12 @@ def print_details(model, states):
 
 
 name = device_name()
-n = 2
+n = 9
+latency = 0.001
 
 model_file = '../config/imagenet.cfg'
 image_shape = (3, 224, 224, 128)
-bandwidth = 1e9
+bandwidth = 1.25e9
 
 model = reader.getmodel(model_file)
 filename = '%s-%d.%s' % (name, n, os.path.basename(model_file))
@@ -191,5 +196,6 @@ computation_cost(model, image_shape, comp_cost)
 cost, states = find_best(model, state0, ConvFC.conv)
 print 'cost', cost
 #print_details(model, states)
-states = [sisw] * len(model)
+states = [disw_i] * (len(model) - 6) + [sisw] * 6
+#states = [sisw] * len(model)
 print_details(model, states)
