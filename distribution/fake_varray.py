@@ -201,18 +201,16 @@ class VArray(object):
         num_row , num_col = num_output
         diff = num_row - ((row_end_centroid - row_begin_centroid) / stride  + 1)
         if diff != 0:
-          # change the centriod, asssume there are 4 GPU
-          if self.local_area._from[r] == 0:
-            row_end_centroid += diff * stride
+          if diff > 0:
+            row_begin_centroid -= diff * stride
           else:
-            row_begin_centroid +=  diff * stride
+            row_end_centroid += diff * stride
         diff = num_col - ((col_end_centroid - col_begin_centroid) / stride  + 1)
         if diff != 0:
-          # change the centriod, asssume there are 4 GPU
-          if self.local_area._from[c] == 0:
-            col_end_centroid += diff * stride
+          if diff > 0:
+            col_begin_centroid -= diff * stride
           else:
-            col_begin_centroid +=  diff * stride
+            col_end_centroid += diff * stride
 
       row_up = half_filter_size - (row_begin_centroid - self.local_area._from[r])
       row_down = half_filter_size - (self.local_area._to[r] - row_end_centroid)
@@ -248,6 +246,13 @@ class VArray(object):
     padding = -padding
     row, col = 1, 2
     new_shape = list(old_shape)
+
+    #most top
+    if self.local_area._from[row] == 0:
+      new_shape[row] += padding
+    #most left
+    if self.local_area._from[col] == 0:
+      new_shape[col] += padding
     #most down
     if self.local_area._to[row] == self.global_area._to[row]:
       new_shape[row] += padding

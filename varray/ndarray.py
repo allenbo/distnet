@@ -552,18 +552,17 @@ class VArray(object):
         num_row , num_col = num_output
         diff = num_row - ((row_end_centroid - row_begin_centroid) / stride  + 1)
         if diff != 0:
-          # change the centriod, asssume there are 4 GPU
-          if self.local_area._from[r] == 0:
-            row_end_centroid += diff * stride
+          if diff > 0:
+            row_begin_centroid -= diff * stride
           else:
-            row_begin_centroid +=  diff * stride
+            row_end_centroid += diff * stride
         diff = num_col - ((col_end_centroid - col_begin_centroid) / stride  + 1)
         if diff != 0:
-          # change the centriod, asssume there are 4 GPU
-          if self.local_area._from[c] == 0:
-            col_end_centroid += diff * stride
+          if diff > 0:
+            col_begin_centroid -= diff * stride
           else:
-            col_begin_centroid +=  diff * stride
+            col_end_centroid += diff * stride
+
 
       row_up = half_filter_size - (row_begin_centroid - self.local_area._from[r])
       row_down = half_filter_size - (self.local_area._to[r] - row_end_centroid)
