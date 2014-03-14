@@ -239,8 +239,9 @@ class VArray(object):
 
 
     self.tmp_local_area = Area(cross_from, cross_to)
+    overlapping = (np.prod(self.tmp_local_area.shape) - np.prod(self.local_shape)) * 4
     rst_shape = self.pad(padding, self.tmp_local_area.shape)
-    return rst_shape, (np.prod(rst_shape) - np.prod(self.local_shape)) * 4
+    return rst_shape, overlapping
 
   def pad(self, padding, old_shape):
     assert padding <= 0

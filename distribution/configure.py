@@ -4,7 +4,7 @@ import cPickle as pickle
 import reader
 import numpy as np
 from util import divup
-from state import State, combination_conv, combination_fc, state0, disw_i
+from state import State, combination_conv, combination_fc, state0, disw_i, sisw
 import request
 from execute import RequestExecuter
 from communicat import ConvFC, comm_cost
@@ -124,8 +124,49 @@ def find_best(model, init_state, cfs):
   
     index = np.array(costs).argmin()
   return (costs[index], [comb[index]] + states[index])
-    
+
+def print_details(model, states):
+  assert len(model) == len(states)
+  prev_state = state0
+  total_comp_cost = 0
+  total_comm_cost = 0
+  cfs = ConvFC.conv
   
+  print '{:10}\t{:30}\t{:20}\t{:20}'.format('layer', 'distribution', 'cp_cost', 'cm_cost')
+  for i in range(len(model)):
+    layer = model[i]
+    curr_state = states[i]
+
+    input_size = layer.get('input_size', 0)
+    weight_size = layer.get('weight_size', 0)
+    overlapping = layer.get('overlapping', 0)
+    communicat_cost = comm_cost[cfs]
+
+    if cfs == ConvFC.conv_fc or cfs == ConvFC.fc:
+      cfs = ConvFC.fc
+    else:
+      next_layer = model[i+1]
+      if next_layer['type'] == 'fc':
+        cfs = ConvFC.conv_fc
+      else:
+        cfs = ConvFC.conv
+
+    if layer['type'] not in ['fc', 'conv', 'softmax']:
+      cm_cost = 0 if curr_state != disw_i else overlapping * 2
+    else:
+      cm_cost = communicat_cost[(prev_state, curr_state)](input_size, weight_size, overlapping, n)
+    cm_cost = cm_cost * 1.0 / bandwidth
+    cp_cost = layer['comp_cost'][(curr_state, n)]
+
+    prev_state = curr_state
+    print '{:10}\t{:30}\t{:20}\t{:20}'.format(layer['name'], curr_state, cp_cost, cm_cost)
+    total_comp_cost += cp_cost
+    total_comm_cost += cm_cost
+  print 'total computation cost is', total_comp_cost
+  print 'total communication cost is', total_comm_cost
+  print 'total cost is', total_comp_cost + total_comm_cost
+
+
 name = device_name()
 n = 2
 
@@ -149,5 +190,6 @@ with open(filename) as f:
 computation_cost(model, image_shape, comp_cost)
 cost, states = find_best(model, state0, ConvFC.conv)
 print 'cost', cost
-for i, state in enumerate(states):
-  print model[i]['name'], state
+#print_details(model, states)
+states = [sisw] * len(model)
+print_details(model, states)
