@@ -57,8 +57,6 @@ private:\
 #define NOT_IMPLEMENTED LOG(FATAL) << "Not Implemented Yet"
 
 
-namespace caffe {
-
 // We will use the boost shared_ptr instead of the new C++11 one mainly
 // because cuda does not work (at least now) well with C++11 features.
 
@@ -79,7 +77,5 @@ inline int CAFFE_GET_BLOCKS(const int N) {
 
 
 typedef enum {CblasNoTrans=111, CblasTrans=112, CblasConjTrans=113} CBLAS_TRANSPOSE;
-
-}  // namespace caffe
 
 #endif  // CAFFE_COMMON_HPP_

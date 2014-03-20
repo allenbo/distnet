@@ -15,7 +15,15 @@ if find_executable('nvcc') is None:
   sys.exit(1)
 
 log('About to build cudaconv extension.')
-cmd = 'cd cudaconv && make -j8 PYTHON_INCLUDE="%s"' % sysconfig.get_python_inc()
+cmd = 'cd cudaconv && make PYTHON_INCLUDE="%s"' % sysconfig.get_python_inc()
+
+log(cmd)
+if os.system(cmd) != 0:
+  log('Failed to build extension')
+  sys.exit(1)
+
+log('About to build caffe extension.')
+cmd = 'cd caffe && make'
 
 log(cmd)
 if os.system(cmd) != 0:
@@ -33,10 +41,11 @@ setup(
     license="GPL",
     version="0.1",
     url="http://github.com/allenbo/distnet",
-    packages=[ 'distnet', 'cudaconv', 'garray', 'varray',  ],
+    packages=[ 'distnet', 'cudaconv', 'caffe', 'garray', 'varray',  ],
     package_dir={
       'distnet' : 'distnet',
       'cudaconv' : 'cudaconv' ,
+      'caffe' : 'caffe', 
       'garray' : 'garray',
       'varray' : 'varray'
     },

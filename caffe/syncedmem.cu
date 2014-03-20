@@ -4,10 +4,8 @@
 
 #include <cstring>
 
-#include "common.hpp"
-#include "syncedmem.hpp"
-
-namespace caffe {
+#include "common.cuh"
+#include "syncedmem.cuh"
 
 SyncedMemory::~SyncedMemory() {
   if (cpu_ptr_) {
@@ -80,7 +78,3 @@ void* SyncedMemory::mutable_gpu_data() {
   head_ = HEAD_AT_GPU;
   return gpu_ptr_;
 }
-
-
-}  // namespace caffe
-

@@ -1,8 +1,9 @@
 %module caffe
 %{
-#include "common.hpp"
-#include "blob.hpp"
-#include "syncedmem.hpp"
+#include "common.cuh"
+#include "blob.cuh"
+#include "syncedmem.cuh"
+#include "caffe.cuh"
 %}
 
 %typemap(in) Blob& {
@@ -32,10 +33,12 @@
     stride = stride2/itemsize;
     //printf("Strides change to %ld\n", stride);
   }
-  $1 = new Blob(batch_size, channel, rows, cols, batch_size* channel* rows* cols, gpudata,0);
+  $1 = new Blob(batch_size, channel, rows, cols, batch_size* channel* rows* cols, gpudata);
 }
 
-%typemap(typecheck,precedence=SWIG_TYPECHECK_INTEGER) NVMatrix& {
+%include "caffe.cuh"
+
+%typemap(typecheck,precedence=SWIG_TYPECHECK_INTEGER) Blob& {
   if (PyObject_HasAttrString($input, "shape") && PyObject_HasAttrString($input, "gpudata")) {
     $1 = 1;
   } else {
@@ -53,7 +56,6 @@
 }
 
 
-%include "caffe.cuh"
 
 %inline %{
 PyObject* make_buffer(long offset, long size) {

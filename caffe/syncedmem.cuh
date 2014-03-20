@@ -5,9 +5,8 @@
 
 #include <cstdlib>
 
-#include "common.hpp"
+#include "common.cuh"
 
-namespace caffe {
 
 // Theoretically, CaffeMallocHost and CaffeFreeHost should simply call the
 // cudaMallocHost and cudaFree functions in order to create pinned memory.
@@ -38,6 +37,7 @@ class SyncedMemory {
       : cpu_ptr_(NULL), gpu_ptr_(NULL), size_(0), head_(UNINITIALIZED) {}
   explicit SyncedMemory(size_t size)
       : cpu_ptr_(NULL), gpu_ptr_(NULL), size_(size), head_(UNINITIALIZED) {}
+  explicit SyncedMemory(void* gpu_ptr, size_t size) : cpu_ptr_(NULL), gpu_ptr_(gpu_ptr), size_(size), head_(UNINITIALIZED) {}
   ~SyncedMemory();
   const void* cpu_data();
   const void* gpu_data();
@@ -56,7 +56,5 @@ class SyncedMemory {
 
   DISABLE_COPY_AND_ASSIGN(SyncedMemory);
 };  // class SyncedMemory
-
-}  // namespace caffe
 
 #endif  // CAFFE_SYNCEDMEM_HPP_

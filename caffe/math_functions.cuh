@@ -4,9 +4,8 @@
 #define CAFFE_UTIL_MATH_FUNCTIONS_H_
 
 #include <cublas_v2.h>
-#include "common.hpp"
+#include "common.cuh"
 
-namespace caffe {
 
 // Decaf gemm provides a simpler interface to the gemm functions, with the
 // limitation that the data has to be contiguous in memory.
@@ -87,8 +86,5 @@ void caffe_exp(const int n, const Dtype* a, Dtype* y);
 
 template <typename Dtype>
 void caffe_gpu_dot(const int n, const Dtype* x, const Dtype* y, Dtype* out);
-
-}  // namespace caffe
-
 
 #endif  // CAFFE_UTIL_MATH_FUNCTIONS_H_

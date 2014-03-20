@@ -1,9 +1,7 @@
-#include "im2col.hpp"
-#include "math_functions.hpp"
-#include "blob.hpp"
+#include "im2col.cuh"
+#include "math_functions.cuh"
+#include "blob.cuh"
 #include <assert.h>
-
-namespace caffe {
 
 void convFilterActs(Blob& bottom, Blob& weight, Blob& top, int image_y, int output_y, int output_x, int padding, int stride, int color, int group) {
   const float* bottom_data = bottom.gpu_data();
@@ -42,7 +40,4 @@ void convFilterActs(Blob& bottom, Blob& weight, Blob& top, int image_y, int outp
         (float)0., top_data + top.offset(n) + top_offset * g);
     }
   }
-}
-
-
 }

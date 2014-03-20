@@ -5,9 +5,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "common.hpp"
-
-namespace caffe {
+#include "common.cuh"
 
 long cluster_seedgen(void) {
   long s, seed, pid;
@@ -16,5 +14,3 @@ long cluster_seedgen(void) {
   seed = abs(((s * 181) * ((pid - 83) * 359)) % 104729);
   return seed;
 }
-
-}  // namespace caffe

@@ -4,10 +4,8 @@
 #include <cstdlib>
 #include <cstring>
 
-#include "common.hpp"
-#include "math_functions.hpp"
-
-namespace caffe {
+#include "common.cuh"
+#include "math_functions.cuh"
 
 __global__ void mul_kernel(const int n, const float* a,
     const float* b, float* y) {
@@ -270,6 +268,3 @@ template <>
 void caffe_gpu_dot<double>(const int n, const double* x, const double* y,
     double * out) {
   CUBLAS_CHECK(cublasDdot(Caffe::cublas_handle(), n, x, 1, y, 1, out));
-
-
-}  // namespace caffe

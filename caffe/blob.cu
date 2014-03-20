@@ -3,12 +3,10 @@
 #include <cuda_runtime.h>
 #include <cublas_v2.h>
 
-#include "blob.hpp"
-#include "common.hpp"
-#include "syncedmem.hpp"
-#include "math_functions.hpp"
-
-namespace caffe {
+#include "blob.cuh"
+#include "common.cuh"
+#include "syncedmem.cuh"
+#include "math_functions.cuh"
 
 void Blob::Reshape(const int num, const int channels, const int height,
     const int width) {
@@ -117,7 +115,3 @@ void Blob::CopyFrom(const Blob& source, bool copy_diff, bool reshape) {
         sizeof(float) * count_, cudaMemcpyDeviceToDevice));
   }
 }
-
-
-}  // namespace caffe
-

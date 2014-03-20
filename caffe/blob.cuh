@@ -3,15 +3,14 @@
 #ifndef CAFFE_BLOB_HPP_
 #define CAFFE_BLOB_HPP_
 
-#include "syncedmem.hpp"
-
-namespace caffe {
+#include "syncedmem.cuh"
+#include "pyassert.cuh"
 
 class Blob {
  public:
-  Blob()
-       : num_(0), channels_(0), height_(0), width_(0), count_(0), data_(),
-       diff_() {
+  Blob(int num, int channels, int height, int width, int count, float* data)
+       : num_(num), channels_(channels), height_(height), width_(width), count_(count), data_(NULL),
+       diff_(NULL) {
           if (num_ * channels_ * height_ * width_ != 0) {
             CHECK_GE(num_, 0);
             CHECK_GE(channels_, 0);
@@ -19,7 +18,7 @@ class Blob {
             CHECK_GE(width_, 0);
 
             count_ = num_ * channels_ * height_ * width_;
-            data_ = new SyncedMemory(count_ * sizeof(float));
+            data_ = new SyncedMemory((void*)data, count_ * sizeof(float));
             diff_ = new SyncedMemory(count_ * sizeof(float));
           }
           else { 
@@ -31,10 +30,7 @@ class Blob {
     const int width);
   virtual ~Blob() {
     if (data_) {
-      delete data_;
-      data_ = NULL;
       delete diff_;
-      diff_ = NULL;
     }
   }
   void Reshape(const int num, const int height,
@@ -84,7 +80,4 @@ class Blob {
 
   DISABLE_COPY_AND_ASSIGN(Blob);
 };  // class Blob
-
-}  // namespace caffe
-
-#endif  // CAFFE_BLOB_HPP_
+#endif

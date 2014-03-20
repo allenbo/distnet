@@ -4,11 +4,8 @@
 #include <cstdlib>
 #include <cstring>
 
-#include "common.hpp"
-#include "im2col.hpp"
-
-namespace caffe {
-
+#include "common.cuh"
+#include "im2col.cuh"
 
 template <typename Dtype>
 __global__ void im2col_gpu_kernel(const int n, const Dtype* data_im,
@@ -119,6 +116,3 @@ template void col2im_gpu<float>(const float* data_col, const int channels,
 template void col2im_gpu<double>(const double* data_col, const int channels,
     const int height, const int width, const int psize, const int stride,
     double* data_im);
-
-
-}  // namespace caffe
