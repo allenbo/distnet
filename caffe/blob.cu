@@ -80,12 +80,6 @@ float* Blob::mutable_gpu_diff() {
 void Blob::Update() {
   // We will perform update based on where the data is located.
   switch (data_->head()) {
-  case SyncedMemory::HEAD_AT_CPU:
-    // perform computation on CPU
-    caffe_axpy(count_, float(-1),
-        reinterpret_cast<const float*>(diff_->cpu_data()),
-        reinterpret_cast<float*>(data_->mutable_cpu_data()));
-    break;
   case SyncedMemory::HEAD_AT_GPU:
   case SyncedMemory::SYNCED:
     // perform computation on GPU

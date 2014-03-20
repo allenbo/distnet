@@ -18,14 +18,7 @@ __global__ void mul_kernel(const int n, const float* a,
 template <>
 void caffe_gpu_mul<float>(const int N, const float* a,
     const float* b, float* y) {
-  mul_kernel<float><<<CAFFE_GET_BLOCKS(N), CAFFE_CUDA_NUM_THREADS>>>(
-      N, a, b, y);
-}
-
-template <>
-void caffe_gpu_mul<double>(const int N, const double* a,
-    const double* b, double* y) {
-  mul_kernel<double><<<CAFFE_GET_BLOCKS(N), CAFFE_CUDA_NUM_THREADS>>>(
+  mul_kernel<<<CAFFE_GET_BLOCKS(N), CAFFE_CUDA_NUM_THREADS>>>(
       N, a, b, y);
 }
 
@@ -82,14 +75,6 @@ void caffe_gpu_gemv<double>(const CBLAS_TRANSPOSE TransA, const int M,
       A, N, x, 1, &beta, y, 1));
 }
 
-template <>
-void caffe_axpy<float>(const int N, const float alpha, const float* X,
-    float* Y) { cblas_saxpy(N, alpha, X, 1, Y, 1); }
-
-template <>
-void caffe_axpy<double>(const int N, const double alpha, const double* X,
-    double* Y) { cblas_daxpy(N, alpha, X, 1, Y, 1); }
-
 
 template <>
 void caffe_gpu_axpy<float>(const int N, const float alpha, const float* X,
@@ -103,27 +88,6 @@ void caffe_gpu_axpy<double>(const int N, const double alpha, const double* X,
   CUBLAS_CHECK(cublasDaxpy(Caffe::cublas_handle(), N, &alpha, X, 1, Y, 1));
 }
 
-template <>
-void caffe_axpby<float>(const int N, const float alpha, const float* X,
-    const float beta, float* Y) {
-  cblas_saxpby(N, alpha, X, 1, beta, Y, 1);
-}
-
-template <>
-void caffe_axpby<double>(const int N, const double alpha, const double* X,
-    const double beta, double* Y) {
-  cblas_daxpby(N, alpha, X, 1, beta, Y, 1);
-}
-
-template <>
-void caffe_copy<float>(const int N, const float* X, float* Y) {
-  cblas_scopy(N, X, 1, Y, 1);
-}
-
-template <>
-void caffe_copy<double>(const int N, const double* X, double* Y) {
-  cblas_dcopy(N, X, 1, Y, 1);
-}
 
 template <>
 void caffe_gpu_copy<float>(const int N, const float* X, float* Y) {
@@ -133,16 +97,6 @@ void caffe_gpu_copy<float>(const int N, const float* X, float* Y) {
 template <>
 void caffe_gpu_copy<double>(const int N, const double* X, double* Y) {
   CUBLAS_CHECK(cublasDcopy(Caffe::cublas_handle(), N, X, 1, Y, 1));
-}
-
-template <>
-void caffe_scal<float>(const int N, const float alpha, float *X) {
-  cblas_sscal(N, alpha, X, 1);
-}
-
-template <>
-void caffe_scal<double>(const int N, const double alpha, double *X) {
-  cblas_dscal(N, alpha, X, 1);
 }
 
 template <>
@@ -168,96 +122,6 @@ void caffe_gpu_axpby<double>(const int N, const double alpha, const double* X,
   caffe_gpu_scal<double>(N, beta, Y);
   caffe_gpu_axpy<double>(N, alpha, X, Y);
 }
-
-template <>
-void caffe_sqr<float>(const int n, const float* a, float* y) {
-  vsSqr(n, a, y);
-}
-
-template <>
-void caffe_sqr<double>(const int n, const double* a, double* y) {
-  vdSqr(n, a, y);
-}
-
-template <>
-void caffe_add<float>(const int n, const float* a, const float* b,
-    float* y) { vsAdd(n, a, b, y); }
-
-template <>
-void caffe_add<double>(const int n, const double* a, const double* b,
-    double* y) { vdAdd(n, a, b, y); }
-
-template <>
-void caffe_sub<float>(const int n, const float* a, const float* b,
-    float* y) { vsSub(n, a, b, y); }
-
-template <>
-void caffe_sub<double>(const int n, const double* a, const double* b,
-    double* y) { vdSub(n, a, b, y); }
-
-template <>
-void caffe_mul<float>(const int n, const float* a, const float* b,
-    float* y) { vsMul(n, a, b, y); }
-
-template <>
-void caffe_mul<double>(const int n, const double* a, const double* b,
-    double* y) { vdMul(n, a, b, y); }
-
-template <>
-void caffe_div<float>(const int n, const float* a, const float* b,
-    float* y) { vsDiv(n, a, b, y); }
-
-template <>
-void caffe_div<double>(const int n, const double* a, const double* b,
-    double* y) { vdDiv(n, a, b, y); }
-
-template <>
-void caffe_powx<float>(const int n, const float* a, const float b,
-    float* y) { vsPowx(n, a, b, y); }
-
-template <>
-void caffe_powx<double>(const int n, const double* a, const double b,
-    double* y) { vdPowx(n, a, b, y); }
-
-template <>
-void caffe_vRngUniform<float>(const int n, float* r,
-    const float a, const float b) {
-  VSL_CHECK(vsRngUniform(VSL_RNG_METHOD_UNIFORM_STD, Caffe::vsl_stream(),
-      n, r, a, b));
-}
-
-template <>
-void caffe_vRngUniform<double>(const int n, double* r,
-    const double a, const double b) {
-  VSL_CHECK(vdRngUniform(VSL_RNG_METHOD_UNIFORM_STD, Caffe::vsl_stream(),
-      n, r, a, b));
-}
-
-template <>
-void caffe_vRngGaussian<float>(const int n, float* r, const float a,
-    const float sigma) {
-  VSL_CHECK(vsRngGaussian(VSL_RNG_METHOD_GAUSSIAN_BOXMULLER,
-      Caffe::vsl_stream(), n, r, a, sigma));
-}
-
-
-template <>
-void caffe_vRngGaussian<double>(const int n, double* r, const double a,
-    const double sigma) {
-  VSL_CHECK(vdRngGaussian(VSL_RNG_METHOD_GAUSSIAN_BOXMULLER,
-      Caffe::vsl_stream(), n, r, a, sigma));
-}
-
-template <>
-void caffe_exp<float>(const int n, const float* a, float* y) {
-  vsExp(n, a, y);
-}
-
-template <>
-void caffe_exp<double>(const int n, const double* a, double* y) {
-  vdExp(n, a, y);
-}
-
 template <>
 void caffe_gpu_dot<float>(const int n, const float* x, const float* y,
     float* out) {
@@ -268,3 +132,4 @@ template <>
 void caffe_gpu_dot<double>(const int n, const double* x, const double* y,
     double * out) {
   CUBLAS_CHECK(cublasDdot(Caffe::cublas_handle(), n, x, 1, y, 1, out));
+}

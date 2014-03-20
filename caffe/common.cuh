@@ -75,6 +75,22 @@ inline int CAFFE_GET_BLOCKS(const int N) {
 }
 
 
+class Caffe {
+  public:
+    ~Caffe() {};
+    inline static Caffe& Get() {
+      return instance;
+    }
+
+    inline static cublasHandle_t cublas_handle() { return Get().cublas_handle_; }
+    inline static curandGenerator_t curand_generator() { return Get().curand_generator_; }
+
+  private:
+    Caffe() {}
+    static Caffe instance;
+    cublasHandle_t cublas_handle_;
+    curandGenerator_t curand_generator_;
+};
 
 typedef enum {CblasNoTrans=111, CblasTrans=112, CblasConjTrans=113} CBLAS_TRANSPOSE;
 
