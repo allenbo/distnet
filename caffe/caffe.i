@@ -21,17 +21,9 @@
   int len = PyTuple_Size(shape);
   if (len == 2){
     PyArg_ParseTuple(shape, "ll", &rows, &cols);
-    //printf("The shape is (%ld, %ld)\n", rows, cols);
-    //printf("The stride is %ld\n", stride);
   }else if (len == 4) {
-    PyArg_ParseTuple(shape, "llll", &channel, &rows, &cols, &batch_size);
-    //printf("The size of shape is 4, and the shape is (%ld, %ld, %ld, %ld)\n", channel, rows, cols, batch_size);
-    //printf("Shape changes to (%ld, %ld)\n", rows, cols);
-    long stride0, stride1, stride2, itemsize;
-    PyArg_ParseTuple(strides, "llll", &stride0, &stride1, &stride2, &itemsize);
-    //printf("The strides is (%ld, %ld, %ld, %ld)\n", stride0, stride1, stride2, itemsize);
-    stride = stride2/itemsize;
-    //printf("Strides change to %ld\n", stride);
+    PyArg_ParseTuple(shape, "llll", &batch_size, &channel, &rows, &cols);
+    //printf("batch_size = %ld, channel = %ld, rows = %ld, cols = %ld", batch_size, channel, rows, cols);
   }
   $1 = new Blob(batch_size, channel, rows, cols, batch_size* channel* rows* cols, gpudata);
 }

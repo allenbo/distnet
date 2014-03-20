@@ -2,6 +2,7 @@
 #include "math_functions.cuh"
 #include "blob.cuh"
 #include <assert.h>
+#include <iostream>
 
 void convFilterActs(Blob& bottom, Blob& weight, Blob& top, int image_y, int output_y, int output_x, int padding, int stride, int color, int group) {
   const float* bottom_data = bottom.gpu_data();
@@ -12,14 +13,14 @@ void convFilterActs(Blob& bottom, Blob& weight, Blob& top, int image_y, int outp
   int num_filter = weight.num();
   int filter_size = weight.height();
 
+  //std::cout << "num = " << bottom.num() << " channel = " << bottom.channels() << " height = " << bottom.height() << " widht = " << bottom.width() << std::endl;
   int image_pixel = bottom.count() / (batch_size * color);
   int image_x = image_pixel / image_y;
   assert(bottom.channels() == color);
   assert(bottom.height() == image_y);
   assert(image_x * image_y == image_pixel);
 
-  Blob col_buffer_(0, 0, 0, 0);
-  col_buffer_.Reshape(1, color * filter_size * filter_size, output_y, output_x);
+  Blob col_buffer_(1, color * filter_size * filter_size, output_y, output_x);
   float* col_data = col_buffer_.mutable_gpu_data();
 
   int M_ = num_filter / group;

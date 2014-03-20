@@ -74,10 +74,16 @@ inline int CAFFE_GET_BLOCKS(const int N) {
   return (N + CAFFE_CUDA_NUM_THREADS - 1) / CAFFE_CUDA_NUM_THREADS;
 }
 
+long cluster_seedgen(void);
 
 class Caffe {
   public:
-    ~Caffe() {};
+    ~Caffe() {
+      if (cublas_handle_) CUBLAS_CHECK(cublasDestroy(cublas_handle_));
+      if (curand_generator_) {
+        CURAND_CHECK(curandDestroyGenerator(curand_generator_));
+      }
+    }
     inline static Caffe& Get() {
       return instance;
     }
@@ -86,7 +92,20 @@ class Caffe {
     inline static curandGenerator_t curand_generator() { return Get().curand_generator_; }
 
   private:
-    Caffe() {}
+    Caffe() {
+      // Try to create a cublas handler, and report an error if failed (but we will
+      // keep the program running as one might just want to run CPU code).
+      if (cublasCreate(&cublas_handle_) != CUBLAS_STATUS_SUCCESS) {
+        LOG(ERROR);
+      }
+      // Try to create a curand handler.
+      if (curandCreateGenerator(&curand_generator_, CURAND_RNG_PSEUDO_DEFAULT)
+          != CURAND_STATUS_SUCCESS ||
+          curandSetPseudoRandomGeneratorSeed(curand_generator_, cluster_seedgen())
+          != CURAND_STATUS_SUCCESS) {
+        LOG(ERROR);
+      }
+    }
     static Caffe instance;
     cublasHandle_t cublas_handle_;
     curandGenerator_t curand_generator_;
