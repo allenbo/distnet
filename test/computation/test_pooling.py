@@ -5,9 +5,8 @@ from distnet.util import divup
 import time
 import random
 
-batch_size = 128
-batchs = [128]
-for batch_size in batchs:
+print '%10s\t%10s\t%10s' %('batch', 'comput', 'real')
+for batch_size in [8, 16, 32, 64, 128, 256]:
   image_size = 55
   color = 96
   input_shape = (color, image_size, image_size, batch_size)
@@ -32,16 +31,15 @@ for batch_size in batchs:
     driver.Context.synchronize()
 
 
-  print 'batch_size == %d' % batch_size
   count = 100
   s = time.time()
   for i in range(count):
     cudaconv.convLocalMaxPool(input, output, color, pool_size, start, stride, image_size, output_size,
         output_size)
     driver.Context.synchronize()
+
+  real_time = (time.time() - s) / count
   
-  print '%f second per convLocalMaxPool' % ((time.time() - s) / count )
   data_amount = np.prod(output_shape) * (pool_size * pool_size + 1) * 4
-  comput_amount = np.prod(output_shape) * (pool_size * pool_size + 1)
-  print 'load [%fMB] data' % (data_amount * 1.0 / (1 << 20))
-  print 'do [%fG] float multiplication' % (comput_amount * 1.0 / 1e9)
+  comput_amount = np.prod(output_shape) * (pool_size * pool_size + 1) * 1.0 / 1e9
+  print '%10s\t%3.7f\t%3.7f' % (batch_size, comput_amount, real_time)

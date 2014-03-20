@@ -15,7 +15,7 @@ from cudaconv import *
 #cudaconv.init()
 
 ELTWISE_X = 32
-ELTWISE_Y = 8
+ELTWISE_Y = 32
 
 sgemm = None
 def _initialize_cublas():

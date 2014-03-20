@@ -4,7 +4,8 @@ import time
 import garray
 
 batch_size = 128
-for batch_size in [32, 64, 128, 256]:
+print '%10s\t%10s\t%10s' %('batch', 'data', 'real')
+for batch_size in [8, 16, 32, 64, 128, 256]:
   image_size = 55
   color = 3
   input_shape = (color * image_size * image_size, batch_size)
@@ -16,7 +17,6 @@ for batch_size in [32, 64, 128, 256]:
 
   input = gpuarray.to_gpu(input_local)
   output = gpuarray.to_gpu(output_local)
-  print 'batch_size = %d' % batch_size
   count = 10
   for i in range(count):
     garray.relu_activate(input, output, e)
@@ -27,8 +27,8 @@ for batch_size in [32, 64, 128, 256]:
   for i in range(count):
     garray.relu_activate(input, output, e)
     driver.Context.synchronize()
+  
+  real_time = (time.time() - start) / count
 
-  print '%f seconds for %d times relu activate' % (time.time() - start, count)
-
-  data_amount = np.prod(input_shape) * 2 * 4
-  print 'load [%fMB] data' % (data_amount * 1.0 / (1 << 20))
+  data_amount = (np.prod(input_shape) * 2 * 4.0) / (1<<20)
+  print '%10s\t%3.7f\t%3.7f' % (batch_size, data_amount, real_time)

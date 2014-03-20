@@ -146,8 +146,7 @@ __global__ void kLocalPool(float* imgs, float* target, const int imageY, const i
                 if (!checkCaseBounds || imgIdx + i * B_X < numImages) {
                     #pragma unroll
                     for (int f = 0; f < filtersPerThread; f++) {
-                        //prod[f][i] = agg(prod[f][i], imgs[(f * imgPixels + imgPx) * numImages + i * B_X]);
-                        prod[f][i] = imgs[(f * imgPixels + imgPx) * numImages + i * B_X];
+                        prod[f][i] = agg(prod[f][i], imgs[(f * imgPixels + imgPx) * numImages + i * B_X]);
                     }
                 }
             }
@@ -159,8 +158,7 @@ __global__ void kLocalPool(float* imgs, float* target, const int imageY, const i
         if (!checkCaseBounds || imgIdx + i * B_X < numImages) {
             #pragma unroll
             for (int f = 0; f < filtersPerThread; f++) {
-                //target[f * numOutputs * numImages + i * B_X] = agg.output(prod[f][i], regionSize); 
-                target[f * numOutputs * numImages + i * B_X] = prod[f][i];
+                target[f * numOutputs * numImages + i * B_X] = agg.output(prod[f][i], regionSize); 
             }
         }
     }
