@@ -41,6 +41,11 @@ class ConvExecuter(Executer):
       input_shape = tuple(param['input_shape'])
       output_shape = tuple(param['output_shape'])
       filter_shape = tuple(param['filter_shape'])
+      if filter_shape[-1] % 16 != 0:
+        num_filter = (filter_shape[-1] + 16 - 1) / 16 * 16
+        filter_shape = filter_shape[:-1] + (num_filter, )
+        print 'Change the number of filters to %d and  make it a multiple of 16' % num_filter
+        output_shape = (num_filter, ) + output_shape[1:] 
 
       input = gpuarray.to_gpu(np.random.randn(*input_shape).astype(np.float32))
       output = gpuarray.to_gpu(np.random.randn(*output_shape).astype(np.float32))
@@ -94,6 +99,12 @@ class PoolExecuter(Executer):
     for param in self.param:
       input_shape = tuple(param['input_shape'])
       output_shape = tuple(param['output_shape'])
+
+      if input_shape[0] % 16 != 0:
+        num_filter = (input_shape[0] + 16 -1 ) / 16 * 16
+        input_shape = (num_filter, ) + input_shape[1:]
+        output_shape = (num_filter, ) + output_shape[1:]
+        print 'Change the number of filters to %d and  make it a multiple of 16' % num_filter
       
       input = gpuarray.to_gpu(np.random.randn(*input_shape).astype(np.float32))
       outgrad = gpuarray.to_gpu(np.random.randn(*input_shape).astype(np.float32))
@@ -143,7 +154,13 @@ class RNormExecuter(Executer):
     for param in self.param:
       input_shape = tuple(param['input_shape'])
       output_shape = tuple(param['input_shape'])
-      
+ 
+      if input_shape[0] % 16 != 0:
+        num_filter = (input_shape[0] + 16 -1 ) / 16 * 16
+        input_shape = (num_filter, ) + input_shape[1:]
+        output_shape = (num_filter, ) + output_shape[1:]
+        print 'Change the number of filters to %d and  make it a multiple of 16' % num_filter
+     
       input = gpuarray.to_gpu(np.random.randn(*input_shape).astype(np.float32))
       outgrad = gpuarray.to_gpu(np.random.randn(*input_shape).astype(np.float32))
       output = gpuarray.to_gpu(np.random.randn(*output_shape).astype(np.float32))
@@ -189,6 +206,13 @@ class CMRNormExecuter(Executer):
     for param in self.param:
       input_shape = tuple(param['input_shape'])
       output_shape = tuple(param['input_shape'])
+
+      if input_shape[0] % 16 != 0:
+        num_filter = (input_shape[0] + 16 -1 ) / 16 * 16
+        input_shape = (num_filter, ) + input_shape[1:]
+        output_shape = (num_filter, ) + output_shape[1:]
+        print 'Change the number of filters to %d and  make it a multiple of 16' % num_filter
+
       
       input = gpuarray.to_gpu(np.random.randn(*input_shape).astype(np.float32))
       outgrad = gpuarray.to_gpu(np.random.randn(*input_shape).astype(np.float32))

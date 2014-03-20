@@ -4,7 +4,7 @@ import cPickle as pickle
 import reader
 import numpy as np
 from util import divup
-from state import State, combination_conv, combination_fc, state0, disw_i, sisw
+from state import State, combination_conv, combination_fc, state0, disw_i, sisw, sidw, sidw_f
 import request
 from execute import RequestExecuter
 from communicat import ConvFC, comm_cost
@@ -17,6 +17,7 @@ def computation_cost(model, image_shape, comp_cost, req = None):
   conv_end = False
   comb = combination_conv
   input_shape = image_shape
+  print '{:10}\t{:30}\t{:20}\t'.format('layer', 'distribution', 'cp_cost')
   for layer in model:
     layer['input_shape'] = input_shape
     layer['overlapping'] = 0
@@ -75,6 +76,7 @@ def computation_cost(model, image_shape, comp_cost, req = None):
       for s in comb:
         layer['comp_cost'][(s, n)] = comp_cost[layer['name']][(s,n)]
         layer['overlapping'] = comp_cost[layer['name']].get('overlapping', 0)
+        print '{:10}\t{:30}\t{:20}'.format(layer['name'], s, layer['comp_cost'][(s, n)])
 
     else:
       if req == None:
@@ -103,11 +105,12 @@ def find_best(model, init_state, cfs):
   if cfs == ConvFC.conv_fc or cfs == ConvFC.fc:
     cfs = ConvFC.fc
   else:
-    next_layer = model[1]
-    if next_layer['type'] == 'fc':
-      cfs = ConvFC.conv_fc
-    else:
-      cfs = ConvFC.conv
+    if len(model) != 1:
+      next_layer = model[1]
+      if next_layer['type'] == 'fc':
+        cfs = ConvFC.conv_fc
+      else:
+        cfs = ConvFC.conv
 
   if layer['type'] not in ['fc', 'conv', 'softmax']:
     cost, state_list = find_best(model[1:], init_state, cfs)
@@ -146,11 +149,12 @@ def print_details(model, states):
     if cfs == ConvFC.conv_fc or cfs == ConvFC.fc:
       cfs = ConvFC.fc
     else:
-      next_layer = model[i+1]
-      if next_layer['type'] == 'fc':
-        cfs = ConvFC.conv_fc
-      else:
-        cfs = ConvFC.conv
+      if i + 1 != len(model):
+        next_layer = model[i+1]
+        if next_layer['type'] == 'fc':
+          cfs = ConvFC.conv_fc
+        else:
+          cfs = ConvFC.conv
 
     if layer['type'] not in ['fc', 'conv', 'softmax']:
       cm_cost = 0 if curr_state != disw_i else overlapping * 2.0 / bandwidth
@@ -172,12 +176,12 @@ def print_details(model, states):
 
 
 name = device_name()
-n = 9
+n = 4
 latency = 0.001
 
 model_file = '../config/imagenet.cfg'
 image_shape = (3, 224, 224, 128)
-bandwidth = 1.25e9
+bandwidth = 5e9
 
 model = reader.getmodel(model_file)
 filename = '%s-%d.%s' % (name, n, os.path.basename(model_file))
@@ -196,6 +200,7 @@ computation_cost(model, image_shape, comp_cost)
 cost, states = find_best(model, state0, ConvFC.conv)
 print 'cost', cost
 #print_details(model, states)
-states = [disw_i] * (len(model) - 6) + [sisw] * 6
+
+states = [disw_i] * (len(model) - 6) + [sidw_f] * 5 + [sisw]
 #states = [sisw] * len(model)
 print_details(model, states)

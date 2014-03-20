@@ -16,7 +16,7 @@ sidw_f = (State.shared, State.dist_f)
 #for both
 disw_b = (State.dist_b, State.shared)
 
-#combination_conv =(sisw, sidw, disw_b, disw_i)
-#combination_fc = (sisw, sidw_f, disw_b)
-combination_conv =(sisw, disw_b, disw_i)
+combination_conv =(sisw, sidw, disw_b, disw_i)
 combination_fc = (sisw, sidw_f, disw_b)
+#combination_conv =(sisw, disw_b, disw_i)
+#combination_fc = (sisw, sidw_f, disw_b)
