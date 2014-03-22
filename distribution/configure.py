@@ -179,9 +179,9 @@ name = device_name()
 n = 4
 latency = 0.001
 
-model_file = '../config/imagenet.cfg'
+model_file = '../config/imagenet_many_filter.cfg'
 image_shape = (3, 224, 224, 128)
-bandwidth = 5e9
+bandwidth = 1.25e9
 
 model = reader.getmodel(model_file)
 filename = '%s-%d.%s' % (name, n, os.path.basename(model_file))
@@ -199,8 +199,6 @@ with open(filename) as f:
 computation_cost(model, image_shape, comp_cost)
 cost, states = find_best(model, state0, ConvFC.conv)
 print 'cost', cost
-#print_details(model, states)
-
-states = [disw_i] * (len(model) - 6) + [sidw_f] * 5 + [sisw]
+#states = [sidw] * (len(model) - 6) + [sidw_f] * 5 + [sisw]
 #states = [sisw] * len(model)
 print_details(model, states)

@@ -12,7 +12,7 @@ percent = []
 data_amount = []
 comput_amount = []
 
-image_sizes = [224, 27, 13]
+image_sizes = [112, 27, 13]
 filter_sizes = [11, 5, 3]
 colors = [3, 96, 256]
 channels = [96, 256, 384]
@@ -24,7 +24,7 @@ band_width = int(test_base.memory_bandwidth(0))
 for image_size, color, channel, padding, stride, filter_size in zip(image_sizes, colors, channels, paddings, strides, filter_sizes):
   print 'color = %d channel = %d image_size = %d' % (color, channel, image_size)
   print '%10s\t%10s\t%10s\t%10s\t%10s\t%10s' %('batch', 'data', 'expect', 'real', 'percent', 'comput')
-  for batch_size in [128, 256]: #[32, 64, 128, 256]:
+  for batch_size in [128]: #[32, 64, 128, 256]:
     input_shape = (color, image_size, image_size, batch_size)
     filter_shape = (color, filter_size, filter_size, channel)
     output_size = 1 + divup(2 * padding + image_size - filter_size, stride)

@@ -1,4 +1,4 @@
-SRC = blob.cu caffe_wrap.cu im2col.cu filter_acts.cu common.cu math_functions.cu
+SRC = blob.cu caffe_wrap.cu im2col.cu conv_acts.cu common.cu math_functions.cu
 OBJ = $(patsubst %.cu,%.o,${SRC})
 CUDA_DIR = /home/justin/pkg/cuda-5.0
 CUDA_INCLUDE = -I${CUDA_DIR}/include
