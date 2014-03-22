@@ -90,3 +90,50 @@ void convImgActs(Blob& ingrad, Blob& weight, Blob& outgrad,
 
   }
 }
+
+
+void convWeightActs(Blob& input, Blob& ingrad, Blob& weight_grad,
+    int image_y, int output_y, int output_x,
+    int filter_size, int padding, int stride, int color, int group)
+{
+  const float* ingrad_data = ingrad.gpu_data();
+  const float* input_data = input.gpu_data();
+  float* weight_diff = weight_grad.mutable_gpu_data();
+
+  int batch_size = ingrad.num();
+  int num_filter = ingrad.channels();
+  
+  assert(input.channels() == color);
+  
+  int input_pixel = input.count() / (batch_size * color);
+  int image_x = input_pixel / image_y;
+  assert(image_x * image_y == input_pixel);
+  assert(filter_size == weight_grad.height());
+  assert(ingrad.height() == output_y);
+  assert(ingrad.width() == output_x);
+
+  Blob col_buffer_(1, color* filter_size * filter_size, output_y, output_x);
+  float* col_data = col_buffer_.mutable_gpu_data();
+
+  int M_ = num_filter / group;
+  int K_ = color * filter_size * filter_size / group;
+  int N_ = output_y * output_x;
+
+  int weight_offset = M_ * K_;
+  int col_offset = K_ * N_;
+  int ingrad_offset = M_ * N_;
+
+  CUDA_CHECK(cudaMemset(weight_diff, 0, sizeof(float) * weight_grad.count()));
+  
+  for(int n = 0; n < batch_size; ++n) {
+    im2col_gpu(input_data + input.offset(n), color, image_y,
+        image_x, filter_size, stride, padding, col_data);
+
+    for (int g = 0; g < group; ++g) {
+      caffe_gpu_gemm<float>(CblasNoTrans, CblasTrans, M_, K_, N_,
+        (float)1., ingrad_data + ingrad.offset(n) + ingrad_offset * g,
+        col_data + col_offset * g, (float)1.,
+        weight_diff + weight_offset * g);
+    }
+  }
+}
