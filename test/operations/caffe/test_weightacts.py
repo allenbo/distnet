@@ -32,5 +32,3 @@ filter_caffe = gpuarray.to_gpu(filter_local)
 
 caffe.convWeightActs(input_caffe, ingrad_caffe, filter_caffe, image_size, output_size,
     output_size, filter_size, -padding, stride, color, 1)
-
-print filter_caffe.get()[0, 0, :, :]

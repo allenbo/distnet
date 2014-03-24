@@ -2,7 +2,6 @@
 %{
 #include "common.cuh"
 #include "blob.cuh"
-#include "syncedmem.cuh"
 #include "caffe.cuh"
 %}
 
