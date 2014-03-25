@@ -18,29 +18,4 @@ void caffe_gpu_gemm(const CBLAS_TRANSPOSE TransA,
     const Dtype alpha, const Dtype* A, const Dtype* B, const Dtype beta,
     Dtype* C);
 
-template <typename Dtype>
-void caffe_gpu_gemv(const CBLAS_TRANSPOSE TransA, const int M, const int N,
-    const Dtype alpha, const Dtype* A, const Dtype* x, const Dtype beta,
-    Dtype* y);
-
-template <typename Dtype>
-void caffe_gpu_axpy(const int N, const Dtype alpha, const Dtype* X,
-    Dtype* Y);
-
-template <typename Dtype>
-void caffe_gpu_axpby(const int N, const Dtype alpha, const Dtype* X,
-    const Dtype beta, Dtype* Y);
-
-template <typename Dtype>
-void caffe_gpu_copy(const int N, const Dtype *X, Dtype *Y);
-
-template <typename Dtype>
-void caffe_gpu_scal(const int N, const Dtype alpha, Dtype *X);
-
-template <typename Dtype>
-void caffe_gpu_mul(const int N, const Dtype* a, const Dtype* b, Dtype* y);
-
-template <typename Dtype>
-void caffe_gpu_dot(const int n, const Dtype* x, const Dtype* y, Dtype* out);
-
 #endif  // CAFFE_UTIL_MATH_FUNCTIONS_H_

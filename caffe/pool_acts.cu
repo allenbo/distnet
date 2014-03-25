@@ -136,6 +136,7 @@ void convLocalMaxPool(Blob& input, Blob& output,
   assert(output.channels() == num_filter);
   assert(output.num() == input.num() && output.channels() == input.channels());
 
+  Caffe::cublas_handle();
   int batch_size = input.num();
   int count = output.count();
 

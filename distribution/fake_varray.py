@@ -122,7 +122,7 @@ class VArray(object):
     if issquare(self.num_worker):
       self.slice_dim = (1, 2)
       self.slice_method = DistMethod.square
-      self.nprow = math.sqrt(self.num_worker)
+      self.nprow = int(math.sqrt(self.num_worker))
       self.local_area = self.make_square_area(self.rank)
     else:
       self.slice_dim = 1
@@ -141,7 +141,7 @@ class VArray(object):
     second_pos = int(rank % self.nprow)
 
     first_from  = first_pos * local_nrow
-    first_to = (first_pos + 1) * local_nrow  if self.num_worker - rank >= self.nprow else self.global_shape[first]
+    first_to = (first_pos + 1) * local_nrow  if self.num_worker - rank > self.nprow else self.global_shape[first]
     second_from = second_pos * local_ncol
     second_to = (second_pos + 1) * local_ncol if (rank + 1) % self.nprow != 0  else self.global_shape[second]
 
@@ -171,54 +171,25 @@ class VArray(object):
     _to = [x - 1 for x in _to]
     return Area(Point(*_from) , Point(*_to))
 
-  def cross_communicate(self, stride, filter_size, padding = 0, num_output = None):
+  def cross_communicate(self, stride, filter_size, padding = 0, output_area = None):
     ''' When cross communicate is being called, FastNet is distribued the image cross height and width'''
     assert padding <= 0, str(padding)
-    #r, c = self.slice_dim
-    #The dimension of height and width
-    r, c =  1, 2
+    r, c = self.slice_dim
     half_filter_size = (filter_size - 1) /2
-    if stride != 1:
-      global_row_begin_centroid = global_col_begin_centroid = half_filter_size + padding
+  
+    from_point = output_area._from
+    to_point = output_area._to
 
-      row_begin_centroid = global_row_begin_centroid
-      col_begin_centroid = global_col_begin_centroid
+    row_begin_centroid = from_point[r] * stride + padding + half_filter_size
+    row_end_centroid = to_point[r] * stride + padding + half_filter_size
+    col_begin_centroid = from_point[c] * stride + padding + half_filter_size
+    col_end_centroid = to_point[c] * stride + padding + half_filter_size
 
-      while row_begin_centroid < self.local_area._from[r]: row_begin_centroid += stride
-      while col_begin_centroid < self.local_area._from[c]: col_begin_centroid += stride
-
-      row_end_centroid = row_begin_centroid
-      col_end_centroid = col_begin_centroid
-
-      while row_end_centroid < self.local_area._to[r]: row_end_centroid += stride
-      if row_end_centroid != self.local_area._to[r]:
-        row_end_centroid -= stride
-      while col_end_centroid < self.local_area._to[c]: col_end_centroid += stride
-      if col_end_centroid != self.local_area._to[c]:
-        col_end_centroid -= stride
-
-      if num_output is not None:
-        num_row , num_col = num_output
-        diff = num_row - ((row_end_centroid - row_begin_centroid) / stride  + 1)
-        if diff != 0:
-          if diff > 0:
-            row_begin_centroid -= diff * stride
-          else:
-            row_end_centroid += diff * stride
-        diff = num_col - ((col_end_centroid - col_begin_centroid) / stride  + 1)
-        if diff != 0:
-          if diff > 0:
-            col_begin_centroid -= diff * stride
-          else:
-            col_end_centroid += diff * stride
-
-      row_up = half_filter_size - (row_begin_centroid - self.local_area._from[r])
-      row_down = half_filter_size - (self.local_area._to[r] - row_end_centroid)
-      col_left = half_filter_size - (col_begin_centroid - self.local_area._from[c])
-      col_right = half_filter_size - (self.local_area._to[c] - col_end_centroid)
-    else:
-      row_up = row_down = col_left = col_right = half_filter_size
-
+    row_up = half_filter_size - (row_begin_centroid - self.local_area._from[r])
+    row_down = half_filter_size - (self.local_area._to[r] - row_end_centroid)
+    col_left = half_filter_size - (col_begin_centroid - self.local_area._from[c])
+    col_right = half_filter_size - (self.local_area._to[c] - col_end_centroid)
+    
     import copy
     cross_from = copy.deepcopy(self.local_area._from)
     cross_to = copy.deepcopy(self.local_area._to)

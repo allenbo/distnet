@@ -159,7 +159,8 @@ def tanh_compute_grad(grad, output, out_grad, a, b):
 def convolution(input, filter ,output, image_y, output_y, output_x, padding, stride, channel, group):
   assert isinstance(input, VArray) and isinstance(filter, VArray) and isinstance(output, VArray)
 
-  input.cross_communicate(padding = padding, stride = stride, filter_size = filter.local_shape[1])
+  input.cross_communicate(padding = padding, stride = stride, filter_size = filter.local_shape[1],
+      output_area = output.local_area)
 
   #r, c = output.slice_dim
   r, c = 1, 2
@@ -180,7 +181,8 @@ def bconvolution(input, grad, filter, out_grad, image_y, image_x, output_size, p
 
   start = time.time()
   if not hasattr(input, 'tmp_local_data'):
-    input.cross_communicate(padding = padding, stride = stride, filter_size = filter.local_shape[1])
+    input.cross_communicate(padding = padding, stride = stride, filter_size =
+        filter.local_shape[1], output_area = grad.local_area)
   if not hasattr(out_grad, 'tmp_out_grad'):
     tmp_out_grad = garray.empty_like(input.tmp_local_data)
     out_grad.tmp_out_grad = tmp_out_grad
@@ -204,7 +206,8 @@ def bconvolution(input, grad, filter, out_grad, image_y, image_x, output_size, p
 
 def wconvolution(input, grad, weight_grad, image_y, output_y, output_x, filter_size, padding, stride, channel):
   if not hasattr(input, 'tmp_local_data'):
-    input.cross_communicate(padding = padding, stride = stride, filter_size = filter_size)
+    input.cross_communicate(padding = padding, stride = stride, filter_size = filter_size,
+        output_area = grad.local_area)
   #r,c = input.slice_dim
   r, c = 1, 2
   image_y = input.tmp_local_data.shape[r]
@@ -230,7 +233,7 @@ def maxpool(input, output, channel, pool_size, start, stride, input_y, output_y,
   r, c = 1, 2
   num_row = output.local_shape[r]
   num_col = output.local_shape[c]
-  input.cross_communicate(stride = stride, filter_size = pool_size, num_output = (num_row, num_col))
+  input.cross_communicate(stride = stride, filter_size = pool_size, output_area = output.local_area)
 
   output_y = output.local_shape[r]
   output_x = output.local_shape[c]
@@ -250,7 +253,7 @@ def maxundo(input, grad, output, out_grad, pool_size, start, stride, output_y, o
   if not hasattr(input, 'tmp_local_data'):
     num_row = output.local_shape[r]
     num_col = output.local_shape[c]
-    input.cross_communicate(stride = stride, filter_size = pool_size, num_output = (num_row, num_col))
+    input.cross_communicate(stride = stride, filter_size = pool_size, output_area = grad.local_area)
   if not hasattr(out_grad, 'tmp_out_grad'):
     tmp_out_grad = garray.empty_like(input.tmp_local_data)
     out_grad.tmp_out_grad = tmp_out_grad
@@ -276,7 +279,7 @@ def avgpool(input, output, channel, pool_size, start, stride, input_y, output_y,
   r, c = 1, 2
   num_row = output.local_shape[r]
   num_col = output.local_shape[c]
-  input.cross_communicate(stride = stride, filter_size = pool_size, num_output = (num_row, num_col))
+  input.cross_communicate(stride = stride, filter_size = pool_size, output_area = grad.local_area)
 
   output_y = output.local_shape[r]
   output_x = output.local_shape[c]
@@ -295,7 +298,7 @@ def avgundo(input, grad, out_grad, pool_size, start, stride, output_y, output_x,
   if not hasattr(input, 'tmp_local_data'):
     num_row = output.local_shape[r]
     num_col = output.local_shape[c]
-    input.cross_communicate(stride = stride, filter_size = pool_size, num_output = (num_row, num_col))
+    input.cross_communicate(stride = stride, filter_size = pool_size, output_area = grad.local_area)
   if not hasattr(out_grad, 'tmp_out_grad'):
     tmp_out_grad = garray.empty_like(input.tmp_local_data)
     out_grad.tmp_out_grad = tmp_out_grad
@@ -317,7 +320,7 @@ def avgundo(input, grad, out_grad, pool_size, start, stride, output_y, output_x,
   out_grad.write(data = tmp_out_grad, area = input.tmp_local_area)
 
 def rnorm(input, denom, output, channel, size, image_y, scaler, pow):
-  input.cross_communicate(filter_size = size, stride = 1)
+  input.cross_communicate(filter_size = size, stride = 1, output_area = output.local_area)
   #r, c = output.slice_dim
   r, c = 1, 2
 
@@ -339,15 +342,15 @@ def rnorm(input, denom, output, channel, size, image_y, scaler, pow):
 
 def rnormundo(grad, denom, input, output, out_grad, channel, size, image_y, scaler, pow):
   if not hasattr(input, 'tmp_local_data'):
-    input.cross_communicate(stride = 1, filter_size = size)
-    denom.cross_communicate(stride = 1, filter_size = size)
+    input.cross_communicate(stride = 1, filter_size = size, output_area = grad.local_area)
+    denom.cross_communicate(stride = 1, filter_size = size, output_area = grad.local_area)
 
   if output.tmp_local_data.shape != input.tmp_local_data.shape:
-    output.cross_communicate(stride = 1, filter_size = size)
+    output.cross_communicate(stride = 1, filter_size = size, output_area = grad.local_area)
 
 
   if not hasattr(grad, 'tmp_local_data'):
-    grad.cross_communicate(stride = 1, filter_size = size)
+    grad.cross_communicate(stride = 1, filter_size = size, output_area = grad.local_area)
 
   tmp_out_grad = garray.empty_like(input.tmp_local_data)
 

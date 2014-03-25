@@ -179,9 +179,9 @@ name = device_name()
 n = 4
 latency = 0.001
 
-model_file = '../config/imagenet_many_filter.cfg'
+model_file = '../config/imagenet.cfg'
 image_shape = (3, 224, 224, 128)
-bandwidth = 1.25e9
+bandwidth = 5e9
 
 model = reader.getmodel(model_file)
 filename = '%s-%d.%s' % (name, n, os.path.basename(model_file))

@@ -96,7 +96,7 @@ class VArray(object):
         assert slice_dim, 'Must specify slice_diim'
         assert len(slice_dim) == 2, 'Length of slice_dim must be 2'
 
-        self.nprow = math.sqrt(self.world_size)
+        self.nprow = int(math.sqrt(self.world_size))
 
         self.local_area = self.make_square_area(self.rank)
         if array is not None:
@@ -408,7 +408,7 @@ class VArray(object):
     second_pos = int(rank % self.nprow)
 
     first_from  = first_pos * local_nrow
-    first_to = (first_pos + 1) * local_nrow  if self.world_size - rank >= self.nprow else self.global_shape[first]
+    first_to = (first_pos + 1) * local_nrow  if self.world_size - rank > self.nprow else self.global_shape[first]
     second_from = second_pos * local_ncol
     second_to = (second_pos + 1) * local_ncol if (rank + 1) % self.nprow != 0  else self.global_shape[second]
 
@@ -521,55 +521,24 @@ class VArray(object):
       global_max = WORLD.allreduce(local_max, op = max)
       return global_max
 
-  def cross_communicate(self, stride, filter_size, padding = 0, num_output = None):
+  def cross_communicate(self, stride, filter_size, padding = 0, output_area = None):
     ''' When cross communicate is being called, FastNet is distribued the image cross height and width'''
     assert padding <= 0, str(padding)
-    #r, c = self.slice_dim
-    #The dimension of height and width
-    r, c =  1, 2
-
+    r, c = self.slice_dim
     half_filter_size = (filter_size - 1) /2
-    if stride != 1:
-      global_row_begin_centroid = global_col_begin_centroid = half_filter_size + padding
+  
+    from_point = output_area._from
+    to_point = output_area._to
 
-      row_begin_centroid = global_row_begin_centroid
-      col_begin_centroid = global_col_begin_centroid
+    row_begin_centroid = from_point[r] * stride + padding + half_filter_size
+    row_end_centroid = to_point[r] * stride + padding + half_filter_size
+    col_begin_centroid = from_point[c] * stride + padding + half_filter_size
+    col_end_centroid = to_point[c] * stride + padding + half_filter_size
 
-      while row_begin_centroid < self.local_area._from[r]: row_begin_centroid += stride
-      while col_begin_centroid < self.local_area._from[c]: col_begin_centroid += stride
-
-      row_end_centroid = row_begin_centroid
-      col_end_centroid = col_begin_centroid
-
-      while row_end_centroid < self.local_area._to[r]: row_end_centroid += stride
-      if row_end_centroid != self.local_area._to[r]:
-        row_end_centroid -= stride
-      while col_end_centroid < self.local_area._to[c]: col_end_centroid += stride
-      if col_end_centroid != self.local_area._to[c]:
-        col_end_centroid -= stride
-
-      if num_output is not None:
-        num_row , num_col = num_output
-        diff = num_row - ((row_end_centroid - row_begin_centroid) / stride  + 1)
-        if diff != 0:
-          if diff > 0:
-            row_begin_centroid -= diff * stride
-          else:
-            row_end_centroid += diff * stride
-        diff = num_col - ((col_end_centroid - col_begin_centroid) / stride  + 1)
-        if diff != 0:
-          if diff > 0:
-            col_begin_centroid -= diff * stride
-          else:
-            col_end_centroid += diff * stride
-
-
-      row_up = half_filter_size - (row_begin_centroid - self.local_area._from[r])
-      row_down = half_filter_size - (self.local_area._to[r] - row_end_centroid)
-      col_left = half_filter_size - (col_begin_centroid - self.local_area._from[c])
-      col_right = half_filter_size - (self.local_area._to[c] - col_end_centroid)
-    else:
-      row_up = row_down = col_left = col_right = half_filter_size
+    row_up = half_filter_size - (row_begin_centroid - self.local_area._from[r])
+    row_down = half_filter_size - (self.local_area._to[r] - row_end_centroid)
+    col_left = half_filter_size - (col_begin_centroid - self.local_area._from[c])
+    col_right = half_filter_size - (self.local_area._to[c] - col_end_centroid)
 
     import copy
     cross_from = copy.deepcopy(self.local_area._from)
@@ -590,7 +559,6 @@ class VArray(object):
 
     self.tmp_local_area = Area(cross_from, cross_to)
     self.tmp_local_data = self.fetch(self.tmp_local_area, padding = padding)
-    #self.tmp_local_data = self.fetch(self.tmp_local_area)
 
   def get_pad_info(self, padding, old_shape, old_area):
     #row, col = self.slice_dim

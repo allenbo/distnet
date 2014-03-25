@@ -30,6 +30,7 @@ class Executer(object):
     self.num_worker = self.decr['workers']
     self.state = self.decr['state']
     self.type = self.decr['type']
+    print self.decr['layer_name'], self.decr['state']
 
   def execute(self):
     assert False, 'Implementation needed'
@@ -38,6 +39,7 @@ class ConvExecuter(Executer):
   def execute(self):
     times = []
     for param in self.param:
+      print param
       input_shape = tuple(param['input_shape'])
       output_shape = tuple(param['output_shape'])
       filter_shape = tuple(param['filter_shape'])
@@ -97,6 +99,7 @@ class PoolExecuter(Executer):
   def execute(self):
     times = []
     for param in self.param:
+      print param
       input_shape = tuple(param['input_shape'])
       output_shape = tuple(param['output_shape'])
 
@@ -152,6 +155,7 @@ class RNormExecuter(Executer):
   def execute(self):
     times = []
     for param in self.param:
+      print param
       input_shape = tuple(param['input_shape'])
       output_shape = tuple(param['input_shape'])
  
@@ -204,6 +208,7 @@ class CMRNormExecuter(Executer):
   def execute(self):
     times = []
     for param in self.param:
+      print param
       input_shape = tuple(param['input_shape'])
       output_shape = tuple(param['input_shape'])
 
@@ -256,6 +261,7 @@ class FCExecuter(Executer):
   def execute(self):
     times = []
     for param in self.param:
+      print param
       input_shape = tuple(param['input_shape'])
       output_shape = tuple(param['output_shape'])
       weight_shape = tuple(param['weight_shape'])
@@ -307,6 +313,7 @@ class SoftmaxExecuter(Executer):
   def execute(self):
     times = []
     for param in self.param:
+      print param
       input_shape = param['input_shape']
       output_shape = param['output_shape']
 
@@ -347,6 +354,7 @@ class NeuronExecuter(Executer):
   def execute(self):
     times = []
     for param in self.param:
+      print param
       input_shape = tuple(param['input_shape'])
       input_shape = (np.prod(input_shape[:-1]), input_shape[-1])
       output_shape = tuple(param['output_shape'])
@@ -400,7 +408,6 @@ class RequestExecuter(object):
         self.write_cost()
       else:
         print 'Running request ...'
-        print request
         decr = request['decr']
         param = request['param']
         layer_name = decr['layer_name']

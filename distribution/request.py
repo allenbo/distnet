@@ -133,11 +133,10 @@ class ConvRequestWriter(RequestWriter):
         output_shape = output_varray.local_shape
         input_shape = input_varray.local_shape
         if self.name not in ['neuron', 'cmrnorm']:
-          if self.name == 'pool':
-            num_output = tuple(output_shape[1:3])
-          else:
-            num_output = None
-          input_shape, overlapping = input_varray.cross_communicate(self.stride, self.filter_size, -self.padding, num_output)
+          print i, output_varray.local_area,
+          input_shape, overlapping = input_varray.cross_communicate(self.stride, self.filter_size,
+              -self.padding, output_area = output_varray.local_area)
+          print input_varray.tmp_local_area
           overlapping_max = max(overlapping, overlapping_max)
           if self.name in ['rnorm']:
             output_shape = input_shape
