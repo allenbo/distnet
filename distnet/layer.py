@@ -6,6 +6,7 @@ import numpy as np
 import garray
 
 from multigpu import convert_shape, allocate, arr, uniformed_array, rank, multi_gpu
+from multigpu import get_state
 
 PFout = False
 PBout = False
@@ -29,6 +30,7 @@ class Layer(object):
     self.output = None
     self.output_grad = None
     self.neuron = None
+    self.state = get_state(self.name)
 
   def disable_bprop(self):
     self.disable_bprop = True
@@ -46,9 +48,10 @@ class Layer(object):
     pass
 
   def init_output(self, fc = False):
+    slice_dim = get_output_distribution(self.state, not fc)
     out_shape = self.get_output_shape()
-    self.output = allocate(out_shape, unique = not fc)
-    self.output_grad = allocate(out_shape, unique = not fc)
+    self.output = allocate(out_shape, slice_dim = slice_dim)
+    self.output_grad = allocate(out_shape, slice_dim = slice_dim)
 
   def dump(self):
     attr = [att for att in dir(self) if not att.startswith('__')]
@@ -88,8 +91,10 @@ class WeightedLayer(Layer):
     Layer.__init__(self, name, type, disable_bprop)
     self.initW = initW
     self.initB = initB
-    self.weight = WEIGHTS.empty('weight.' + self.name, epsW, momW, wc, False)
-    self.bias = WEIGHTS.empty('bias.' + self.name, epsB, momB, 0.0, False)
+
+    slice_dim = get_weight_distribution(self.state, conv = (self.type == 'conv'))
+    self.weight = WEIGHTS.empty('weight.' + self.name, epsW, momW, wc, slice_dim = slice_dim)
+    self.bias = WEIGHTS.empty('bias.' + self.name, epsB, momB, 0.0, slice_dim = slice_dim)
 
     if weight is not None:
       self.weight.set_weight(weight)
@@ -324,7 +329,8 @@ class ResponseNormLayer(Layer):
     image_shape = prev.get_output_shape()
     self.numColor, self.img_size, _, self.batch_size = image_shape
 
-    self.denom = allocate((self.numColor , self.img_size , self.img_size, self.batch_size), unique = True)
+    slice_dim = get_output_distribution(self.state, True)
+    self.denom = allocate((self.numColor , self.img_size , self.img_size, self.batch_size), slice_dim = slice_dim)
 
 
   def get_output_shape(self):
@@ -332,7 +338,8 @@ class ResponseNormLayer(Layer):
 
   def change_batch_size(self, batch_size):
     Layer.change_batch_size(self, batch_size)
-    self.denom = allocate((self.numColor , self.img_size , self.img_size, self.batch_size), unique = True)
+    slice_dim = get_output_distribution(self.state, True)
+    self.denom = allocate((self.numColor , self.img_size , self.img_size, self.batch_size), slice_dim = slice_dim)
 
   def fprop(self, input, output, train=TRAIN):
     arr.rnorm(input, self.denom, output, self.numColor, self.size, self.img_size, self.scaler,
@@ -405,7 +412,7 @@ class FCLayer(WeightedLayer):
         output *= (1.0 - self.dropRate)
     else:
       if self.dropRate > 0.0:
-        self.dropMask = uniformed_array(np.random.uniform(0, 1, output.size).astype(np.float32).reshape(output.shape), unique = False)
+        self.dropMask = uniformed_array(np.random.uniform(0, 1, output.size).astype(np.float32).reshape(output.shape), slice_dim = None)
         arr.bigger_than_scaler(self.dropMask, self.dropRate)
         arr.copy_to(output * self.dropMask, output)
 
@@ -442,7 +449,7 @@ class SoftmaxLayer(Layer):
     self.create_cost(self.batch_size)
 
   def create_cost(self, size):
-    self.cost = allocate((size, 1), unique = False)
+    self.cost = allocate((size, 1), slice_dim = None)
 
   def get_output_shape(self):
     return (self.outputSize, self.batch_size)
@@ -473,10 +480,10 @@ class SoftmaxLayer(Layer):
     # only try multiview with test on single gpu
     unit = self.batch_size / num_view
     if self.cost.shape[0] != unit:
-      self.cost = allocate((unit, 1), dtype = np.float32)
+      self.cost = allocate((unit, 1), dtype = np.float32, slice_dim = None)
     maxid = garray.argmax(output, axis = 0)
     self.batchCorrect = garray.same_reduce_multiview(label, maxid, num_view)
-    tmp = allocate((output.shape[0], unit), dtype = np.float32)
+    tmp = allocate((output.shape[0], unit), dtype = np.float32, slice_dim = None)
     garray.partial_copy_to(output, tmp, 0, output.shape[0], 0, unit)
     garray.logreg_cost_col(tmp, label, self.cost)
 

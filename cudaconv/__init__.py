@@ -20,6 +20,33 @@ from .cudaconv2 import *
 
 CONTEXT = None
 
+class ConvDataLayout(object):
+  CHANNEL = 0
+  HEIGHT = 1
+  WIDTH = 2
+  BATCH = 3
+  DIM = 4
+  
+
+class FilterLayout(object):
+  CHANNEL = 0
+  HEIGHT = 1
+  WIDTH = 2
+  NUM = 3
+  DIM = 4
+
+class FCDataLayout(object):
+  NEURON = 0
+  BATCH = 1
+  DIM = 2
+
+class WeightLayout(object):
+  OUTPUT = 0
+  INPUT = 1
+  DIM = 2
+
+backend = 'cudaconv'
+
 def init(device=-1):
   global CONTEXT
   if CONTEXT is not None:

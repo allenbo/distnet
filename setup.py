@@ -41,13 +41,14 @@ setup(
     license="GPL",
     version="0.1",
     url="http://github.com/allenbo/distnet",
-    packages=[ 'distnet', 'cudaconv', 'caffe', 'garray', 'varray',  ],
+    packages=[ 'distnet', 'cudaconv', 'caffe', 'garray', 'varray', 'distribution', ],
     package_dir={
       'distnet' : 'distnet',
       'cudaconv' : 'cudaconv' ,
       'caffe' : 'caffe', 
       'garray' : 'garray',
-      'varray' : 'varray'
+      'varray' : 'varray',
+      'distribution' : 'distribution',
     },
     requires=[
       'pycuda', 

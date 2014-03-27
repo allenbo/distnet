@@ -10,6 +10,7 @@ import copy
 import garray
 import time
 from pycuda import driver
+from garray import ConvDataLayout, FCDataLayout, FilterLayout, WeightLayout
 
 WORLD = MPI.COMM_WORLD
 MASTER = 0
@@ -78,6 +79,8 @@ class VArray(object):
       assert False, 'Array has no dtype attr'
 
     if not self.unique:
+      self.slice_method = None
+      self.slice_dim = None
       if array is None and shape is not None:
         array = garray.GPUArray(shape, self.dtype)
       if isinstance(array, garray.GPUArray):
@@ -117,7 +120,7 @@ class VArray(object):
         else:
           assert np.isscalar(self.slice_dim), 'SLice dim has to the a scalar'
 
-        self.local_area = self.make_stripe_area(self.rank)
+        self.local_area = self.make_stripe_area(self.rank, self.slice_dim)
         if array is not None:
           if isinstance(array, garray.GPUArray):
             if not local:
@@ -149,7 +152,7 @@ class VArray(object):
       if self.slice_method == DistMethod.Square:
         self.area_dict[i] = self.make_square_area(i)
       elif self.slice_method == DistMethod.Stripe:
-        self.area_dict[i] = self.make_stripe_area(i)
+        self.area_dict[i] = self.make_stripe_area(i, self.slice_dim)
 
   def sync_area_dict(self):
     barrier()
@@ -176,6 +179,8 @@ class VArray(object):
       return
 
     self.unique = False
+    self.slice_dim = None
+    self.slice_method = None
     global_area = self.global_area
 
     self.local_data = self.fetch(global_area)
@@ -187,6 +192,8 @@ class VArray(object):
   def fetch_local(self, area):
     if area is None:
       return None
+    if area == self.local_area:
+      return self.local_data
     area = area.offset(self.local_area._from)
     if area.id not in self.fetch_sent_cache:
       data = garray.GPUArray(area.shape, dtype = np.float32)
@@ -254,17 +261,15 @@ class VArray(object):
     return rst
 
 
-  def write_local(self, area,  data, acc = 'overwrite'):
+  def write_local(self, area,  data, acc = False):
     if area is None:
       return
     area = area.offset(self.local_area._from)
     gpu_data = self.local_data
-    if acc == 'overwrite':
-      gpu_data.__setitem__(area.slice, data)
-    elif acc == 'add':
+    if acc:
       garray.setitem_sum(gpu_data, area.slice, data)
     else:
-      assert False
+      gpu_data.__setitem__(area.slice, data)
 
 
 
@@ -288,7 +293,7 @@ class VArray(object):
 
 
 
-  def write_remote(self, reqs, sub_data, acc):
+  def write_remote(self, reqs, sub_data):
     recv_data = []
     req_list = reqs[:]
     req_list = WORLD.alltoall(req_list)
@@ -306,12 +311,12 @@ class VArray(object):
     for rank in range(self.world_size):
       if rank == self.rank or req_list[rank] is None: continue
       else:
-        self.write_local(req_list[rank], recv_data[rank], acc)
+        self.write_local(req_list[rank], recv_data[rank], acc = True)
 
-  def write(self, area, data, acc = 'add'):
+  def write(self, area, data, propagate = True):
     barrier()
     start = time.time()
-    if acc == 'no':
+    if not propagate:
       sub_area = self.local_area & area
       sub_data = data.__getitem__(sub_area.offset(area._from).slice)
       self.write_local(sub_area, sub_data)
@@ -340,7 +345,7 @@ class VArray(object):
         else:
           reqs[rank] = sub_area
           local_subs[rank] = sub_data
-    self.write_remote(reqs, local_subs, acc)
+    self.write_remote(reqs, local_subs)
 
   def merge(self, subs, area, padding = 0):
     subs = {sub_area: sub_array for sub_area, sub_array in subs.iteritems() if sub_array is not None}
@@ -422,20 +427,19 @@ class VArray(object):
     _to = [x - 1 for x in _to]
     return Area(Point(*_from), Point(*_to))
 
-  def make_stripe_area(self, rank):
-    assert self.slice_dim < len(self.global_shape), 'Wrong slice dim'
-    #nrow = util.divup(self.global_shape[self.slice_dim], self.world_size)
-    nrow = self.global_shape[self.slice_dim] / self.world_size
+  def make_stripe_area(self, rank, slice_dim):
+    assert slice_dim < len(self.global_shape), 'Wrong slice dim'
+    nrow = self.global_shape[slice_dim] / self.world_size
 
     pos_from = nrow * rank
     pos_to = (rank+ 1)* nrow
     if rank == self.world_size -1 :
-      pos_to = self.global_shape[self.slice_dim]
+      pos_to = self.global_shape[slice_dim]
 
     _from = [0] * len(self.global_shape)
     _to = list(self.global_shape)
-    _from[self.slice_dim] = pos_from
-    _to[self.slice_dim] = pos_to
+    _from[slice_dim] = pos_from
+    _to[slice_dim] = pos_to
     _to = [x - 1 for x in _to]
     return Area(Point(*_from) , Point(*_to))
 
@@ -521,10 +525,25 @@ class VArray(object):
       global_max = WORLD.allreduce(local_max, op = max)
       return global_max
 
-  def cross_communicate(self, stride, filter_size, padding = 0, output_area = None):
+  def global_communicate(self):
+    self.tmp_local_area = Area.make_area(self.global_shape)
+    if self.unique:
+      self.tmp_local_data = self.fetch(self.tmp_local_area, padding = 0)
+    else:
+      self.tmp_local_data = self.local_data
+
+  def channel_communicate(self, rank, slice_dim, padding = 0):
+    if padding == 0:
+      return self.make_stripe_area(rank, slice_dim)
+
+  def batch_communicate(self, rank, slice_dim):
+    self.tmp_local_area = self.make_stripe_area(rank, slice_dim)
+    self.tmp_local_data = self.fetch(self.tmp_local_area)
+
+  def image_communicate(self, slice_dim, stride, filter_size, padding = 0, output_area = None):
     ''' When cross communicate is being called, FastNet is distribued the image cross height and width'''
     assert padding <= 0, str(padding)
-    r, c = self.slice_dim
+    r, c = slice_dim
     half_filter_size = (filter_size - 1) /2
   
     from_point = output_area._from
@@ -535,31 +554,29 @@ class VArray(object):
     col_begin_centroid = from_point[c] * stride + padding + half_filter_size
     col_end_centroid = to_point[c] * stride + padding + half_filter_size
 
-    row_up = half_filter_size - (row_begin_centroid - self.local_area._from[r])
-    row_down = half_filter_size - (self.local_area._to[r] - row_end_centroid)
-    col_left = half_filter_size - (col_begin_centroid - self.local_area._from[c])
-    col_right = half_filter_size - (self.local_area._to[c] - col_end_centroid)
+    row_begin = max(row_begin_centroid - half_filter_size, 0)
+    row_end = min(row_end_centroid + half_filter_size, self.global_shape[r] - 1)
+    col_begin = max(col_begin_centroid - half_filter_size, 0)
+    col_end = min(col_end_centroid + half_filter_size, self.global_shape[c] - 1)
+    
+    _from = [0] * len(self.global_shape)
+    _to = [x - 1 for x in self.global_shape]
 
-    import copy
-    cross_from = copy.deepcopy(self.local_area._from)
-    cross_to = copy.deepcopy(self.local_area._to)
-    #not most top
-    if self.local_area._from[r] != 0:
-      cross_from[r] -= row_up
-    #not most left
-    if self.local_area._from[c] != 0:
-      cross_from[c] -= col_left
-    #not most down
-    if self.local_area._to[r] != self.global_area._to[r]:
-      cross_to[r] += row_down
-    #not most right
-    if self.local_area._to[c] != self.global_area._to[c]:
-      cross_to[c] += col_right
+    _from[r] = row_begin
+    _to[r] = row_end
+    _from[c] = col_begin
+    _to[c] = col_end
 
-
-    self.tmp_local_area = Area(cross_from, cross_to)
+    self.tmp_local_area = Area(Point(*_from), Point(*_to))
     self.tmp_local_data = self.fetch(self.tmp_local_area, padding = padding)
 
+  def local_patch(self, data):
+    # reversed way against image_communicate
+    sub_area = self.local_area & self.tmp_local_are
+    sub_data = data.__getitem__(sub_area.offset(area._from).slice)
+    self.write_local(sub_area, sub_data)
+    
+    
   def get_pad_info(self, padding, old_shape, old_area):
     #row, col = self.slice_dim
     row, col = 1, 2

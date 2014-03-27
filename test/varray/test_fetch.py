@@ -43,7 +43,7 @@ tmp =  varray.array(a, slice_method = DistMethod.Stripe, slice_dim = 1)
 padding = 0
 stride = 4
 filter_size = 11
-tmp.cross_communicate(padding = padding, stride = stride,filter_size = filter_size)
+tmp.image_communicate(padding = padding, stride = stride,filter_size = filter_size)
 #data = tmp.fetch(varray.Area(varray.Point(0,0), varray.Point(2, 2)), padding = -1)
 print rank
 print tmp.tmp_local_data.shape

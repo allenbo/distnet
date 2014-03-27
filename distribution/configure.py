@@ -179,9 +179,10 @@ name = device_name()
 n = 4
 latency = 0.001
 
-model_file = '../config/imagenet.cfg'
+model_file = '../config/imagenet_many_filter.cfg'
+strategy_file = 'strategy'
 image_shape = (3, 224, 224, 128)
-bandwidth = 5e9
+bandwidth = 2.5e9
 
 model = reader.getmodel(model_file)
 filename = '%s-%d.%s' % (name, n, os.path.basename(model_file))
@@ -202,3 +203,10 @@ print 'cost', cost
 #states = [sidw] * (len(model) - 6) + [sidw_f] * 5 + [sisw]
 #states = [sisw] * len(model)
 print_details(model, states)
+
+strategy = {}
+for i, layer in enumerate(model):
+  strategy[layer['name']] = states[i]
+
+with open(strategy_file, 'w') as fout:
+    pickle.dump(strategy, fout)

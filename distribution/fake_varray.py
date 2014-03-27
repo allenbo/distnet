@@ -171,7 +171,7 @@ class VArray(object):
     _to = [x - 1 for x in _to]
     return Area(Point(*_from) , Point(*_to))
 
-  def cross_communicate(self, stride, filter_size, padding = 0, output_area = None):
+  def image_communicate(self, stride, filter_size, padding = 0, output_area = None):
     ''' When cross communicate is being called, FastNet is distribued the image cross height and width'''
     assert padding <= 0, str(padding)
     r, c = self.slice_dim
@@ -184,30 +184,21 @@ class VArray(object):
     row_end_centroid = to_point[r] * stride + padding + half_filter_size
     col_begin_centroid = from_point[c] * stride + padding + half_filter_size
     col_end_centroid = to_point[c] * stride + padding + half_filter_size
-
-    row_up = half_filter_size - (row_begin_centroid - self.local_area._from[r])
-    row_down = half_filter_size - (self.local_area._to[r] - row_end_centroid)
-    col_left = half_filter_size - (col_begin_centroid - self.local_area._from[c])
-    col_right = half_filter_size - (self.local_area._to[c] - col_end_centroid)
     
-    import copy
-    cross_from = copy.deepcopy(self.local_area._from)
-    cross_to = copy.deepcopy(self.local_area._to)
-    #not most top
-    if self.local_area._from[r] != 0:
-      cross_from[r] -= row_up
-    #not most left
-    if self.local_area._from[c] != 0:
-      cross_from[c] -= col_left
-    #not most down
-    if self.local_area._to[r] != self.global_area._to[r]:
-      cross_to[r] += row_down
-    #not most right
-    if self.local_area._to[c] != self.global_area._to[c]:
-      cross_to[c] += col_right
+    row_begin = max(row_begin_centroid - half_filter_size, 0)
+    row_end = min(row_end_centroid + half_filter_size, self.global_shape[r] - 1)
+    col_begin = max(col_begin_centroid - half_filter_size, 0)
+    col_end = min(col_end_centroid + half_filter_size, self.global_shape[c] - 1)
 
+    _from = [0] * len(self.global_shape)
+    _to = [x - 1 for x in self.global_shape]
 
-    self.tmp_local_area = Area(cross_from, cross_to)
+    _from[r] = row_begin
+    _to[r] = row_end
+    _from[c] = col_begin
+    _to[c] = col_end
+
+    self.tmp_local_area = Area(Point(*_from), Point(*_to))
     overlapping = (np.prod(self.tmp_local_area.shape) - np.prod(self.local_shape)) * 4
     rst_shape = self.pad(padding, self.tmp_local_area.shape)
     return rst_shape, overlapping

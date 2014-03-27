@@ -1,5 +1,4 @@
-from distnet.layer import ConvLayer
-from util import divup, make_square_shape, issquare
+from util import divup, issquare
 from state import sisw, sidw, disw_i, sidw_f, disw_b
 import copy
 import StringIO
@@ -134,7 +133,7 @@ class ConvRequestWriter(RequestWriter):
         input_shape = input_varray.local_shape
         if self.name not in ['neuron', 'cmrnorm']:
           print i, output_varray.local_area,
-          input_shape, overlapping = input_varray.cross_communicate(self.stride, self.filter_size,
+          input_shape, overlapping = input_varray.image_communicate(self.stride, self.filter_size,
               -self.padding, output_area = output_varray.local_area)
           print input_varray.tmp_local_area
           overlapping_max = max(overlapping, overlapping_max)

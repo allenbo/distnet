@@ -6,6 +6,8 @@ from varray.ndarray import VArray, DistMethod, zeros_like, WORLD, zeros, allocat
 from varray.area import Area
 import garray
 from pycuda import driver
+from distribution.state import *
+from garray import ConvDataLayout, FCDataLayout, FilterLayout, WeightLayout
 
 
 gpu_cache = {}
@@ -159,217 +161,351 @@ def tanh_compute_grad(grad, output, out_grad, a, b):
 def convolution(input, filter ,output, image_y, output_y, output_x, padding, stride, channel, group):
   assert isinstance(input, VArray) and isinstance(filter, VArray) and isinstance(output, VArray)
 
-  input.cross_communicate(padding = padding, stride = stride, filter_size = filter.local_shape[1],
-      output_area = output.local_area)
+  filter_size_index = FilterLayout.HEIGHT 
+  r, c = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH
+  state = get_state_from_distribution(output.slice_dim, conv = True)
 
-  #r, c = output.slice_dim
-  r, c = 1, 2
-  image_y = input.tmp_local_data.shape[r]
+  if state == disw_i:
+    assert filter.unique == False
+    input.image_communicate(slice_dim = (r, c), padding = padding, stride = stride, filter_size = filter.local_shape[filter_size_index], output_area = output.local_area)
+  elif state == disw_b:
+    input.batch_communicate(input.rank, ConvDataLayout.BATCH)
+  elif state == sidw or state == sisw:
+    input.global_communicate()
+
+  input_data = input.tmp_local_data
+  image_y = input_data.shape[r]
   output_y = output.local_shape[r]
   output_x = output.local_shape[c]
 
   garray.convolution(
-      input.tmp_local_data,
+      input_data,
       filter.local_data,
       output.local_data,
       image_y, output_y, output_x, 0, stride, channel, group)
 
-
-
 def bconvolution(input, grad, filter, out_grad, image_y, image_x, output_size, padding, stride, channel):
   assert isinstance(grad, VArray) and isinstance(filter, VArray) and isinstance(out_grad, VArray)
 
-  start = time.time()
-  if not hasattr(input, 'tmp_local_data'):
-    input.cross_communicate(padding = padding, stride = stride, filter_size =
-        filter.local_shape[1], output_area = grad.local_area)
-  if not hasattr(out_grad, 'tmp_out_grad'):
-    tmp_out_grad = garray.empty_like(input.tmp_local_data)
-    out_grad.tmp_out_grad = tmp_out_grad
-  else:
-    tmp_out_grad = out_grad.tmp_out_grad
-  #r, c  = input.slice_dim
-  r, c = 1, 2
-  image_y = input.tmp_local_data.shape[r]
-  image_x = input.tmp_local_data.shape[c]
+  propagate = True
+  filter_size_index = FilterLayout.HEIGHT 
+  r, c = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH
+  state = get_state_from_distribution(grad.slice_dim, conv = True)
+
+  if state == disw_i:
+    assert filter.unique == False
+    if not hasattr(input, 'tmp_local_data'):
+      input.image_communicate(slice_dim = (r, c), padding = padding, stride = stride, filter_size = filter.local_shape[filter_size_index], output_area = output.local_area)
+  elif state == disw_b:
+    if not hasattr(input, 'tmp_local_data'):
+      input.batch_communicate(input.rank, ConvDataLayout.BATCH)
+  elif state == sidw or state == sisw:
+    if not hasattr(input, 'tmp_local_data'):
+      input.global_communicate()
+    if state == sisw:
+      propagate = False
+    
+  input_data = input.tmp_local_data
+
+  if not hasattr(out_grad, 'tmp_local_data'):
+    out_grad.tmp_local_data = garray.empty_like(input_data)
+  tmp_out_grad = out_grad.tmp_local_data
+
+  image_y = input_data.shape[r]
+  image_x = input_data.shape[c]
   output_size = grad.local_shape[r]
 
   garray.bconvolution(
-      input.tmp_local_data,
+      input_data,
       grad.local_data,
       filter.local_data,
       tmp_out_grad,
       image_y, image_x, output_size, 0, stride, channel)
 
   tmp_out_grad = input.unpad(tmp_out_grad, padding)
-  out_grad.write(area = input.tmp_local_area, data = tmp_out_grad)
+  out_grad.write(area = input.tmp_local_area, data = tmp_out_grad, propagate = propagate)
 
 def wconvolution(input, grad, weight_grad, image_y, output_y, output_x, filter_size, padding, stride, channel):
-  if not hasattr(input, 'tmp_local_data'):
-    input.cross_communicate(padding = padding, stride = stride, filter_size = filter_size,
-        output_area = grad.local_area)
-  #r,c = input.slice_dim
-  r, c = 1, 2
-  image_y = input.tmp_local_data.shape[r]
+
+  propagate = True
+  filter_size_index = FilterLayout.HEIGHT
+  r, c = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH
+  state = get_state_from_distribution(grad.slice_dim, conv = True)
+
+  if state == disw_i:
+    assert filter.unique == False
+    if not hasattr(input, 'tmp_local_data'):
+      input.image_communicate(slice_dim = (r, c), padding = padding, stride = stride, filter_size = filter.local_shape[filter_size_index], output_area = output.local_area)
+  elif state == disw_b:
+    if not hasattr(input, 'tmp_local_data'):
+      input.batch_communicate(input.rank, ConvDataLayout.BATCH)
+  elif state == sidw or state == sisw:
+    if not hasattr(input, 'tmp_local_data')
+      input.global_communicate()
+  
+  input_data = input.tmp_local_data
+
+  if state in [disw_i, disw_b]:
+    if not hasattr(weight_grad, 'tmp_local_data'):
+      weight_grad.tmp_local_data = garray.GPUArray(weight_grad.shape, dtype = weight_grad.dtype)
+    tmp_weight_grad = weight_grad.tmp_local_data
+  else:
+    propagate = False
+    tmp_weight_grad = weight_grad.local_data
+
+  image_y = input_data.shape[r]
   output_y = grad.local_shape[r]
   output_x = grad.local_shape[c]
 
-  if not hasattr(weight_grad, 'tmp_out_grad'):
-    tmp_weight_grad = garray.GPUArray(weight_grad.shape, dtype = weight_grad.dtype)
-    weight_grad.tmp_weight_grad = tmp_weight_grad
-  else:
-    tmp_weight_grad = out_weight.tmp_weight_grad
-
   garray.wconvolution(
-      input.tmp_local_data,
+      input_data,
       grad.local_data,
       tmp_weight_grad,
       image_y, output_y, output_x, filter_size, 0, stride, channel)
 
-  weight_grad.write(weight_grad.global_area, tmp_weight_grad)
+  weight_grad.write(area = weight_grad.global_area, data = tmp_weight_grad, propagate = propagate)
 
 def maxpool(input, output, channel, pool_size, start, stride, input_y, output_y, output_x):
-  #r,c = output.slice_dim
-  r, c = 1, 2
-  num_row = output.local_shape[r]
-  num_col = output.local_shape[c]
-  input.cross_communicate(stride = stride, filter_size = pool_size, output_area = output.local_area)
+  r, c = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH
+  state = get_state_from_distribution(output.slice_dim, conv = True)
+
+  if state == disw_i:
+    input.image_communicate(slice_dim = (r, c), stride = stride, filter_size = pool_size, output_area = output.local_area)
+  elif state == disw_b:
+    input.batch_communicate(input.rank, ConvDataLayout.BATCH)
+  elif state == sisw:
+    input.global_communicate()
+  elif state == sidw:
+    input.channel_communicate(input.rank, ConvDataLayout.CHANNEL)
+
+  input_data = input.tmp_local_data
 
   output_y = output.local_shape[r]
   output_x = output.local_shape[c]
-  input_y = input.tmp_local_data.shape[r]
-
-  old_shape = output.local_data.shape
+  input_y = input_data.shape[r]
 
   garray.maxpool(
-      input.tmp_local_data,
+      input_data,
       output.local_data,
       channel, pool_size, start, stride, input_y, output_y, output_x)
 
-
 def maxundo(input, grad, output, out_grad, pool_size, start, stride, output_y, output_x, input_y):
-  #r, c = input.slice_dim
-  r, c = 1, 2
-  if not hasattr(input, 'tmp_local_data'):
-    num_row = output.local_shape[r]
-    num_col = output.local_shape[c]
-    input.cross_communicate(stride = stride, filter_size = pool_size, output_area = grad.local_area)
-  if not hasattr(out_grad, 'tmp_out_grad'):
-    tmp_out_grad = garray.empty_like(input.tmp_local_data)
-    out_grad.tmp_out_grad = tmp_out_grad
-  else:
-    tmp_out_grad = out_grad.tmp_out_grad
+  propagate = True
+  r, c = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH
+  state = get_state_from_distribution(output.slice_dim, conv = True)
+
+  if state == disw_i:
+    if not hasattr(input, 'tmp_local_data'):
+      input.image_communicate(slice_dim = (r, c), stride = stride, filter_size = pool_size, output_area = grad.local_area)
+  elif state == disw_b:
+    if not hasattr(input, 'tmp_local_data'):
+      input.batch_communicate(input.rank, ConvDataLayout.BATCH)
+  elif state == sidw:
+    if not hasattr(input, 'tmp_local_data'):
+      input.channel_communicate(input.rank, ConvDataLayout.CHANNEL)
+  elif  state == sisw:
+    if not hasattr(input, 'tmp_local_data'):
+      input.global_communicate()
+    propagate = False
+  
+  input_data = input.tmp_local_data
+
+  if not hasattr(out_grad, 'tmp_local_data'):
+    out_grad.tmp_local_data = garray.empty_like(input_data)
+  tmp_out_grad = out_grad.tmp_local_data
+
   output_y = output.local_data.shape[r]
   output_x = output.local_data.shape[c]
 
-  input_y = input.tmp_local_data.shape[r]
+  input_y = input_data.shape[r]
 
   garray.maxundo(
-      input.tmp_local_data,
+      input_data,
       grad.local_data,
       output.local_data,
       tmp_out_grad,
       pool_size, start, stride, output_y, output_x, input_y)
 
-  out_grad.write(data = tmp_out_grad, area = input.tmp_local_area)
+  out_grad.write(data = tmp_out_grad, area = input.tmp_local_area, propagate = propagte)
 
 def avgpool(input, output, channel, pool_size, start, stride, input_y, output_y, output_x):
-  # same as max pooling layer
-  #r,c = output.slice_dim
-  r, c = 1, 2
-  num_row = output.local_shape[r]
-  num_col = output.local_shape[c]
-  input.cross_communicate(stride = stride, filter_size = pool_size, output_area = grad.local_area)
+  r, c = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH
+  state = get_state_from_distribution(output.slice_dim, conv = True)
+  
+  if state == disw_i:
+    assert filter.unique == False
+    input.image_communicate(slice_dim = (r, c), stride = stride, filter_size = pool_size, output_area = output.local_area)
+  elif state == disw_b:
+    input.batch_communicate(input.rank, ConvDataLayout.BATCH)
+  elif state == sisw:
+    input.global_communicate()
+  elif state == sidw:
+    input.channel_communicate(input.rank, ConvDataLayout.CHANNEL)
+
+  input_data = input.tmp_local_data
 
   output_y = output.local_shape[r]
   output_x = output.local_shape[c]
-  input_y = input.tmp_local_data.shape[r]
-
-  old_shape = output.local_data.shape
+  input_y = input_data.shape[r]
 
   garray.avgpool(
-      input.tmp_local_data,
+      input_data,
       output.local_data,
       channel, pool_size, start, stride, input_y, output_y, output_x)
 
 def avgundo(input, grad, out_grad, pool_size, start, stride, output_y, output_x, image_y, image_x):
-  #r, c = input.slice_dim
-  r, c = 1, 2
-  if not hasattr(input, 'tmp_local_data'):
-    num_row = output.local_shape[r]
-    num_col = output.local_shape[c]
-    input.cross_communicate(stride = stride, filter_size = pool_size, output_area = grad.local_area)
-  if not hasattr(out_grad, 'tmp_out_grad'):
-    tmp_out_grad = garray.empty_like(input.tmp_local_data)
-    out_grad.tmp_out_grad = tmp_out_grad
-  else:
-    tmp_out_grad = out_grad.tmp_out_grad
-  tmp_out_grad = garray.empty_like(input.tmp_local_data)
+  propagate = True
+  r, c = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH
+  state = get_state_from_distribution(output.slice_dim, conv = True)
+
+  if state == disw_i:
+    if not hasattr(input, 'tmp_local_data'):
+      input.image_communicate(slice_dim = (r, c), stride = stride, filter_size = pool_size, output_area = grad.local_area)
+  elif state == disw_b:
+    if not hasattr(input, 'tmp_local_data'):
+      input.batch_communicate(input.rank, ConvDataLayout.BATCH)
+  elif state == sidw:
+    if not hasattr(input, 'tmp_local_data'):
+      input.channle(communicate(input.rank, ConvDataLayout.CHANNEL)
+  elif state == sisw:
+    if not hasattr(input, 'tmp_local_data'):
+      input.global_communicate()
+    propagate = False
+  
+  input_data = input.tmp_local_data
+
+  if not hasattr(out_grad, 'tmp_local_data'):
+    out_grad.tmp_local_data = garray.empty_like(input_data)
+  tmp_out_grad = out_grad.tmp_local_data
+
   output_y = grad.local_data.shape[r]
   output_x = grad.local_data.shape[c]
 
-  image_y = input.tmp_local_data.shape[r]
-  image_x = input.tmp_local_data.shape[c]
+  image_y = input_data.shape[r]
+  image_x = input_data.shape[c]
 
   garray.avgundo(
-      input.tmp_local_data,
+      input_data,
       grad.local_data,
       tmp_out_grad,
       pool_size, start, stride, output_y, output_x, image_y, image_x)
 
-  out_grad.write(data = tmp_out_grad, area = input.tmp_local_area)
+  out_grad.write(data = tmp_out_grad, area = input.tmp_local_area, propagate = propagate)
 
 def rnorm(input, denom, output, channel, size, image_y, scaler, pow):
-  input.cross_communicate(filter_size = size, stride = 1, output_area = output.local_area)
-  #r, c = output.slice_dim
-  r, c = 1, 2
+  r, c = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH
+  state = get_state_from_distribution(output.slice_dim, conv = True)
 
-  tmp_out_data = garray.empty_like(input.tmp_local_data)
-  tmp_denom_data = garray.empty_like(input.tmp_local_data)
+  if state == disw_i:
+    input.image_communicate(slice_dim = (r, c), stride = stride, filter_size = pool_size, output_area = output.local_area)
+  elif state == disw_b:
+    input.batch_communicate(input.rank, ConvDataLayout.BATCH)
+  elif state == sisw:
+    input.global_communicate()
+  elif state == sidw:
+    input.channel_communicate(input.rank, ConvDataLayout.CHANNEL)
 
-  image_y = input.tmp_local_data.shape[r]
+  input_data = input.tmp_local_data
+
+  if input.tmp_local_area == denom.local_area:
+    denom.tmp_local_data = denom.local_data
+    output.tmp_local_data = output.local_data
+  else:
+    # only happens when state == disw_i
+    denom.tmp_local_data = garray.empty_like(input_data)
+    output.tmp_local_data = garray.empty_like(input_data)
+  tmp_denom_data = denom.tmp_local_data
+  tmp_output_data = output.tmp_local_data
+
+  image_y = input_data.shape[r]
 
   garray.rnorm(
-      input.tmp_local_data,
+      input_data,
       tmp_denom_data,
-      tmp_out_data,
+      tmp_output_data,
       channel, size, image_y, scaler, pow)
 
-  denom.tmp_local_data = tmp_denom_data
-  output.tmp_local_data = tmp_out_data
-  output.write(input.tmp_local_area, tmp_out_data, acc = 'no')
-  denom.write(input.tmp_local_area, tmp_denom_data, acc = 'no')
+  if input.tmp_local_area != denom.local_area:
+    output.write(area = input.tmp_local_area, data = tmp_output_data, propagate = False)
+    denom.write(area = input.tmp_local_area, data = tmp_denom_data, propagate = False)
 
 def rnormundo(grad, denom, input, output, out_grad, channel, size, image_y, scaler, pow):
-  if not hasattr(input, 'tmp_local_data'):
-    input.cross_communicate(stride = 1, filter_size = size, output_area = grad.local_area)
-    denom.cross_communicate(stride = 1, filter_size = size, output_area = grad.local_area)
+  propagate = True
+  r, c = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH
+  state = get_state_from_distribution(grad.slice_dim, conv = True)
+  if state == disw_i:
+    if not hasattr(input, 'tmp_local_data'):
+      input.image_communicate(slice_dim = (r, c), stride = 1, filter_size = size, output_area = grad.local_area)
 
-  if output.tmp_local_data.shape != input.tmp_local_data.shape:
-    output.cross_communicate(stride = 1, filter_size = size, output_area = grad.local_area)
+    denom.image_communicate(slice_dim = (r, c), stride = 1, filter_size = size, output_area = grad.local_area)
+    output.image_communicate(slice_dim = (r, c), stride = 1, filter_size = size, output_area = grad.local_area)
+    grad.image_communicate(slice_dim = (r, c), stride = 1, filter_size = size, output_area = grad.local_area)
+    if output.slice_dim == input.slice_dim: # previous layer has the same distribution disw_i
+      propagate = False
 
+  elif state == disw_b:
+    if not hasattr(input, 'tmp_local_data'):
+      input.batch_communicate(input.rank, ConvDataLayout.BATCH)
+ 
+  elif state == sisw:
+    if not hasattr(input, 'tmp_local_data'):
+      input.global_communicate()
+    propagate = False
 
-  if not hasattr(grad, 'tmp_local_data'):
-    grad.cross_communicate(stride = 1, filter_size = size, output_area = grad.local_area)
+  elif state == sidw:
+    if not hasattr(input, 'tmp_local_data'):
+      input.channel_communicate(input.rank, ConvDataLayout.CHANNEL)
+    
+  input_data = input.tmp_local_data
 
-  tmp_out_grad = garray.empty_like(input.tmp_local_data)
+  if denom.local_area == input.tmp_local_area:
+    denom_data = denom.local_data
+    output_data = output.local_data
+    grad_data = grad.local_data
+  else:
+    denom_data = denom.tmp_local_data
+    output_data = output.tmp_local_data
+    grad_data = grad.tmp_local_data
+ 
+  if not hasattr(out_grad, 'tmp_local_data'):
+    out_grad.tmp_local_data = garray.empty_like(input_data)
+  tmp_out_grad = out_grad.tmp_local_data
 
-  #r, c = output.slice_dim
-  r, c = 1 , 2
   image_y = input.tmp_local_data.shape[r]
 
   garray.rnormundo(
-      grad.tmp_local_data,
-      denom.tmp_local_data,
-      input.tmp_local_data,
-      output.tmp_local_data,
+      grad_data,
+      denom_data,
+      input_data,
+      output_data,
       tmp_out_grad,
       channel, size, image_y, scaler, pow)
-  out_grad.write(data = tmp_out_grad, area = input.tmp_local_area, acc = 'no')
+  
+  if state == disw_i and propagate:
+    tmp_out_grad = output.local_patch(tmp_out_grad)
+  out_grad.write(data = tmp_out_grad, area = output.local_area, propagate = propagate)
 
 def rnormcrossmap(input, denom, output, channel, size,image_y, scaler, pow, blocked):
-  #r, c = input.slice_dim
-  r, c = 1, 2
+  r, c = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH
+  state = get_state_from_distribution(output.slice_dim, conv = True)
+  if state == disw_i:
+    input.image_communicate(slice_dim = (r, c), stride = 1, padding = 0, filter_size = 1, output_area = output.local_area)
+  elif state == disw_b:
+    input.batch_communicate(input.rank, ConvDataLayout.BATCH)
+  elif state == sidw:
+    input.channel_communicate(input.rank, ConvDataLayout.CHANNEL, padding = size / 2)
+  elif state == sisw:
+    input.global_communicate()
+    
+  input_data = input.tmp_local_data
+  if input.tmp_local_area == denom.local_area:
+    denom.tmp_local_data = denom.local_data
+    output.tmp_local_data = output.local_data
+  else:
+    denom.tmp_local_data = garray.empty_like(input_data)
+    output.tmp_local_data = garray.empty_like(input_data)
+  tmp_denom_data = denom.tmp_local_data
+  tmp_output_data = output.tmp_local_data
 
   image_y = input.local_data.shape[r]
   garray.rnormcrossmap(
@@ -378,15 +514,62 @@ def rnormcrossmap(input, denom, output, channel, size,image_y, scaler, pow, bloc
       output.local_data,
       channel, size, image_y, scaler, pow, blocked)
 
+  if input.tmp_local_data != denom.local_data:
+    output.write(area = denom.local_area, tmp_output_data, propagate = False)
+    denom.write(area = denom.local_area, tmp_denom_data, propagate = False)
+
 def rnormcrossmapundo(grad, denom, input, output, out_grad, channel, size, image_y, scaler, pow, blocked):
-  #r, c = input.slice_dim
-  r, c = 1, 2
+  propagate = True
+  r, c = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH
+  state = get_state_from_distribution(grad.slice_dim, conv = True)
+  if state == disw_i:
+    if not hasattr(input, 'tmp_local_data'):
+      input.image_communicate(slice_dim = (r, c), stride = 1, filter_size = 1, output_area = grad.local_area)
+
+  elif state == disw_b:
+    if not hasattr(input, 'tmp_local_data'):
+      input.batch_communicate(input.rank, ConvDataLayout.BATCH)
+ 
+  elif state == sisw:
+    if not hasattr(input, 'tmp_local_data'):
+      input.global_communicate()
+    propagate = False
+
+  elif state == sidw:
+    if not hasattr(input, 'tmp_local_data'):
+      input.channel_communicate(input.rank, ConvDataLayout.CHANNEL, padding = size / 2)
+    
+    denom.channel_communicate(denom.rank, ConvDataLayout.CHANNEL, padding = size / 2)
+    output.channel_communicate(output.rank, ConvDataLayout.CHANNEL, padding = size / 2)
+    grad.channel_communicate(grad.rank, ConvDataLayout.CHANNEL, padding = size / 2)
+    if output.slice_dim == input.slice_dim: # prievious layer has the some distribution sidw
+      propagate = False
+    
+  input_data = input.tmp_local_data
+
+  if denom.local_area == input.tmp_local_area:
+    denom_data = denom.local_data
+    output_data = output.local_data
+    grad_data = grad.local_data
+  else:
+    denom_data = denom.tmp_local_data
+    output_data = output.tmp_local_data
+    grad_data = grad.tmp_local_data
+ 
+  if not hasattr(out_grad, 'tmp_local_data'):
+    out_grad.tmp_local_data = garray.empty_like(input_data)
+  tmp_out_grad = out_grad.tmp_local_data
+
   image_y = input.local_data.shape[r]
 
   garray.rnormcrossmapundo(
-      grad.local_data,
-      denom.local_data,
-      input.local_data,
-      output.local_data,
-      out_grad.local_data,
+      grad_data,
+      denom_data,
+      input_data,
+      output_data,
+      tmp_out_grad,
       channel, size, image_y, scaler, pow, blocked)
+
+  if state == sidw and propagate:
+    tmp_out_grad = output.local_path(tmp_out_grad)
+  out_grad.write(data = tmp_out_grad, area = input.tmp_local_area, propagate = propagate)
