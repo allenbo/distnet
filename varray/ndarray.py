@@ -237,7 +237,7 @@ class VArray(object):
     subs = { reqs[rank]: recv_data[rank] for rank in range(self.world_size)}
     return subs
 
-  def fetch(self, area, padding = 0):
+  def fetch(self, area, padding = 0, slice_dim = None):
     start = time.time()
     barrier()
     subs = {}
@@ -257,7 +257,7 @@ class VArray(object):
         else:
           reqs[rank] = sub_area
     subs.update(self.fetch_remote(reqs))
-    rst = self.merge(subs, area, padding)
+    rst = self.merge(subs, area, padding, slice_dim)
     return rst
 
 
@@ -347,17 +347,13 @@ class VArray(object):
           local_subs[rank] = sub_data
     self.write_remote(reqs, local_subs)
 
-  def merge(self, subs, area, padding = 0):
+  def merge(self, subs, area, padding = 0, slice_dim = None):
     subs = {sub_area: sub_array for sub_area, sub_array in subs.iteritems() if sub_array is not None}
     if padding == 0:
       if len(subs) == 1:
         return subs.values()[0]
       min_from = Area.min_from(subs.keys())
       if area.id not in self.fetch_sent_cache:
-        free, total = driver.mem_get_info()
-        MB = 1024 * 1024
-        mem_size = int(np.prod(area.shape) * 4)
-        assert mem_size < free, str(free / MB) + str(mem_size/ MB)
         rst = garray.GPUArray(area.shape, dtype = np.float32)
         self.fetch_sent_cache[area.id] = rst
       else:
@@ -377,7 +373,7 @@ class VArray(object):
 
       assert padding < 0
       padding = -padding
-      new_shape, slices = self.get_pad_info(padding, area.shape, area)
+      new_shape, slices = self.get_pad_info(padding, area.shape, area, slice_dim)
       min_from = Area.min_from(subs.keys())
       area = Area.make_area(new_shape)
       if area.id not in self.fetch_sent_cache:
@@ -534,14 +530,21 @@ class VArray(object):
 
   def channel_communicate(self, rank, slice_dim, padding = 0):
     if padding == 0:
-      return self.make_stripe_area(rank, slice_dim)
+      self.tmp_local_area = self.make_stripe_area(rank, slice_dim)
+    else:
+      tmp_area = self.make_stripe_area(rank, slice_dim)
+      if tmp_area._from[slice_dim] != 0:
+        tmp_area._from[slice_dim] -= padding
+      if tmp_area._to[slice_dim] != self.global_area[slice_dim]:
+        tmp_area._to[slice_dim] -= padding
+      self.tmp_local_area = tmp_area
+    self.tmp_local_data = self.fetch(self.tmp_local_area)
 
   def batch_communicate(self, rank, slice_dim):
     self.tmp_local_area = self.make_stripe_area(rank, slice_dim)
     self.tmp_local_data = self.fetch(self.tmp_local_area)
 
   def image_communicate(self, slice_dim, stride, filter_size, padding = 0, output_area = None):
-    ''' When cross communicate is being called, FastNet is distribued the image cross height and width'''
     assert padding <= 0, str(padding)
     r, c = slice_dim
     half_filter_size = (filter_size - 1) /2
@@ -568,37 +571,39 @@ class VArray(object):
     _to[c] = col_end
 
     self.tmp_local_area = Area(Point(*_from), Point(*_to))
-    self.tmp_local_data = self.fetch(self.tmp_local_area, padding = padding)
+    self.tmp_local_data = self.fetch(self.tmp_local_area, padding = padding, slice_dim = slice_dim)
 
   def local_patch(self, data):
-    # reversed way against image_communicate
+    # reversed way against communicate
     sub_area = self.local_area & self.tmp_local_are
     sub_data = data.__getitem__(sub_area.offset(area._from).slice)
     self.write_local(sub_area, sub_data)
     
-    
-  def get_pad_info(self, padding, old_shape, old_area):
+  def get_pad_info(self, padding, old_shape, old_area, slice_dim = None):
     #row, col = self.slice_dim
-    row, col = 1, 2
+    if slice_dim is None:
+      slice_dim = self.slice_dim
+      assert not np.isscalar(slice_dim)
+    row, col = slice_dim
     new_shape = list(old_shape)
     new_area = copy.deepcopy(old_area)
 
     #most top
-    if self.local_area._from[row] == 0:
+    if old_area._from[row] == 0:
       new_shape[row] += padding
       new_area._from[row] += padding
       new_area._to[row] += padding
     #most left
-    if self.local_area._from[col] == 0:
+    if old_area._from[col] == 0:
       new_shape[col] += padding
       new_area._from[col] += padding
       new_area._to[col] += padding
 
     #most down
-    if self.local_area._to[row] == self.global_area._to[row]:
+    if old_area._to[row] == self.global_area._to[row]:
       new_shape[row] += padding
     #most right
-    if self.local_area._to[col] == self.global_area._to[col]:
+    if old_area._to[col] == self.global_area._to[col]:
       new_shape[col] += padding
 
     return tuple(new_shape), new_area.offset(old_area._from).slice
