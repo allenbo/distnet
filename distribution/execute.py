@@ -30,7 +30,7 @@ class Executer(object):
     self.num_worker = self.decr['workers']
     self.state = self.decr['state']
     self.type = self.decr['type']
-    print self.decr['layer_name'], self.decr['state']
+    print '\033[32m%s %s\033[0m' % (self.decr['layer_name'], self.decr['state'])
 
   def execute(self):
     assert False, 'Implementation needed'
@@ -46,7 +46,7 @@ class ConvExecuter(Executer):
       if filter_shape[-1] % 16 != 0:
         num_filter = (filter_shape[-1] + 16 - 1) / 16 * 16
         filter_shape = filter_shape[:-1] + (num_filter, )
-        print 'Change the number of filters to %d and  make it a multiple of 16' % num_filter
+        print '\033[33mChange the number of filters to %d and  make it a multiple of 16\033[0m' % num_filter
         output_shape = (num_filter, ) + output_shape[1:] 
 
       input = gpuarray.to_gpu(np.random.randn(*input_shape).astype(np.float32))
@@ -107,7 +107,7 @@ class PoolExecuter(Executer):
         num_filter = (input_shape[0] + 16 -1 ) / 16 * 16
         input_shape = (num_filter, ) + input_shape[1:]
         output_shape = (num_filter, ) + output_shape[1:]
-        print 'Change the number of filters to %d and  make it a multiple of 16' % num_filter
+        print '\033[33mChange the number of filters to %d and  make it a multiple of 16\033[0m' % num_filter
       
       input = gpuarray.to_gpu(np.random.randn(*input_shape).astype(np.float32))
       outgrad = gpuarray.to_gpu(np.random.randn(*input_shape).astype(np.float32))
@@ -163,7 +163,7 @@ class RNormExecuter(Executer):
         num_filter = (input_shape[0] + 16 -1 ) / 16 * 16
         input_shape = (num_filter, ) + input_shape[1:]
         output_shape = (num_filter, ) + output_shape[1:]
-        print 'Change the number of filters to %d and  make it a multiple of 16' % num_filter
+        print '\033[33mChange the number of filters to %d and  make it a multiple of 16\033[0m' % num_filter
      
       input = gpuarray.to_gpu(np.random.randn(*input_shape).astype(np.float32))
       outgrad = gpuarray.to_gpu(np.random.randn(*input_shape).astype(np.float32))
@@ -216,7 +216,7 @@ class CMRNormExecuter(Executer):
         num_filter = (input_shape[0] + 16 -1 ) / 16 * 16
         input_shape = (num_filter, ) + input_shape[1:]
         output_shape = (num_filter, ) + output_shape[1:]
-        print 'Change the number of filters to %d and  make it a multiple of 16' % num_filter
+        print '\033[33mChange the number of filters to %d and  make it a multiple of 16\033[0m' % num_filter
 
       
       input = gpuarray.to_gpu(np.random.randn(*input_shape).astype(np.float32))
@@ -407,7 +407,7 @@ class RequestExecuter(object):
       if 'end' in request:
         self.write_cost()
       else:
-        print 'Running request ...'
+        print '\033[31mRunning request ...\033[0m'
         decr = request['decr']
         param = request['param']
         layer_name = decr['layer_name']
@@ -416,13 +416,15 @@ class RequestExecuter(object):
         
         executer = get_executer(decr['op'])(decr, param)
         elapsed = executer.execute()
-        print 'elapsed = %f second' % elapsed
+        print 'elapsed = \033[1m%f\033[0m second' % elapsed
         
         if layer_name not in self.comput_cost:
           self.comput_cost[layer_name] = {}
-        self.comput_cost[layer_name][(state, num_worker)] = elapsed
+        self.comput_cost[layer_name][state] = (elapsed, num_worker)
         if param and param[0].get('overlapping', 0) !=  0:
           self.comput_cost[layer_name]['overlapping'] = param[0]['overlapping']
+        if param and param[0].get('actual_data', 0) !=  0:
+          self.comput_cost[layer_name]['actual_data'] = param[0]['actual_data']
 
   def write_cost(self):
     with open(self.output_filename, 'w') as f:

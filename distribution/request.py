@@ -3,6 +3,7 @@ from state import sisw, sidw, disw_i, sidw_f, disw_b
 import copy
 import StringIO
 import json
+import numpy as np
 from fake_varray import VArray
 
 
@@ -21,8 +22,8 @@ class Request(object):
     decr_dic = {'id': self.id, 'op':self.name, 'layer_name':self.layer_name, 'type':self.type, 'workers':self.num_worker,
         'state':self.state, 'tests':len(self.list)}
     item = {'decr': decr_dic, 'param': self.list}
-    #json.dump(item, string_out, sort_keys = True, indent = 2, separators = (',', ': '))
-    json.dump(item, string_out)
+    json.dump(item, string_out, sort_keys = True, indent = 2, separators = (',', ': '))
+    #json.dump(item, string_out)
     print >> fout , string_out.getvalue(), ','
 
 class RequestWriter(object):
@@ -45,19 +46,26 @@ class RequestWriter(object):
     assert False, 'Implementation missing in RequestWriter'
 
   def define_disw_b(self):
-    num_image = divup(self.batch_size, self.num_worker)
-    last_num_image = self.batch_size - num_image * (self.num_worker - 1)
-    dict = copy.deepcopy(self.dict)
-    dict['input_shape'] = self.input_shape[:-1] + (num_image, )
-    dict['output_shape'] = self.output_shape[:-1] + (num_image, )
-    self.list.append(dict)
+    dic_set = set()
+    for i in range(self.num_worker):
+      batch_idx = 1 if len(self.input_shape) == 2 else 3
+      input_varray = VArray(self.input_shape, self.num_worker, i, batch_idx, min_num = 8)
+      output_varray = VArray(self.output_shape, self.num_worker, i, batch_idx, min_num = 8)
+      input_shape = input_varray.local_shape
+      output_shape = output_varray.local_shape
 
-    if num_image != last_num_image:
-      self.type = 'max'
-      dict2 = copy.deepcopy(dict)
-      dict2['input_shape'] = self.input_shape[:-1] + (last_num_image, )
-      dict2['output_shape'] = self.output_shape[:-1] + (last_num_image, )
-      self.list.append(dict2)
+      if input_shape:
+        dic_set.add((input_shape, output_shape))
+
+    self.num_worker = input_varray.num_worker
+    for input_shape, output_shape in dic_set:
+      dict = copy.deepcopy(self.dict)
+      dict['input_shape'] = input_shape
+      dict['output_shape'] = output_shape
+      self.list.append(dict)
+    
+    if len(dic_set) != 1:
+      self.type = 'max'     
 
 
   def write_request(self, id, fout):
@@ -102,47 +110,63 @@ class ConvRequestWriter(RequestWriter):
       self.define_disw_b()
 
     elif self.state == sidw:
-      total_filter = self.output_shape[0]
-      num_filter = divup(total_filter, self.num_worker)
-      last_num_filter = total_filter - num_filter * (self.num_worker - 1)
-      dict = copy.deepcopy(self.dict)
-      if self.name == 'conv':
-        dict['filter_shape'] = self.weight_shape[:-1] + (num_filter,)
-      else:
-        dict['input_shape'] = (num_filter, ) + self.input_shape[1:]
-      dict['output_shape'] = (num_filter, ) + self.output_shape[1:]
-      self.list.append(dict)
-
-      if num_filter != last_num_filter:
-        self.type = 'max'
-        dict2 = copy.deepcopy(dict)
+      dic_set = set()
+      for i in range(self.num_worker):
+        output_varray = VArray(self.output_shape, self.num_worker, i, 0, min_num = 1)
+        output_shape = output_varray.local_shape
         if self.name == 'conv':
-          dict2['filter_shape'] = self.weight_shape[:-1] + (last_num_filter, )
+          filter_varray = VArray(self.weight_shape, self.num_worker, i, 3, min_num = 1)
+          filter_shape = filter_varray.local_shape
+          if filter_shape:
+            dic_set.add((filter_shape, output_shape))
         else:
-          dict['input_shape'] = (num_filter, ) + self.input_shape[1:]
-        dict['output_shape'] = (last_num_filter, ) + self.output_shape[1:]
-        self.list.append(dict2)
+          input_varray = VArray(self.input_shape, self.num_worker, i, 0, min_num = 1)
+          input_shape = input_varray.local_shape
+          if input_shape:
+            dic_set.add((input_shape, output_shape))
+
+      self.num_worker = output_varray.num_worker
+      for shape, output_shape in dic_set:
+        dict = copy.deepcopy(self.dict)
+        dict['filter_shape' if self.name == 'conv' else 'input_shape'] = shape
+        dict['output_shape'] = output_shape
+        self.list.append(dict)
+      
+      if len(dic_set) != 1:
+        self.type = 'max'     
     
     elif self.state == disw_i:
       overlapping_max =  0
+      actual_data_max =  0
       dic_set = set()
+      print self.layer_name
       for i in range(self.num_worker):
-        input_varray = VArray(self.input_shape, self.num_worker, i)
-        output_varray = VArray(self.output_shape, self.num_worker, i)
+        if issquare(self.num_worker):
+          input_varray = VArray(self.input_shape, self.num_worker, i, (1, 2))
+          output_varray = VArray(self.output_shape, self.num_worker, i, (1, 2))
+        else:
+          input_varray = VArray(self.input_shape, self.num_worker, i, 1)
+          output_varray = VArray(self.output_shape, self.num_worker, i, 1)
         output_shape = output_varray.local_shape
         input_shape = input_varray.local_shape
+        print input_shape, output_shape
         if self.name not in ['neuron', 'cmrnorm']:
-          print i, output_varray.local_area,
-          input_shape, overlapping = input_varray.image_communicate(self.stride, self.filter_size,
-              -self.padding, output_area = output_varray.local_area)
-          print input_varray.tmp_local_area
-          overlapping_max = max(overlapping, overlapping_max)
+          input_shape, actual_data, overlapping = input_varray.image_communicate(self.stride, self.filter_size, -self.padding, output_area = output_varray.local_area)
+
           if self.name in ['rnorm']:
             output_shape = input_shape
-        
-        dic_set.add((input_shape, output_shape))
+          
+          if input_shape:
+            print input_shape, input_varray.tmp_local_area
+            overlapping_max = max(overlapping, overlapping_max)
+            actual_data_max = max(actual_data, actual_data_max)
 
+        if input_shape:
+          dic_set.add((input_shape, output_shape))
+
+      self.num_worker = output_varray.num_worker
       self.dict['overlapping'] = overlapping_max
+      self.dict['actual_data'] = actual_data_max
       for input_shape, output_shape in dic_set:
         dict = copy.deepcopy(self.dict)
         dict['input_shape'] = input_shape
@@ -177,26 +201,31 @@ class FCRequestWriter(RequestWriter):
       self.define_disw_b()
 
     elif self.state == sidw_f:
-      if self.name in ['fc', 'neuron']:
-        output_size = divup(self.output_shape[0], self.num_worker)
-        last_output_size = self.output_shape[0] - output_size * (self.num_worker - 1)
-        dict = copy.deepcopy(self.dict)
-        if self.name == 'fc':
-          dict['weight_shape'] = (output_size, self.input_size)
-        else:
-          dict['input_shape'] = (output_size, self.batch_size)
-        dict['output_shape'] = (output_size, self.batch_size)
-        self.list.append(dict)
+      dic_set = set()
 
-        if output_size != last_output_size:
-          self.type = 'max'
-          dict2 = copy.deepcopy(dict)
+      if self.name in ['fc', 'neuron']:
+        for i in range(self.num_worker):
+          output_varray = VArray(self.output_shape, self.num_worker, i, 0)
+          output_shape = output_varray.local_shape
           if self.name == 'fc':
-            dict2['weight_shape'] = (last_output_size, self.input_size)
+            weight_varray = VArray(self.weight_shape, self.num_worker, i, 0)
+            weight_shape = weight_varray.local_shape
+            if weight_shape:
+              dic_set.add((weight_shape, output_shape))
           else:
-            dict['input_shape'] = (output_size, self.batch_size)
-          dict2['output_shape'] = (last_output_size, self.batch_size)
-          self.list.append(dict2)
+            input_varray = VArray(self.input_shape, self.num_worker, i, 0)
+            input_shape = input_varray.local_shape
+            if input_shape:
+              dic_set.add((input_shape, output_shape))
+
+        for shape, output_shape in dic_set:
+          dict = copy.deepcopy(self.dict)
+          dict['weight_shape' if self.name == 'fc' else 'input_shape'] = shape
+          dict['output_shape'] = output_shape
+          self.list.append(dict)
+        
+        if len(dic_set) != 1:
+          self.type = 'max'     
 
     else:
       assert False, 'Distribution Error for ' + self.name

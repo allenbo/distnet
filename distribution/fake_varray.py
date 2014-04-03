@@ -1,6 +1,6 @@
 import numpy as np
 import math
-from util import issquare
+from util import issquare, divup
 
 class Point(object):
   def __init__(self, first, *args):
@@ -69,6 +69,7 @@ class Area(object):
       return Area(_from, _to)
     else:
       return None
+
   def __str__(self):
     return str(self._from) + ' to ' + str(self._to)
 
@@ -94,7 +95,7 @@ class Area(object):
   @property
   def shape(self):
     return tuple([ a - b + 1 for a, b in zip(self._to.point, self._from.point)])
-  
+
   @property
   def size(self):
     return np.prod(self.shape)
@@ -114,28 +115,44 @@ class DistMethod(object):
   stripe = 'stripe'
 
 class VArray(object):
-  def __init__(self, input_shape, num_worker, rank):
+  def __init__(self, input_shape, num_worker, rank, slice_dim, min_num = 1):
     self.global_shape = input_shape
     self.num_worker = num_worker
     self.rank = rank
+    self.dummy = False
+    self.min_num = min_num
 
-    if issquare(self.num_worker):
-      self.slice_dim = (1, 2)
+    if not np.isscalar(slice_dim):
+      self.slice_dim = slice_dim
       self.slice_method = DistMethod.square
       self.nprow = int(math.sqrt(self.num_worker))
       self.local_area = self.make_square_area(self.rank)
     else:
-      self.slice_dim = 1
+      self.slice_dim = slice_dim
       self.slice_method = DistMethod.stripe
       self.local_area = self.make_stripe_area(self.rank)
-    self.local_shape = self.local_area.shape
     self.global_area = Area.make_area(self.global_shape)
+    if self.dummy:
+      self.local_shape = None
+    else:
+      self.local_shape = self.local_area.shape
 
   def make_square_area(self, rank):
     first , second = self.slice_dim
     assert first < second < len(self.global_shape), 'Wrong slice_dim ' + str(len(self.global_shape))
-    local_nrow = self.global_shape[first] / self.nprow
+    local_nrow = 1.0 * self.global_shape[first] / self.nprow
+    if local_nrow < self.min_num:
+      local_nrow = self.min_num
+      self.nprow = self.global_shape[first] / local_nrow
+      if self.nprow * local_nrow != self.global_shape[first]:
+        self.nprow = self.global_shape[first] / (local_nrow + 1)
+      self.num_worker = self.nprow ** 2
+      local_nrow = 1.0 * self.global_shape[first] / self.nprow
+      print 'Global shape is %s, Too many workers for image split, change the number of workers to %d' % ( self.global_shape, self.num_worker)
     local_ncol = local_nrow
+    if rank >= self.num_worker:
+      self.dummy = True
+      return None
 
     first_pos = int(rank / self.nprow)
     second_pos = int(rank % self.nprow)
@@ -157,10 +174,22 @@ class VArray(object):
 
   def make_stripe_area(self, rank):
     assert self.slice_dim < len(self.global_shape), 'Wrong slice dim'
-    nrow = self.global_shape[self.slice_dim] / self.num_worker
+    nrow = 1.0 * self.global_shape[self.slice_dim] / self.num_worker
 
-    pos_from = nrow * rank
-    pos_to = (rank+ 1)* nrow
+    if nrow < self.min_num:
+      nrow = self.min_num
+      self.num_worker = self.global_shape[self.slice_dim] / nrow
+      if self.num_worker * nrow != self.global_shape[self.slice_dim]:
+        self.num_worker = self.global_shape[self.slice_dim] / (nrow+1)
+      print 'Globla shape is %s, Too many workers for stripe splitting, change the number of workers to %d' % ( self.global_shape, self.num_worker)
+
+    nrow = 1.0 * self.global_shape[self.slice_dim] / self.num_worker
+    if rank >= self.num_worker:
+      self.dummy = True
+      return None
+
+    pos_from = int(nrow * rank)
+    pos_to = int((rank+ 1)* nrow)
     if rank == self.num_worker-1 :
       pos_to = self.global_shape[self.slice_dim]
 
@@ -171,12 +200,29 @@ class VArray(object):
     _to = [x - 1 for x in _to]
     return Area(Point(*_from) , Point(*_to))
 
+  def get_comm(self, area, padding = 0):
+    amount = 0
+    if area in self.local_area:
+        return 0
+    else:
+      for rank, a in self.area_dict.iteritems():
+        sub_area = a & area
+        if rank != self.rank:
+          if sub_area:
+            amount += np.prod(sub_area.shape) * 4
+      return  amount
+
   def image_communicate(self, stride, filter_size, padding = 0, output_area = None):
     ''' When cross communicate is being called, FastNet is distribued the image cross height and width'''
+    if self.dummy: return (None, None, None)
+    if output_area is None: return (None, None, None) # output varray is a dummy one
     assert padding <= 0, str(padding)
-    r, c = self.slice_dim
+    if np.isscalar(self.slice_dim):
+      r, c = 1, 2
+    else:
+      r, c = self.slice_dim
     half_filter_size = (filter_size - 1) /2
-  
+
     from_point = output_area._from
     to_point = output_area._to
 
@@ -184,7 +230,7 @@ class VArray(object):
     row_end_centroid = to_point[r] * stride + padding + half_filter_size
     col_begin_centroid = from_point[c] * stride + padding + half_filter_size
     col_end_centroid = to_point[c] * stride + padding + half_filter_size
-    
+
     row_begin = max(row_begin_centroid - half_filter_size, 0)
     row_end = min(row_end_centroid + half_filter_size, self.global_shape[r] - 1)
     col_begin = max(col_begin_centroid - half_filter_size, 0)
@@ -199,27 +245,42 @@ class VArray(object):
     _to[c] = col_end
 
     self.tmp_local_area = Area(Point(*_from), Point(*_to))
-    overlapping = (np.prod(self.tmp_local_area.shape) - np.prod(self.local_shape)) * 4
-    rst_shape = self.pad(padding, self.tmp_local_area.shape)
-    return rst_shape, overlapping
+    actual_data = np.prod(self.tmp_local_area.shape) * 4
+    overlapping = (np.prod(self.tmp_local_area.shape) - np.prod(self.local_area.shape)) * 4
+    rst_shape = self.pad(padding, self.tmp_local_area.shape, self.tmp_local_area)
+    return rst_shape, actual_data, overlapping
 
-  def pad(self, padding, old_shape):
+  def pad(self, padding, old_shape, old_area):
+    if self.dummy: return
     assert padding <= 0
     padding = -padding
-    row, col = 1, 2
+    if np.isscalar(self.slice_dim):
+      row, col = 1, 2
+    else:
+      row, col = self.slice_dim
     new_shape = list(old_shape)
 
-    #most top
-    if self.local_area._from[row] == 0:
-      new_shape[row] += padding
-    #most left
-    if self.local_area._from[col] == 0:
-      new_shape[col] += padding
-    #most down
-    if self.local_area._to[row] == self.global_area._to[row]:
-      new_shape[row] += padding
-    #most right
-    if self.local_area._to[col] == self.global_area._to[col]:
-      new_shape[col] += padding
-
+    if hasattr(self, 'nprow'):
+      if self.rank < self.nprow:
+      #if old_area._from[row] == 0:
+        new_shape[row] += padding
+      if self.rank % self.nprow == 0:
+      #if old_area._from[col] == 0:
+        new_shape[col] += padding
+      if self.num_worker - self.rank <= self.nprow:
+      #if old_area._to[row] == self.global_area._to[row]:
+        new_shape[row] += padding
+      if (self.rank + 1) % self.nprow == 0:
+      #if old_area._to[col] == self.global_area._to[col]:
+        new_shape[col] += padding
+    else:
+      if old_area._from[row] == 0:
+        new_shape[row] += padding
+      if old_area._from[col] == 0:
+        new_shape[col] += padding
+      if old_area._to[row] == self.global_area._to[row]:
+         new_shape[row] += padding
+      if old_area._to[col] == self.global_area._to[col]:
+        new_shape[col] += padding
+    
     return tuple(new_shape)
