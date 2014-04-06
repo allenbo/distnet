@@ -1,6 +1,6 @@
 import numpy as np
 import math
-from util import issquare, divup
+from distbase.util import issquare, divup
 
 class Point(object):
   def __init__(self, first, *args):
@@ -212,15 +212,12 @@ class VArray(object):
             amount += np.prod(sub_area.shape) * 4
       return  amount
 
-  def image_communicate(self, stride, filter_size, padding = 0, output_area = None):
+  def image_communicate(self, slice_dim, stride, filter_size, padding = 0, output_area = None):
     ''' When cross communicate is being called, FastNet is distribued the image cross height and width'''
     if self.dummy: return (None, None, None)
     if output_area is None: return (None, None, None) # output varray is a dummy one
     assert padding <= 0, str(padding)
-    if np.isscalar(self.slice_dim):
-      r, c = 1, 2
-    else:
-      r, c = self.slice_dim
+    r, c = slice_dim
     half_filter_size = (filter_size - 1) /2
 
     from_point = output_area._from
@@ -247,17 +244,14 @@ class VArray(object):
     self.tmp_local_area = Area(Point(*_from), Point(*_to))
     actual_data = np.prod(self.tmp_local_area.shape) * 4
     overlapping = (np.prod(self.tmp_local_area.shape) - np.prod(self.local_area.shape)) * 4
-    rst_shape = self.pad(padding, self.tmp_local_area.shape, self.tmp_local_area)
+    rst_shape = self.pad(padding, self.tmp_local_area.shape, self.tmp_local_area, slice_dim)
     return rst_shape, actual_data, overlapping
 
-  def pad(self, padding, old_shape, old_area):
+  def pad(self, padding, old_shape, old_area, slice_dim):
     if self.dummy: return
     assert padding <= 0
     padding = -padding
-    if np.isscalar(self.slice_dim):
-      row, col = 1, 2
-    else:
-      row, col = self.slice_dim
+    row, col = slice_dim
     new_shape = list(old_shape)
 
     if hasattr(self, 'nprow'):

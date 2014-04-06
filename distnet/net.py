@@ -1,6 +1,7 @@
-from distnet import util, layer
+from distnet import layer
 from distnet.layer import TRAIN, WeightedLayer, TEST
-from distnet.util import timer
+from distbase import util
+from distbase.util import timer
 import garray
 from garray import GPUArray, driver
 import numpy as np

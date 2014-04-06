@@ -1,12 +1,12 @@
-from distnet.util import divup, print_matrix
-from distnet.weights import WEIGHTS, to_gpu
-from distnet import util
+from distbase import util
+from distbase.util import divup, print_matrix
+from distnet.weights import WEIGHTS
 import os
 import numpy as np
 import garray
 
 from multigpu import convert_shape, allocate, arr, uniformed_array, rank, multi_gpu
-from multigpu import get_state
+from multigpu import get_state, get_weight_distribution, get_output_distribution
 
 PFout = False
 PBout = False

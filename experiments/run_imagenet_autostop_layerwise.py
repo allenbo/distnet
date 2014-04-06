@@ -3,9 +3,9 @@
 This test is for naive trainer to traine a full imagenet model
 '''
 
-from fastnet import data, trainer, net, parser
+from distnet import data, trainer, net, parser
 import os
-from fastnet import util
+from distbase import util
 import numpy as np
 
 test_id = 'autostop_layerwise'

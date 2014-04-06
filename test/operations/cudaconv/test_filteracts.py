@@ -1,7 +1,7 @@
 import cudaconv
 from pycuda import gpuarray, driver, autoinit
 import numpy as np
-from distnet.util import divup
+from distbase.util import divup
 np.set_printoptions(threshold = np.nan)
 
 batch_size = 128

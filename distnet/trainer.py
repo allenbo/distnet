@@ -1,6 +1,7 @@
+from distbase import util
+from distbase.util import log, timer
 from collections import deque
-from distnet import argparse, util, layer, data
-from distnet.util import log, timer
+from distnet import argparse, layer, data
 from distnet.checkpoint import CheckpointDumper, DataDumper, MemoryDataHolder
 from distnet.layer import TRAIN, TEST
 from distnet.net import FastNet

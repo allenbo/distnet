@@ -48,7 +48,7 @@ setup(
       'caffe' : 'caffe', 
       'garray' : 'garray',
       'varray' : 'varray',
-      'distribution' : 'distribution',
+      'distbase': 'distbase',
     },
     requires=[
       'pycuda', 

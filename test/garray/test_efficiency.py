@@ -1,6 +1,7 @@
 import garray
 import numpy as np
 import time
+garray.device_init()
 
 num = 10
 a = np.random.randn(96, 64, 64, 128).astype(np.float32)

@@ -3,7 +3,7 @@
 This test is for naive trainer to traine a full imagenet model
 '''
 
-from fastnet import data, trainer, net, parser
+from distnet import data, trainer, net, parser
 
 import sys
 num_epochs = int(sys.argv[1])

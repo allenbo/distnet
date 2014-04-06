@@ -3,14 +3,12 @@
 #ifndef _CAFFE_UTIL_IM2COL_HPP_
 #define _CAFFE_UTIL_IM2COL_HPP_
 
-template <typename Dtype>
-void im2col_gpu(const Dtype* data_im, const int channels,
+void im2col_gpu(const float* data_im, const int channels,
     const int height, const int width, const int ksize, const int stride, const int paddin, 
-    Dtype* data_col);
+    float* data_col);
 
-template <typename Dtype>
-void col2im_gpu(const Dtype* data_col, const int channels,
+void col2im_gpu(const float* data_col, const int channels,
     const int height, const int width, const int psize, const int stride, const int padding,
-    Dtype* data_im);
+    float* data_im);
 
 #endif  // CAFFE_UTIL_IM2COL_HPP_

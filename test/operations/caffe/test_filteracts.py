@@ -1,61 +1,74 @@
 import caffe
-import cudaconv
-from pycuda import gpuarray, driver, autoinit
+from pycuda import gpuarray, driver
 import numpy as np
-from distnet.util import divup
-np.set_printoptions(threshold = np.nan)
+from distbase.util import divup
+caffe.init()
 
-batch_size = 128
-image_size = 224
-color = 3
-input_shape = (batch_size, color, image_size, image_size)
-
-filter_size  = 11
-channel = 96
-filter_shape = (channel, color, filter_size, filter_size)
-
-padding = 0
-stride = 4
-output_size = 1 + divup(2 * padding + image_size - filter_size, stride)
-output_shape = (batch_size, channel, output_size, output_size)
-
-input_local = np.random.randn(*input_shape).astype(np.float32)
-filter_local = np.random.randn(*filter_shape).astype(np.float32)
-output_local = np.zeros(output_shape).astype(np.float32)
-
-input_caffe = gpuarray.to_gpu(input_local)
-filter_caffe = gpuarray.to_gpu(filter_local)
-output_caffe = gpuarray.to_gpu(output_local)
-
-caffe.convFilterActs(input_caffe, filter_caffe, output_caffe, image_size, output_size, output_size, -padding,
-    stride, color, 1)
-
-if padding != 0:
-  tmp_shape  = (batch_size, channel, image_size + 2 * padding, image_size + 2 * padding)
-  tmp_input = np.zeros(tmp_shape).astype(np.float32)
-  tmp_input[:, :, padding:padding+image_size, padding:padding+image_size] = input_local
-  input_local = tmp_input
+BATCH = 128
+batch_size = BATCH
 
 
-batch_size = 1
-for b in range(batch_size):
-  for c in range(channel):
-    for x in range(output_size):
-      for y in range(output_size):
-        start_x = stride * x
-        start_y = stride * y
-        o = 0
-        f = filter_local
-        if start_x + filter_size >= input_local.shape[2]:
-          f = f[:, :, :input_local.shape[2]-start_x, :]
-        if start_y + filter_size >= input_local.shape[3]:
-          f = f[:, :, :, :input_local.shape[3]-start_y]
-        for cr in range(color):
-          left = input_local[b, cr, start_x:start_x+filter_size, start_y:start_y+filter_size]
-          right = f[c, cr, :, :]
-          o += (left * right).sum()
-        output_local[b, c, x, y] = o
+colors = [3, 96, 128]
+channels = [96, 128, 128]
+image_sizes = [224, 27, 13]
+filter_sizes = [11, 5, 3]
+paddings = [0, 2, 1]
+strides = [4, 1, 1]
 
-diff = output_caffe.get()[0, :, :, :] - output_local[0, :, :, :]
-assert (diff < 1e-3).all()
-print 'Convolution passed the test'
+for image_size, color, channel, padding, stride, filter_size in zip(image_sizes, colors, channels, paddings, strides, filter_sizes):
+  print 'color = %d channel = %d image_size = %d padding = %d stride = %d' % (color, channel, image_size, padding, stride)
+  output_size = 1 + divup(2 * padding + image_size - filter_size, stride)
+
+  input_shape = (batch_size, color, image_size, image_size)
+  filter_shape = (channel, color, filter_size, filter_size)
+  output_shape = (batch_size, channel, output_size, output_size)
+
+  input_local = np.random.randn(*input_shape).astype(np.float32)
+  filter_local = np.random.randn(*filter_shape).astype(np.float32)
+  #input_local = np.ones(input_shape).astype(np.float32)
+  #filter_local = np.ones(filter_shape).astype(np.float32)
+  output_local = np.zeros(output_shape).astype(np.float32)
+
+  input_caffe = gpuarray.to_gpu(input_local)
+  filter_caffe = gpuarray.to_gpu(filter_local)
+  output_caffe = gpuarray.to_gpu(output_local)
+  
+  print 'input.shape', input_caffe.shape
+  print 'output.shape', output_caffe.shape
+
+  caffe.convFilterActs(input_caffe, filter_caffe, output_caffe, image_size, output_size, output_size, -padding,
+      stride, color, 1)
+
+  if padding != 0:
+    tmp_shape  = (batch_size, color, image_size + 2 * padding, image_size + 2 * padding)
+    tmp_input = np.zeros(tmp_shape).astype(np.float32)
+    tmp_input[:, :, padding:padding+image_size, padding:padding+image_size] = input_local
+    input_local = tmp_input
+
+
+  batch_size = 1
+  for b in range(batch_size):
+    for c in range(channel):
+      for x in range(output_size):
+        for y in range(output_size):
+          start_x = stride * x
+          start_y = stride * y
+          o = 0
+          f = filter_local
+          if start_x + filter_size >= input_local.shape[2]:
+            f = f[:, :, :input_local.shape[2]-start_x, :]
+          if start_y + filter_size >= input_local.shape[3]:
+            f = f[:, :, :, :input_local.shape[3]-start_y]
+          for cr in range(color):
+            left = input_local[b, cr, start_x:start_x+filter_size, start_y:start_y+filter_size]
+            right = f[c, cr, :, :]
+            o += (left * right).sum()
+          output_local[b, c, x, y] = o
+  output_caffe = output_caffe.get()
+  diff = output_caffe[0, :, :, :] - output_local[0, :, :, :]
+  #print output_caffe[0, 0, :, :]
+  #print '=' * 40
+  #print output_local[0, 0, :, :]
+  assert (diff < 1e-3).all()
+  print 'Convolution passed the test'
+  batch_size = BATCH

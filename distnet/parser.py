@@ -1,9 +1,10 @@
-from distnet import net, util
+from distnet import net
 from distnet.layer import ConvLayer, MaxPoolLayer, AvgPoolLayer, \
   CrossMapResponseNormLayer, SoftmaxLayer, NeuronLayer, ResponseNormLayer, FCLayer, \
   DataLayer
 import distnet
-from distnet.util import isfloat
+from distbase import util
+from distbase.util import isfloat
 import numpy as np
 
 def parse_config_file(parsing_file):

@@ -1,7 +1,8 @@
-from pycuda import gpuarray, driver, autoinit
+from pycuda import gpuarray, driver
 import numpy as np
+from distbase.util import divup
 import caffe
-from distnet.util import divup
+caffe.init()
 
 
 batch_size = 128

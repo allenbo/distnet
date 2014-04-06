@@ -1,9 +1,10 @@
-from pycuda import gpuarray, driver, autoinit
+from pycuda import gpuarray, driver
 import numpy as np
 import cudaconv
-from distnet.util import divup
+from distbase.util import divup
 import time
 import random
+cudaconv.init()
 
 print '%10s\t%10s\t%10s' %('batch', 'comput', 'real')
 for batch_size in [8, 16, 32, 64, 128, 256]:

@@ -5,7 +5,7 @@ This test is for naive trainer to traine a full imagenet model
 
 import pyximport
 pyximport.install()
-from distnet import data, trainer, net, parser, util
+from distnet import data, trainer, net, parser
 from mpi4py import MPI
 
 
@@ -46,5 +46,4 @@ net = parser.load_model(net.FastNet(image_shape), model)
 param_dict = globals()
 t = trainer.Trainer(**param_dict)
 
-util.enable_profile()
 t.train(num_epoch)

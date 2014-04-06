@@ -1,8 +1,10 @@
 import caffe
-from pycuda import gpuarray, driver, autoinit
+from pycuda import gpuarray, driver
 import numpy as np
-from distnet.util import divup
-np.set_printoptions(threshold = np.nan)
+from distbase.util import divup
+caffe.init()
+
+
 
 batch_size = 128
 image_size = 10

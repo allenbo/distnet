@@ -1,4 +1,4 @@
-from state import *
+from distbase.state import *
 
 class ConvFC:
   conv = 0

@@ -2,15 +2,15 @@
 
 #include <cmath>
 #include <cstdlib>
+#include <stdio.h>
 #include <cstring>
 
 #include "common.cuh"
 #include "im2col.cuh"
 
-template <typename Dtype>
-__global__ void im2col_gpu_kernel(const int n, const Dtype* data_im,
+__global__ void im2col_gpu_kernel(const int n, const float* data_im,
   const int height, const int width, const int ksize,
-  const int stride, const int padding, const int height_col, const int width_col, Dtype* data_col) {
+  const int stride, const int padding, const int height_col, const int width_col, float* data_col) {
   int index = threadIdx.x + blockIdx.x * blockDim.x;
   if (index < n) {
     int w_out = index % width_col;
@@ -33,37 +33,27 @@ __global__ void im2col_gpu_kernel(const int n, const Dtype* data_im,
   }
 }
 
-template <typename Dtype>
-void im2col_gpu(const Dtype* data_im, const int channels,
+void im2col_gpu(const float* data_im, const int channels,
     const int height, const int width, const int ksize, const int stride, const int padding,
-    Dtype* data_col) {
+    float* data_col) {
   // We are going to launch channels * height_col * width_col kernels, each
   // kernel responsible for copying a single-channel grid.
   int height_col = (height - ksize - 2*padding + stride -1) / stride + 1;
   int width_col = (width - ksize - 2*padding + stride -1) / stride + 1;
   int num_kernels = channels * height_col * width_col;
-  im2col_gpu_kernel<Dtype><<<CAFFE_GET_BLOCKS(num_kernels), CAFFE_CUDA_NUM_THREADS>>>(
+  im2col_gpu_kernel<<<CAFFE_GET_BLOCKS(num_kernels), CAFFE_CUDA_NUM_THREADS>>>(
     num_kernels, data_im, height, width, ksize, stride, padding, height_col, width_col,
     data_col);
   CUDA_POST_KERNEL_CHECK;
 }
 
 
-// Explicit instantiation
-template void im2col_gpu<float>(const float* data_im, const int channels,
-  const int height, const int width, const int ksize, const int stride, const int padding,
-    float* data_col);
-template void im2col_gpu<double>(const double* data_im, const int channels,
-    const int height, const int width, const int ksize, const int stride, const int paddin,
-    double* data_col);
-
-template <typename Dtype>
-__global__ void col2im_gpu_kernel(const int n, const Dtype* data_col,
+__global__ void col2im_gpu_kernel(const int n, const float* data_col,
   const int height, const int width, const int channels, const int ksize,
-  const int stride, const int padding, const int height_col, const int width_col, Dtype* data_im) {
+  const int stride, const int padding, const int height_col, const int width_col, float* data_im) {
   int index = threadIdx.x + blockIdx.x * blockDim.x;
   if (index < n) {
-    Dtype val = 0;
+    float val = 0;
     int w = index % width - padding ;
     int h = (index / width) % height - padding;
     int c = index / (width * height);
@@ -94,27 +84,17 @@ __global__ void col2im_gpu_kernel(const int n, const Dtype* data_col,
   }
 }
 
-template <typename Dtype>
-void col2im_gpu(const Dtype* data_col, const int channels,
+void col2im_gpu(const float* data_col, const int channels,
     const int height, const int width, const int ksize, const int stride, const int padding,
-    Dtype* data_im) {
-  //CUDA_CHECK(cudaMemset(data_im, 0, sizeof(Dtype) * height * width * channels));
+    float* data_im) {
+  //CUDA_CHECK(cudaMemset(data_im, 0, sizeof(float) * height * width * channels));
   int height_col = (height - ksize - 2*padding + stride -1) / stride + 1;
   int width_col = (width - ksize - 2*padding + stride -1) / stride + 1;
   int num_kernels = channels * height * width;
   // To avoid involving atomic operations, we will launch one kernel per
   // bottom dimension, and then in the kernel add up the top dimensions.
-  col2im_gpu_kernel<Dtype><<<CAFFE_GET_BLOCKS(num_kernels), CAFFE_CUDA_NUM_THREADS>>>(
+  col2im_gpu_kernel<<<CAFFE_GET_BLOCKS(num_kernels), CAFFE_CUDA_NUM_THREADS>>>(
       num_kernels, data_col, height, width, channels, ksize, stride, padding,
       height_col, width_col, data_im);
   CUDA_POST_KERNEL_CHECK;
 }
-
-
-// Explicit instantiation
-template void col2im_gpu<float>(const float* data_col, const int channels,
-    const int height, const int width, const int psize, const int stride, const int padding,
-    float* data_im);
-template void col2im_gpu<double>(const double* data_col, const int channels,
-    const int height, const int width, const int psize, const int stride, const int padding,
-    double* data_im);

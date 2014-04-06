@@ -1,8 +1,9 @@
-from fastnet import net, layer, checkpoint, parser
-import fastnet
+from distnet import net, layer, checkpoint, parser
+import distnet
+import garray
 import numpy as np
 
-fastnet.init()
+garray.device_init()
 
 def _make_simple():
   net1 = net.FastNet((3, 32, 32))

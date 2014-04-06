@@ -1,10 +1,8 @@
 import garray
 from pycuda import gpuarray
 import numpy as np
-import cudaconv
 import time
-
-cudaconv.init()
+garray.device_init()
 
 def test_small():
   a = garray.GPUArray((3, 3, 3, 3), dtype=np.float32)

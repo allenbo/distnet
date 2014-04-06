@@ -1,7 +1,8 @@
-from pycuda import gpuarray, driver, autoinit
+from pycuda import gpuarray, driver
 import numpy as np
 import time
 import garray
+garray.device_init()
 
 batch_size = 128
 print '%10s\t%10s\t%10s' %('batch', 'data', 'real')

@@ -1,6 +1,7 @@
-from pycuda import gpuarray, driver, autoinit
+from pycuda import gpuarray, driver
 import numpy as np
 import garray
+garray.device_init()
 
 
 batch_size = 128

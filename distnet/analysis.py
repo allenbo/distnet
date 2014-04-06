@@ -2,7 +2,7 @@
 
 '''Functions for analyzing the output of distnet checkpoint files.'''
 
-from distnet import util
+from distbase import util
 from matplotlib.pyplot import gcf
 import cPickle
 import matplotlib.pyplot as plt

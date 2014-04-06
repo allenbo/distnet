@@ -1,5 +1,5 @@
-from util import divup, issquare
-from state import sisw, sidw, disw_i, sidw_f, disw_b
+from distbase.util import divup, issquare
+from distbase.state import sisw, sidw, disw_i, sidw_f, disw_b
 import copy
 import StringIO
 import json
@@ -27,11 +27,28 @@ class Request(object):
     print >> fout , string_out.getvalue(), ','
 
 class RequestWriter(object):
-  def __init__(self, layer, state, num_worker):
+  def __init__(self, layer, state, num_worker, backend):
     self.state = state
     self.num_worker = num_worker
+    self.backend = backend
     self.name = layer['type']
     self.layer_name = layer['name']
+    if self.backend == 'cudaconv' or backend == 'mix':
+      import cudaconv_backend as cm_backend
+    elif self.backend == 'caffe':
+      import caffe_backend as cm_backend
+    else:
+      assert False, 'There is not such backend %s' % (self.backend)
+    self.IMAGE_BATCH = cm_backend.ConvDataLayout.BATCH
+    self.IMAGE_HEIGHT = cm_backend.ConvDataLayout.HEIGHT
+    self.IMAGE_WIDTH = cm_backend.ConvDataLayout.WIDTH
+    self.IMAGE_CHANNEL = cm_backend.ConvDataLayout.CHANNEL
+    self.FILTER_HEIGHT = cm_backend.FilterLayout.HEIGHT
+    self.FILTER_WIDTH = cm_backend.FilterLayout.WIDTH
+    self.FILTER_CHANNEL = cm_backend.FilterLayout.CHANNEL
+    self.FILTER_NUM = cm_backend.FilterLayout.NUM
+    self.FC_BATCH = 1
+    self.WEIGHT_FIRST = 0
 
     self.input_shape = layer['input_shape']
     self.output_shape = layer['output_shape']
@@ -39,6 +56,7 @@ class RequestWriter(object):
     self.dict = {
         'input_shape':self.input_shape,
         'output_shape':self.output_shape,
+        'backend':self.backend,
         }
     self.list = []
 
@@ -48,7 +66,7 @@ class RequestWriter(object):
   def define_disw_b(self):
     dic_set = set()
     for i in range(self.num_worker):
-      batch_idx = 1 if len(self.input_shape) == 2 else 3
+      batch_idx = self.FC_BATCH if len(self.input_shape) == 2 else self.IMAGE_BATCH
       input_varray = VArray(self.input_shape, self.num_worker, i, batch_idx, min_num = 8)
       output_varray = VArray(self.output_shape, self.num_worker, i, batch_idx, min_num = 8)
       input_shape = input_varray.local_shape
@@ -75,8 +93,8 @@ class RequestWriter(object):
 
 class ConvRequestWriter(RequestWriter):
   ''' This is not just for conv layer, it should work for conv stack'''
-  def __init__(self, layer, state, num_worker):
-    RequestWriter.__init__(self, layer, state, num_worker)
+  def __init__(self, layer, state, num_worker, backend):
+    RequestWriter.__init__(self, layer, state, num_worker, backend)
     if self.name == 'conv':
       self.padding, self.filter_size, self.stride = layer['padding'], layer['filterSize'], layer['stride']
       self.num_filter = layer['numFilter']
@@ -112,15 +130,15 @@ class ConvRequestWriter(RequestWriter):
     elif self.state == sidw:
       dic_set = set()
       for i in range(self.num_worker):
-        output_varray = VArray(self.output_shape, self.num_worker, i, 0, min_num = 1)
+        output_varray = VArray(self.output_shape, self.num_worker, i, self.IMAGE_CHANNEL, min_num = 1)
         output_shape = output_varray.local_shape
         if self.name == 'conv':
-          filter_varray = VArray(self.weight_shape, self.num_worker, i, 3, min_num = 1)
+          filter_varray = VArray(self.weight_shape, self.num_worker, i, self.FILTER_NUM, min_num = 1)
           filter_shape = filter_varray.local_shape
           if filter_shape:
             dic_set.add((filter_shape, output_shape))
         else:
-          input_varray = VArray(self.input_shape, self.num_worker, i, 0, min_num = 1)
+          input_varray = VArray(self.input_shape, self.num_worker, i, self.IMAGE_CHANNEL, min_num = 1)
           input_shape = input_varray.local_shape
           if input_shape:
             dic_set.add((input_shape, output_shape))
@@ -142,16 +160,16 @@ class ConvRequestWriter(RequestWriter):
       print self.layer_name
       for i in range(self.num_worker):
         if issquare(self.num_worker):
-          input_varray = VArray(self.input_shape, self.num_worker, i, (1, 2))
-          output_varray = VArray(self.output_shape, self.num_worker, i, (1, 2))
+          input_varray = VArray(self.input_shape, self.num_worker, i, (self.IMAGE_HEIGHT, self.IMAGE_WIDTH))
+          output_varray = VArray(self.output_shape, self.num_worker, i, (self.IMAGE_HEIGHT, self.IMAGE_WIDTH))
         else:
-          input_varray = VArray(self.input_shape, self.num_worker, i, 1)
-          output_varray = VArray(self.output_shape, self.num_worker, i, 1)
+          input_varray = VArray(self.input_shape, self.num_worker, i, self.IMAGE_HEIGHT)
+          output_varray = VArray(self.output_shape, self.num_worker, i, self.IMAGE_HEIGHT)
         output_shape = output_varray.local_shape
         input_shape = input_varray.local_shape
         print input_shape, output_shape
         if self.name not in ['neuron', 'cmrnorm']:
-          input_shape, actual_data, overlapping = input_varray.image_communicate(self.stride, self.filter_size, -self.padding, output_area = output_varray.local_area)
+          input_shape, actual_data, overlapping = input_varray.image_communicate((self.IMAGE_HEIGHT, self.IMAGE_WIDTH), self.stride, self.filter_size, -self.padding, output_area = output_varray.local_area)
 
           if self.name in ['rnorm']:
             output_shape = input_shape
@@ -182,8 +200,8 @@ class ConvRequestWriter(RequestWriter):
 
 
 class FCRequestWriter(RequestWriter):
-  def __init__(self, layer, state, num_worker):
-    RequestWriter.__init__(self, layer, state, num_worker)
+  def __init__(self, layer, state, num_worker, backend):
+    RequestWriter.__init__(self, layer, state, num_worker, backend)
     if self.name == 'fc':
       self.output_size = layer['outputSize']
       self.input_size = layer['input_shape'][0]
@@ -205,15 +223,15 @@ class FCRequestWriter(RequestWriter):
 
       if self.name in ['fc', 'neuron']:
         for i in range(self.num_worker):
-          output_varray = VArray(self.output_shape, self.num_worker, i, 0)
+          output_varray = VArray(self.output_shape, self.num_worker, i, self.WEIGHT_FIRST)
           output_shape = output_varray.local_shape
           if self.name == 'fc':
-            weight_varray = VArray(self.weight_shape, self.num_worker, i, 0)
+            weight_varray = VArray(self.weight_shape, self.num_worker, i, self.WEIGHT_FIRST)
             weight_shape = weight_varray.local_shape
             if weight_shape:
               dic_set.add((weight_shape, output_shape))
           else:
-            input_varray = VArray(self.input_shape, self.num_worker, i, 0)
+            input_varray = VArray(self.input_shape, self.num_worker, i, self.WEIGHT_FIRST)
             input_shape = input_varray.local_shape
             if input_shape:
               dic_set.add((input_shape, output_shape))
@@ -232,17 +250,18 @@ class FCRequestWriter(RequestWriter):
 
 
 class RequestProxy(object):
-  def __init__(self, writer):
+  def __init__(self, writer, backend):
     self.writer = writer
     self.id = 0
+    self.backend = backend
     print >> self.writer, '['
 
   def write_request(self, layer, state, num_worker, conv_end):
     if conv_end != True:
-      conv = ConvRequestWriter(layer, state, num_worker)
+      conv = ConvRequestWriter(layer, state, num_worker, self.backend)
       conv.write_request(self.id, self.writer)
     else:
-      fc = FCRequestWriter(layer, state, num_worker)
+      fc = FCRequestWriter(layer, state, num_worker, self.backend)
       fc.write_request(self.id, self.writer)
     self.id += 1
   

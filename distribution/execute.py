@@ -1,10 +1,13 @@
+import cudaconv
+import caffe
 import json
-from pycuda import gpuarray, driver, autoinit
+from pycuda import gpuarray, driver
 import numpy as np
 import time
-import cudaconv
 import garray
 import cPickle as pickle
+
+cudaconv.init()
 
 executer_dict = {}
 def register_executer(name, _class):
@@ -43,11 +46,38 @@ class ConvExecuter(Executer):
       input_shape = tuple(param['input_shape'])
       output_shape = tuple(param['output_shape'])
       filter_shape = tuple(param['filter_shape'])
-      if filter_shape[-1] % 16 != 0:
-        num_filter = (filter_shape[-1] + 16 - 1) / 16 * 16
-        filter_shape = filter_shape[:-1] + (num_filter, )
+      backend = param['backend']
+
+      if backend == 'cudaconv':
+        import cudaconv_backend as cm_backend
+        operation = cudaconv
+      elif backend == 'caffe':
+        import caffe_backend as cm_backend
+        operation = caffe
+      else:
+        assert False, 'There is no such backend %s' % (backend)
+
+
+      channel_idx = cm_backend.ConvDataLayout.CHANNEL
+      height_idx = cm_backend.ConvDataLayout.HEIGHT
+      width_idx = cm_backend.ConvDataLayout.WIDTH
+      filter_channel_idx = cm_backend.FilterLayout.CHANNEL
+      filter_height_idx = cm_backend.FilterLayout.HEIGHT
+      filter_num_idx = cm_backend.FilterLayout.NUM
+
+      image_y = input_shape[height_idx]
+      image_x = input_shape[width_idx]
+      output_y = output_shape[height_idx]
+      output_x = output_shape[width_idx]
+
+      channel = filter_shape[filter_channel_idx]
+      filter_size = filter_shape[filter_height_idx]
+
+      if filter_shape[filter_num_idx] % 16 != 0 and backend == 'cudaconv':
+        num_filter = (filter_shape[filter_num_idx] + 16 - 1) / 16 * 16
+        filter_shape = cm_backend.get_filter_shape(channel, filter_size, num_filter)
         print '\033[33mChange the number of filters to %d and  make it a multiple of 16\033[0m' % num_filter
-        output_shape = (num_filter, ) + output_shape[1:] 
+        output_shape = cm_backend.get_image_shape(num_filter, output_y, output_x, output_shape[cm_backend.ConvDataLayout.BATCH])
 
       input = gpuarray.to_gpu(np.random.randn(*input_shape).astype(np.float32))
       output = gpuarray.to_gpu(np.random.randn(*output_shape).astype(np.float32))
@@ -55,32 +85,26 @@ class ConvExecuter(Executer):
        
       ingrad = gpuarray.to_gpu(np.random.randn(*output_shape).astype(np.float32))
       outgrad = gpuarray.to_gpu(np.random.randn(*input_shape).astype(np.float32))
-
-      image_y = input_shape[1]
-      image_x = input_shape[2]
-      output_y = output_shape[1]
-      output_x = output_shape[2]
+    
       padding = param['padding']
       stride = param['stride']
-      channel = filter_shape[0]
-      filter_size = filter_shape[1]
 
-      cudaconv.convFilterActs(input, filter, output, image_y, output_y, output_x, -padding, stride,
+      operation.convFilterActs(input, filter, output, image_y, output_y, output_x, -padding, stride,
           channel, 1)
-      cudaconv.convImgActs(ingrad, filter, outgrad, image_y, image_x, output_y,
+      operation.convImgActs(ingrad, filter, outgrad, image_y, image_x, output_y,
           -padding, stride, channel, 1)
-      cudaconv.convWeightActs(input, ingrad, filter, image_y, output_y, output_x, filter_size,
+      operation.convWeightActs(input, ingrad, filter, image_y, output_y, output_x, filter_size,
           -padding, stride, channel, 1, 0)
 
       driver.Context.synchronize()
 
       start = time.time()
       for i in range(self.count):
-        cudaconv.convFilterActs(input, filter, output, image_y, output_y, output_x, -padding, stride,
+        operation.convFilterActs(input, filter, output, image_y, output_y, output_x, -padding, stride,
             channel, 1)
-        cudaconv.convImgActs(ingrad, filter, outgrad, image_y, image_x, output_y,
+        operation.convImgActs(ingrad, filter, outgrad, image_y, image_x, output_y,
             -padding, stride, channel, 1)
-        cudaconv.convWeightActs(input, ingrad, filter, image_y, output_y, output_x, filter_size,
+        operation.convWeightActs(input, ingrad, filter, image_y, output_y, output_x, filter_size,
             -padding, stride, channel, 1, 0)
         driver.Context.synchronize()
       
@@ -102,11 +126,32 @@ class PoolExecuter(Executer):
       print param
       input_shape = tuple(param['input_shape'])
       output_shape = tuple(param['output_shape'])
+      backend = param['backend']
 
-      if input_shape[0] % 16 != 0:
-        num_filter = (input_shape[0] + 16 -1 ) / 16 * 16
-        input_shape = (num_filter, ) + input_shape[1:]
-        output_shape = (num_filter, ) + output_shape[1:]
+      if backend == 'cudaconv':
+        import cudaconv_backend as cm_backend
+        operation = cudaconv
+      elif backend == 'caffe':
+        import caffe_backend as cm_backend
+        operation = caffe
+      else:
+        assert False, 'There is no such backend %s' % (backend)
+
+
+      channel_idx = cm_backend.ConvDataLayout.CHANNEL
+      height_idx = cm_backend.ConvDataLayout.HEIGHT
+      width_idx = cm_backend.ConvDataLayout.WIDTH
+      batch_idx = cm_backend.ConvDataLayout.BATCH
+
+      input_y = input_shape[height_idx]
+      input_x = input_shape[width_idx]
+      output_y = output_shape[height_idx]
+      output_x = output_shape[width_idx]
+
+      if input_shape[channel_idx] % 16 != 0:
+        num_filter = (input_shape[channel_idx] + 16 -1 ) / 16 * 16
+        input_shape = cm_backend.get_image_shape(num_filter, input_y, input_x, input_shape[batch_idx])
+        output_shape = cm_backend.get_image_shape(num_filter, output_y, output_x, output_shape[batch_idx])
         print '\033[33mChange the number of filters to %d and  make it a multiple of 16\033[0m' % num_filter
       
       input = gpuarray.to_gpu(np.random.randn(*input_shape).astype(np.float32))
@@ -114,29 +159,26 @@ class PoolExecuter(Executer):
       output = gpuarray.to_gpu(np.random.randn(*output_shape).astype(np.float32))
       ingrad = gpuarray.to_gpu(np.random.randn(*output_shape).astype(np.float32))
 
-      input_y = input_shape[1]
-      input_x = input_shape[2]
-      output_y = output_shape[1]
-      output_x = output_shape[2]
-
-      channel = input_shape[0]
+      channel = input_shape[channel_idx]
       pool_size = param['pool_size']
       start = param['start']
       stride = param['stride']
-      
-      cudaconv.convLocalMaxPool(input, output, channel, pool_size, start, stride, input_y,
+
+      print 'input.shape', input.shape
+      print 'output.shape', output.shape
+      operation.convLocalMaxPool(input, output, channel, pool_size, start, stride, input_y,
           output_y, output_x)
-      cudaconv.convLocalMaxUndo(input, ingrad, output, outgrad, pool_size, start, stride, output_y,
+      operation.convLocalMaxUndo(input, ingrad, output, outgrad, pool_size, start, stride, output_y,
           output_x, input_y)
 
       driver.Context.synchronize()
       s = time.time()
       for i in range(self.count):
         # forward
-        cudaconv.convLocalMaxPool(input, output, channel, pool_size, start, stride, input_y,
+        operation.convLocalMaxPool(input, output, channel, pool_size, start, stride, input_y,
             output_y, output_x)
         # backward
-        cudaconv.convLocalMaxUndo(input, ingrad, output, outgrad, pool_size, start, stride, output_y,
+        operation.convLocalMaxUndo(input, ingrad, output, outgrad, pool_size, start, stride, output_y,
             output_x, input_y)
         driver.Context.synchronize()
 
@@ -158,11 +200,33 @@ class RNormExecuter(Executer):
       print param
       input_shape = tuple(param['input_shape'])
       output_shape = tuple(param['input_shape'])
+      backend = param['backend']
+
+      if backend == 'cudaconv':
+        import cudaconv_backend as cm_backend
+        operation = cudaconv
+      elif backend == 'caffe':
+        import caffe_backend as cm_backend
+        operation = caffe
+      else:
+        assert False, 'There is no such backend %s' % (backend)
+
+
+      channel_idx = cm_backend.ConvDataLayout.CHANNEL
+      height_idx = cm_backend.ConvDataLayout.HEIGHT
+      width_idx = cm_backend.ConvDataLayout.WIDTH
+      batch_idx = cm_backend.ConvDataLayout.BATCH
+
+      input_y = input_shape[height_idx]
+      input_x = input_shape[width_idx]
+      output_y = output_shape[height_idx]
+      output_x = output_shape[width_idx]
+
  
-      if input_shape[0] % 16 != 0:
-        num_filter = (input_shape[0] + 16 -1 ) / 16 * 16
-        input_shape = (num_filter, ) + input_shape[1:]
-        output_shape = (num_filter, ) + output_shape[1:]
+      if input_shape[channel_idx] % 16 != 0:
+        num_filter = (input_shape[channel_idx] + 16 -1 ) / 16 * 16
+        input_shape = cm_backend.get_image_shape(num_filter, input_y, input_x, input_shape[batch_idx])
+        output_shape = cm_backend.get_image_shape(num_filter, output_y, output_x, output_shape[batch_idx])
         print '\033[33mChange the number of filters to %d and  make it a multiple of 16\033[0m' % num_filter
      
       input = gpuarray.to_gpu(np.random.randn(*input_shape).astype(np.float32))
@@ -172,25 +236,20 @@ class RNormExecuter(Executer):
       
       denom = gpuarray.to_gpu(np.random.randn(*output_shape).astype(np.float32))
 
-      input_y = input_shape[1]
-      input_x = input_shape[2]
-      output_y = output_shape[1]
-      output_x = output_shape[2]
-
-      channel = input_shape[0]
+      channel = input_shape[channel_idx]
       size = param['size']
       scaler = param['scale']
       pow = param['pow']
       
-      cudaconv.convResponseNorm(input, denom, output, channel, size, input_y, scaler, pow)
-      cudaconv.convResponseNormUndo(ingrad, denom, input, output, outgrad, channel, size, input_y,
+      operation.convResponseNorm(input, denom, output, channel, size, input_y, scaler, pow)
+      operation.convResponseNormUndo(ingrad, denom, input, output, outgrad, channel, size, input_y,
           scaler, pow, 0.0, 1.0)
       driver.Context.synchronize()
 
       start = time.time()
       for i in range(self.count):
-        cudaconv.convResponseNorm(input, denom, output, channel, size, input_y, scaler, pow)
-        cudaconv.convResponseNormUndo(ingrad, denom, input, output, outgrad, channel, size, input_y,
+        operation.convResponseNorm(input, denom, output, channel, size, input_y, scaler, pow)
+        operation.convResponseNormUndo(ingrad, denom, input, output, outgrad, channel, size, input_y,
             scaler, pow, 0.0, 1.0)
         driver.Context.synchronize()
 
@@ -211,14 +270,35 @@ class CMRNormExecuter(Executer):
       print param
       input_shape = tuple(param['input_shape'])
       output_shape = tuple(param['input_shape'])
+      backend = param['backend']
 
-      if input_shape[0] % 16 != 0:
-        num_filter = (input_shape[0] + 16 -1 ) / 16 * 16
-        input_shape = (num_filter, ) + input_shape[1:]
-        output_shape = (num_filter, ) + output_shape[1:]
+      if backend == 'cudaconv':
+        import cudaconv_backend as cm_backend
+        operation = cudaconv
+      elif backend == 'caffe':
+        import caffe_backend as cm_backend
+        operation = caffe
+      else:
+        assert False, 'There is no such backend %s' % (backend)
+
+
+      channel_idx = cm_backend.ConvDataLayout.CHANNEL
+      height_idx = cm_backend.ConvDataLayout.HEIGHT
+      width_idx = cm_backend.ConvDataLayout.WIDTH
+      batch_idx = cm_backend.ConvDataLayout.BATCH
+
+      input_y = input_shape[height_idx]
+      input_x = input_shape[width_idx]
+      output_y = output_shape[height_idx]
+      output_x = output_shape[width_idx]
+
+ 
+      if input_shape[channel_idx] % 16 != 0:
+        num_filter = (input_shape[channel_idx] + 16 -1 ) / 16 * 16
+        input_shape = cm_backend.get_image_shape(num_filter, input_y, input_x, input_shape[batch_idx])
+        output_shape = cm_backend.get_image_shape(num_filter, output_y, output_x, output_shape[batch_idx])
         print '\033[33mChange the number of filters to %d and  make it a multiple of 16\033[0m' % num_filter
-
-      
+     
       input = gpuarray.to_gpu(np.random.randn(*input_shape).astype(np.float32))
       outgrad = gpuarray.to_gpu(np.random.randn(*input_shape).astype(np.float32))
       output = gpuarray.to_gpu(np.random.randn(*output_shape).astype(np.float32))
@@ -226,25 +306,20 @@ class CMRNormExecuter(Executer):
       
       denom = gpuarray.to_gpu(np.random.randn(*output_shape).astype(np.float32))
 
-      input_y = input_shape[1]
-      input_x = input_shape[2]
-      output_y = output_shape[1]
-      output_x = output_shape[2]
-
-      channel = input_shape[0]
+      channel = input_shape[channel_idx]
       size = param['size']
       scaler = param['scale']
       pow = param['pow']
-      
-      cudaconv.convResponseNormCrossMap(input, denom, output, channel, size, input_y, scaler, pow, False)
-      cudaconv.convResponseNormCrossMapUndo(ingrad, denom, input, output, outgrad, channel, size, input_y,
+
+      operation.convResponseNormCrossMap(input, denom, output, channel, size, input_y, scaler, pow, False)
+      operation.convResponseNormCrossMapUndo(ingrad, denom, input, output, outgrad, channel, size, input_y,
           scaler, pow, False, 0.0, 1.0)
       driver.Context.synchronize()
       
       start = time.time()
       for i in range(self.count):
-        cudaconv.convResponseNormCrossMap(input, denom, output, channel, size, input_y, scaler, pow, False)
-        cudaconv.convResponseNormCrossMapUndo(ingrad, denom, input, output, outgrad, channel, size, input_y,
+        operation.convResponseNormCrossMap(input, denom, output, channel, size, input_y, scaler, pow, False)
+        operation.convResponseNormCrossMapUndo(ingrad, denom, input, output, outgrad, channel, size, input_y,
             scaler, pow, False, 0.0, 1.0)
         driver.Context.synchronize()
       elapsed = (time.time() - start) / self.count

@@ -1,4 +1,4 @@
-from distnet import util
+from distbase import util
 import cPickle
 import glob
 import numpy as np

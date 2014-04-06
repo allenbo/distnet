@@ -2,8 +2,7 @@ import pyximport
 pyximport.install()
 from mpi4py import MPI
 from varray.area import Area, Point
-import util
-from util import issquare
+from distbase.util import issquare
 import numpy as np
 import math
 import copy

@@ -3,6 +3,7 @@
 #include "common.cuh"
 #include "blob.cuh"
 #include "caffe.cuh"
+#include "im2col.cuh"
 %}
 
 %typemap(in) Blob& {
@@ -22,12 +23,17 @@
     PyArg_ParseTuple(shape, "ll", &rows, &cols);
   }else if (len == 4) {
     PyArg_ParseTuple(shape, "llll", &batch_size, &channel, &rows, &cols);
-    //printf("batch_size = %ld, channel = %ld, rows = %ld, cols = %ld", batch_size, channel, rows, cols);
+    //printf("batch_size = %ld, channel = %ld, rows = %ld, cols = %ld, addr = %ld\n", batch_size, channel, rows, cols, (long)gpudata);
   }
   $1 = new Blob(batch_size, channel, rows, cols, batch_size* channel* rows* cols, gpudata);
 }
 
+%typemap(in) float* {
+  $1 = (float*)PyInt_AsLong($input);
+}
+
 %include "caffe.cuh"
+%include "im2col.cuh"
 
 %typemap(typecheck,precedence=SWIG_TYPECHECK_INTEGER) Blob& {
   if (PyObject_HasAttrString($input, "shape") && PyObject_HasAttrString($input, "gpudata")) {

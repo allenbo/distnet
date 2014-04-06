@@ -4,6 +4,7 @@ import sys
 import threading
 import time
 import traceback
+import math
 import numpy as np
 
 #if os.environ.get('MULTIGPU', 'no') == 'yes':
@@ -26,7 +27,6 @@ level_to_char = { DEBUG : 'D',
 
 program_start = time.time()
 log_mutex = threading.Lock()
-
 
 @distlog
 def log(msg, *args, **kw):
@@ -116,6 +116,11 @@ def isinteger(value):
     return True
   except ValueError:
     return False
+
+def issquare(x):
+  a = math.sqrt(x) 
+  b = int(a)
+  return a == b
 
 def string_to_int_list(str):
   if str is None: return []

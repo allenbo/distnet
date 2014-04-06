@@ -2,6 +2,7 @@
 #include "math_functions.cuh"
 #include <assert.h>
 #include <cfloat>
+#include <iostream>
 
 template <typename Dtype>
 __global__ void MaxPoolForward(const int nthreads, const Dtype* bottom_data,
@@ -136,7 +137,6 @@ void convLocalMaxPool(Blob& input, Blob& output,
   assert(output.channels() == num_filter);
   assert(output.num() == input.num() && output.channels() == input.channels());
 
-  Caffe::cublas_handle();
   int batch_size = input.num();
   int count = output.count();
 
@@ -192,7 +192,7 @@ void convLocalMaxUndo(Blob& input, Blob& ingrad, Blob& output, Blob& outgrad,
   int num_filter = output.channels();
   int count = input.count();
   int batch_size = input.num();
-  
+
   MaxPoolBackward<float><<<CAFFE_GET_BLOCKS(count), CAFFE_CUDA_NUM_THREADS>>>(
       count, input_data, output_data, ingrad_data, num_filter, input_y, input_x, 
       output_y, output_x, pool_size, stride, outgrad_data);
@@ -202,16 +202,16 @@ void convLocalMaxUndo(Blob& input, Blob& ingrad, Blob& output, Blob& outgrad,
 
 void convLocalAvgUndo(Blob& ingrad, Blob& outgrad,
     int pool_size, int start, int stride,
-    int output_y, int output_x, int input_y)
+    int output_y, int output_x, int input_y, int input_x)
 {
   const float* ingrad_data = ingrad.gpu_data();
   float* outgrad_data = outgrad.mutable_gpu_data();
 
-  const int input_x = outgrad.width();
 
   assert(ingrad.height() == output_y);
   assert(ingrad.width() == output_x);
   assert(outgrad.height() == input_y);
+  assert(input_x == outgrad.width());
 
   assert(ingrad.channels() == outgrad.channels());
 

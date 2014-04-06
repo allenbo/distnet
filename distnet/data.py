@@ -2,7 +2,7 @@ from PIL import Image
 import garray
 from garray import partial_copy_to
 from os.path import basename
-from distnet import util
+from distbase import util
 import Queue
 import cPickle
 import collections
@@ -399,7 +399,7 @@ class ParallelDataProvider(DataProvider):
         del self._gpu_batch
       if not multi_gpu:
         batch_data.data = uniformed_array(batch_data.data, dtype = np.float32, to2dim = True)
-        batch_data.labels =uniformed_array(batch_data.labels, dtype = np.float32, unique = False)
+        batch_data.labels =uniformed_array(batch_data.labels, dtype = np.float32, slice_dim = None)
       else:
         batch_data.data = arr.from_stripe(batch_data.data)
         batch_data.labels = arr.from_stripe(batch_data.labels, to = 'u')

@@ -1,8 +1,8 @@
 import caffe
-from pycuda import gpuarray, driver, autoinit
+from pycuda import gpuarray, driver
 import numpy as np
-from distnet.util import divup
-np.set_printoptions(threshold = np.nan)
+from distbase.util import divup
+caffe.init()
 
 batch_size = 128
 image_size = 224
@@ -31,4 +31,4 @@ ingrad_caffe = gpuarray.to_gpu(ingrad_local)
 filter_caffe = gpuarray.to_gpu(filter_local)
 
 caffe.convWeightActs(input_caffe, ingrad_caffe, filter_caffe, image_size, output_size,
-    output_size, filter_size, -padding, stride, color, 1)
+    output_size, filter_size, -padding, stride, color, 1, 0)

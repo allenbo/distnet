@@ -3,7 +3,7 @@
 #ifndef CAFFE_COMMON_HPP_
 #define CAFFE_COMMON_HPP_
 
-#include <cublas_v2.h>
+//#include <cublas_v2.h>
 #include <cuda.h>
 #include <curand.h>
 // cuda driver types
@@ -11,23 +11,25 @@
 #include <stdio.h>
 
 #define CHECK_GE(val1, val2) if ((val1) < (val2)) { \
-  fprintf(stderr, #val1 " has to be greater than " #val2); \
+  fprintf(stderr, #val1 " has to be greater than " #val2 " \n"); \
   exit(-1); \
   }
 
 #define CHECK(val) if ((val) == 0) { \
-  fprintf(stderr, #val " has to be nonzero"); \
+  fprintf(stderr, #val " has to be nonzero\n"); \
   exit(-1); \
   }
 
 #define CHECK_EQ(val1, val2) if ((val1) != (val2)) {\
-  fprintf(stderr, #val1 " should be equal to " #val2); \
+  fprintf(stderr, #val1 " should be equal to " #val2 " \n"); \
   exit(-1); \
   }
 
 
-#define LOG(x) do { fprintf(stderr, #x __FILE__ ":%d", __LINE__); \
+#define LOG(x) do { fprintf(stderr, #x __FILE__ ":%d\n", __LINE__); \
   exit(-1); } while(0)
+
+#define LOG_FATAL(fmt, ...) { fprintf(stderr, "[%s|%d]: FATAL ERROR " fmt, __FILE__, __LINE__, __VA_ARGS__); exit(-1);}
 
 // various checks for different function calls.
 #define CUDA_CHECK(condition) CHECK_EQ((condition), cudaSuccess)
@@ -38,8 +40,9 @@
 // After a kernel is executed, this will check the error and if there is one,
 // exit loudly.
 #define CUDA_POST_KERNEL_CHECK \
-  if (cudaSuccess != cudaPeekAtLastError()) \
-    LOG(FATAL)
+  cudaError_t ans = cudaGetLastError(); \
+  if (cudaSuccess != ans) \
+    LOG_FATAL("CUDA Error is %d:%s\n", ans, cudaGetErrorString(ans))
 
 // Disable the copy and assignment operator for a class.
 #define DISABLE_COPY_AND_ASSIGN(classname) \
@@ -80,38 +83,38 @@ class Caffe {
   public:
     ~Caffe() {
       
-      if (cublas_handle_) CUBLAS_CHECK(cublasDestroy(cublas_handle_));
-      if (curand_generator_) {
-        CURAND_CHECK(curandDestroyGenerator(curand_generator_));
-      }
+      //if (cublas_handle_) CUBLAS_CHECK(cublasDestroy(cublas_handle_));
+      //if (curand_generator_) {
+      //  CURAND_CHECK(curandDestroyGenerator(curand_generator_));
+      //}
     }
     inline static Caffe& Get() {
       return instance;
     }
 
-    inline static cublasHandle_t cublas_handle() { return Get().cublas_handle_; }
-    inline static curandGenerator_t curand_generator() { return Get().curand_generator_; }
+    //inline static cublasHandle_t cublas_handle() { return Get().cublas_handle_; }
+    //inline static curandGenerator_t curand_generator() { return Get().curand_generator_; }
 
   private:
     Caffe() {
       // Try to create a cublas handler, and report an error if failed (but we will
       // keep the program running as one might just want to run CPU code).
-      if (cublasCreate(&cublas_handle_) != CUBLAS_STATUS_SUCCESS) {
-        LOG(ERROR);
-      }
+      //if (cublasCreate(&cublas_handle_) != CUBLAS_STATUS_SUCCESS) {
+      //  LOG(ERROR);
+      //}
       // Try to create a curand handler.
-      if (curandCreateGenerator(&curand_generator_, CURAND_RNG_PSEUDO_DEFAULT)
-          != CURAND_STATUS_SUCCESS ||
-          curandSetPseudoRandomGeneratorSeed(curand_generator_, cluster_seedgen())
-          != CURAND_STATUS_SUCCESS) {
-        LOG(ERROR);
-      }
+      //if (curandCreateGenerator(&curand_generator_, CURAND_RNG_PSEUDO_DEFAULT)
+      //    != CURAND_STATUS_SUCCESS ||
+      //    curandSetPseudoRandomGeneratorSeed(curand_generator_, cluster_seedgen())
+      //    != CURAND_STATUS_SUCCESS) {
+      //  LOG(ERROR);
+      //}
     }
     static Caffe instance;
-    cublasHandle_t cublas_handle_;
-    curandGenerator_t curand_generator_;
+    //cublasHandle_t cublas_handle_;
+    //curandGenerator_t curand_generator_;
 };
 
-typedef enum {CblasNoTrans=111, CblasTrans=112, CblasConjTrans=113} CBLAS_TRANSPOSE;
+//typedef enum {CblasNoTrans=111, CblasTrans=112, CblasConjTrans=113} CBLAS_TRANSPOSE;
 
 #endif  // CAFFE_COMMON_HPP_

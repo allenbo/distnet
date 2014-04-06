@@ -9,7 +9,8 @@ from varray import DistMethod
 p = cProfile.Profile()
 p.enable()
 
-from varray import rank, MASTER, util
+from varray import rank, MASTER
+from distbase import util
 
 def mlog(*args, **kw):
   if rank == MASTER:

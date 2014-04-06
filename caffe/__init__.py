@@ -1,4 +1,8 @@
 from .caffe import *
+from distbase import cuda_base
+from pycuda import gpuarray, driver
+import numpy as np
+
 CONTEXT = None
 
 def init(device=-1):
@@ -22,3 +26,51 @@ def init(device=-1):
   import atexit
   atexit.register(CONTEXT.detach)
   return CONTEXT
+
+def convFilterActs(input, weight, output, image_y, output_y, output_x, padding, stride, color, group):
+  batch_size = input.shape[0]
+  image_x = input.shape[-1]
+  filter_size = weight.shape[-1]
+  num_filter = weight.shape[0] 
+
+  assert group == 1, 'Group has to be 1, now it\'s %d' % group
+  col_buffer = gpuarray.zeros(shape = (weight.size / weight.shape[0], output_y * output_x), dtype = np.float32)
+
+  for i in range(batch_size):
+    im2col_gpu(input.ptr + input.strides[0] * i, color, image_y, image_x, filter_size, stride, padding, col_buffer.ptr)
+    output_buffer = gpuarray.GPUArray(shape = (weight.shape[0], output_y * output_x), dtype = np.float32, gpudata = output.ptr + output.strides[0] * i)
+    weight_buffer = weight.reshape((num_filter, color * filter_size * filter_size))
+
+    cuda_base.matrixmult(weight_buffer, col_buffer, dest = output_buffer)
+
+
+def convImgActs(ingrad, weight, outgrad, image_y, image_x, output_y, padding, stride, color,
+    group):
+  batch_size = ingrad.shape[0]
+  output_x = ingrad.shape[-1]
+  filter_size = weight.shape[-1]
+  num_filter = weight.shape[0]
+
+  assert group == 1, 'Group has to be 1, now it\'s %d' % group
+  weight_buffer = cuda_base.transpose(weight.reshape((num_filter, color * filter_size * filter_size)))
+  col_buffer = gpuarray.zeros(shape = (color * filter_size * filter_size, output_y * output_x), dtype = outgrad.dtype)
+
+  for i in range(batch_size):
+    ingrad_buffer = gpuarray.GPUArray(shape = (num_filter, output_x* output_y), dtype = ingrad.dtype, gpudata = ingrad.ptr + ingrad.strides[0] * i)
+
+    cuda_base.matrixmult(weight_buffer, ingrad_buffer, dest = col_buffer)
+    col2im_gpu(col_buffer.ptr, color, image_y, image_x, filter_size, stride, padding, outgrad.ptr + outgrad.strides[0] * i)
+
+def convWeightActs(input, ingrad, weight_grad, image_y, output_y, output_x, filter_size, padding, stride, color, group, partial_sum):
+  batch_size = input.shape[0]
+  image_x = input.shape[-1]
+  filter_size = weight_grad.shape[-1]
+  num_filter = weight_grad.shape[0] 
+
+  assert group == 1, 'Group has to be 1, now it\'s %d' % group
+  col_buffer = gpuarray.zeros(shape = (weight_grad.size / weight_grad.shape[0], output_y * output_x), dtype = np.float32)
+  for i in range(batch_size):
+    im2col_gpu(input.ptr + input.strides[0] * i, color, image_y, image_x, filter_size, stride, padding, col_buffer.ptr)
+
+    ingrad_buffer = gpuarray.GPUArray(shape = (num_filter, output_x* output_y), dtype = ingrad.dtype, gpudata = ingrad.ptr + ingrad.strides[0] * i)
+    cuda_base.matrixmult(ingrad_buffer, cuda_base.transpose(col_buffer), dest = weight_grad, alpha = 1.0, beta = 1.0)

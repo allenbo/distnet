@@ -1,10 +1,11 @@
 import reader
-from util import divup
-from state import State, combination_conv, combination_fc, state0, disw_i, sisw, sidw, sidw_f
 import request
 from execute import RequestExecuter
 from communicat import ConvFC, comm_cost
 from communicat_worker import comm_cost as comm_cost_worker
+
+from distbase.util import divup
+from distbase.state import State, combination_conv, combination_fc, state0, disw_i, sisw, sidw, sidw_f, disw_b
 
 from pycuda import driver, autoinit
 import numpy as np
@@ -27,33 +28,36 @@ def computation_cost(model, image_shape, comp_cost, req = None):
     layer['overlapping'] = 0
 
     if layer['type'] == 'conv':
-      channel, image_size, image_size, batch_size = input_shape
+      channel = input_shape[cm_backend.ConvDataLayout.CHANNEL]
+      image_size = input_shape[cm_backend.ConvDataLayout.HEIGHT]
+      batch_size = input_shape[cm_backend.ConvDataLayout.BATCH]
 
       padding = layer['padding']
       filter_size = layer['filterSize']
       stride = layer['stride']
       num_filter = layer['numFilter']
       layer['weight_size'] = filter_size * filter_size * num_filter * channel * 4
-      layer['weight_shape'] = (channel, filter_size, filter_size, num_filter)
+      layer['weight_shape'] = cm_backend.get_filter_shape(channel, filter_size, num_filter)
 
       output_size = 1 + divup(2 * padding + image_size - filter_size, stride)
       layer['output_shape'] = (num_filter, output_size, output_size, batch_size)
+      layer['output_shape'] = cm_backend.get_image_shape(num_filter, output_size, output_size, batch_size)
 
-      
- 
     elif layer['type'] in ['rnorm', 'cmrnorm', 'neuron']:
       layer['output_shape'] = input_shape
 
     elif layer['type'] == 'pool':
-      channel, image_size, image_size, batch_size = input_shape
+      channel = input_shape[cm_backend.ConvDataLayout.CHANNEL]
+      image_size = input_shape[cm_backend.ConvDataLayout.HEIGHT]
+      batch_size = input_shape[cm_backend.ConvDataLayout.BATCH]
+
       pool_size, stride, start = layer['poolSize'], layer['stride'], layer['start']
       output_size = 1 + divup(image_size - pool_size - start, stride)
 
-      layer['output_shape'] = (channel, output_size, output_size, batch_size)
+      layer['output_shape'] = cm_backend.get_image_shape(channel, output_size, output_size, batch_size)
 
     elif layer['type'] == 'fc':
-      image_size = np.prod(input_shape[:-1])
-      batch_size = input_shape[-1]
+      image_size, batch_size = cm_backend.fold_image(input_shape)
       output_size = layer['outputSize']
       layer['input_shape'] = (image_size, batch_size)
       layer['weight_shape'] = (output_size, image_size)
@@ -138,11 +142,11 @@ def find_best(model, init_state, cfs, prev_nw):
     if cur_nw == prev_nw or prev_nw == -1:
       communicat_cost = comm_cost[cfs]
       cm_cost = communicat_cost[(init_state, s)](input_size, weight_size, overlapping, cur_nw) * 1.0 / bandwidth
-      cm_latency = 0 if cm_cost == 0 else latency * 2 * (1 if init_state == s == disw_i else (cur_nw - 1))
+      cm_latency = 0 if cm_cost == 0 else latency * 2
     else:
       communicat_cost = comm_cost_worker[cfs]
       cm_cost = communicat_cost[(init_state, s)](input_size, weight_size, actual_data, cur_nw, prev_nw) * 1.0 / bandwidth
-      cm_latency = 0 if cm_cost == 0 else latency * 2 * (1 if init_state == s == disw_i else (cur_nw - 1))
+      cm_latency = 0 if cm_cost == 0 else latency * 2
     cp_cost = layer['comp_cost'][s][0]
     cost = cm_cost + cp_cost + cost + cm_latency
     costs.append(cost)
@@ -159,7 +163,7 @@ def print_details(model, states):
   cfs = ConvFC.conv
   
   prev_nw = -1
-  print '\033[93m{:10}\t{:30}\t{:20}\t{:20}\t{:20}\033[0m'.format('layer', 'distribution', 'cp_cost', 'cm_cost', 'num_worker')
+  #print '\033[93m{:10}\t{:30}\t{:20}\t{:20}\t{:20}\033[0m'.format('layer', 'distribution', 'cp_cost', 'cm_cost', 'num_worker')
   for i in range(len(model)):
     layer = model[i]
     curr_state = states[i]
@@ -195,36 +199,55 @@ def print_details(model, states):
     else:
       if cur_nw == prev_nw or prev_nw == -1:
         cm_cost = communicat_cost[(prev_state, curr_state)](input_size, weight_size, overlapping, cur_nw) * 1.0 / bandwidth
-        cm_cost += 0 if cm_cost == 0 else latency * 2 * (1 if prev_state == curr_state == disw_i else (cur_nw - 1))
+        cm_cost += 0 if cm_cost == 0 else latency * 2
       else:
         cm_cost = communicat_cost[(prev_state, curr_state)](input_size, weight_size, actual_data, cur_nw, prev_nw) * 1.0 / bandwidth
-        cm_cost += 0 if cm_cost == 0 else latency * 2 * (1 if prev_state == curr_state == disw_i else (cur_nw - 1))
+        cm_cost += 0 if cm_cost == 0 else latency * 2
     cp_cost = layer['comp_cost'][curr_state][0]
 
-    print '{:10}\t{:30}\t{:20}\t{:20}\t{:20}'.format(layer['name'], curr_state, cp_cost, cm_cost, cur_nw)
+    #print '{:10}\t{:30}\t{:20}\t{:20}\t{:20}'.format(layer['name'], curr_state, cp_cost, cm_cost, cur_nw)
     prev_state = curr_state
     prev_nw = cur_nw
     total_comp_cost += cp_cost
     total_comm_cost += cm_cost
-  print 'total computation cost is', total_comp_cost
-  print 'total communication cost is', total_comm_cost
-  print 'total cost is', total_comp_cost + total_comm_cost
+  #print 'total computation cost is', total_comp_cost
+  #print 'total communication cost is', total_comm_cost
+  print 'total cost is \033[33m%f\033[0m' % (total_comp_cost + total_comm_cost)
+
+
 
 name = device_name()
-latency = 0.001
-
-model_file = '../config/imagenet_many_filter.cfg'
-strategy_file = 'strategy'
-image_shape = (3, 224, 224, 128)
+latency = 0.000001
 bandwidth = 2.5e9
-n = int(sys.argv[1])
 
+
+backend = 'cudaconv'
+n = int(sys.argv[1])
+if len(sys.argv) == 3:
+  backend = sys.argv[2]
+
+assert backend in ['cudaconv', 'caffe', 'mix']
+if backend == 'cudaconv' or backend == 'mix':
+  import cudaconv_backend as cm_backend
+elif backend == 'caffe':
+  import caffe_backend as cm_backend
+else:
+  assert False, 'There is no such backend %s' % (backend)
+
+color = 3
+image_size = 224
+batch_size = 128
+
+image_shape = cm_backend.get_image_shape(color, image_size, image_size,  batch_size)
+
+model_file = '../config/imagenet.cfg'
+strategy_file = 'strategy'
 model = reader.getmodel(model_file)
-filename = '%s-%d.%s' % (name, n, os.path.basename(model_file))
+filename = '%s-%d.%s.%s' % (name, n, os.path.basename(model_file), cm_backend.backend)
 if not os.path.exists(filename):
   req_filename = filename + '-req'
   with open(req_filename, 'w') as fout:
-    req =  request.RequestProxy(fout)
+    req =  request.RequestProxy(fout, backend)
     computation_cost(model, image_shape, None, req)
     req.finish()
   executer = RequestExecuter(req_filename, filename)
@@ -235,10 +258,14 @@ with open(filename) as f:
 computation_cost(model, image_shape, comp_cost)
 cost, states = find_best(model, state0, ConvFC.conv, -1)
 print 'Total cost is \033[44m%f\033[0m' % cost
-#states = [disw_i] * (len(model) - 6) + [sidw_f] * 5 + [sisw]
-#states = [sisw] * len(model)
-states = [sidw] * (len(model) - 6) + [sidw_f] * 4 + [sisw] *2
+states = [disw_i] * (len(model) - 6) + [sisw] * 6
 print_details(model, states)
+states = [sidw] * (len(model) - 6) + [sisw] * 6
+print_details(model, states)
+states = [disw_b] * (len(model) - 6) + [sisw] * 6
+print_details(model, states)
+#states = [sisw] * len(model)
+print 'Number of worker is \033[32m%d\033[0m' % n
 
 strategy = {}
 for i, layer in enumerate(model):

@@ -1,4 +1,4 @@
-from distnet.util import Assert
+from distbase.util import Assert
 import garray
 import varray
 import copy
@@ -36,7 +36,7 @@ def update(wts, grad, incr, epsilon, momentum, decay, batch_size):
 class Weight(object):
   def __init__(self, slice_dim = None):
     self.slice_dim = slice_dim
-    self.unique = False if slicd_dim is None else True
+    self.unique = False if slice_dim is None else True
   
   def to_gpu(self, obj):
     if isinstance(obj, garray.GPUArray):

@@ -1,5 +1,5 @@
 from distnet import data, util
-from distnet.util import print_matrix
+from distbase.util import print_matrix
 import numpy as np
 import time
 

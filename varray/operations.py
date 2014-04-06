@@ -1,12 +1,12 @@
 import varray
 import time
-import util
+from distbase import util
 import numpy as np
 from varray.ndarray import VArray, DistMethod, zeros_like, WORLD, zeros, allocate_like, allocate, WORLD
 from varray.area import Area
 import garray
 from pycuda import driver
-from distribution.state import *
+from distbase.state import *
 from garray import ConvDataLayout, FCDataLayout, FilterLayout, WeightLayout
 
 
@@ -240,7 +240,7 @@ def wconvolution(input, grad, weight_grad, image_y, output_y, output_x, filter_s
     if not hasattr(input, 'tmp_local_data'):
       input.batch_communicate(input.rank, ConvDataLayout.BATCH)
   elif state == sidw or state == sisw:
-    if not hasattr(input, 'tmp_local_data')
+    if not hasattr(input, 'tmp_local_data'):
       input.global_communicate()
   
   input_data = input.tmp_local_data
@@ -366,7 +366,7 @@ def avgundo(input, grad, out_grad, pool_size, start, stride, output_y, output_x,
       input.batch_communicate(input.rank, ConvDataLayout.BATCH)
   elif state == sidw:
     if not hasattr(input, 'tmp_local_data'):
-      input.channle(communicate(input.rank, ConvDataLayout.CHANNEL)
+      input.channle_communicate(input.rank, ConvDataLayout.CHANNEL)
   elif state == sisw:
     if not hasattr(input, 'tmp_local_data'):
       input.global_communicate()
@@ -515,8 +515,8 @@ def rnormcrossmap(input, denom, output, channel, size,image_y, scaler, pow, bloc
       channel, size, image_y, scaler, pow, blocked)
 
   if input.tmp_local_data != denom.local_data:
-    output.write(area = denom.local_area, tmp_output_data, propagate = False)
-    denom.write(area = denom.local_area, tmp_denom_data, propagate = False)
+    output.write(area = denom.local_area, data = tmp_output_data, propagate = False)
+    denom.write(area = denom.local_area, data = tmp_denom_data, propagate = False)
 
 def rnormcrossmapundo(grad, denom, input, output, out_grad, channel, size, image_y, scaler, pow, blocked):
   propagate = True

@@ -3,8 +3,9 @@ import os
 import garray
 import math
 from garray import ConvDataLayout, FCDataLayout, FilterLayout, WeightLayout
-import util
-from distribution.state import *
+
+from distbase import util
+from distbase.state import *
 
 multi_gpu = False
 
@@ -54,7 +55,7 @@ def zeros(shape, dtype = np.float32, unique = False, slice_dim = None):
         unique = False
       return arr.zeros(shape, dtype, unique = unique, slice_method = slice_method, slice_dim = slice_dim)
     else:
-       if slice_dim is not None:
+      if slice_dim is not None:
         assert np.isscalar(slice_dim)
         unique = True
       else:

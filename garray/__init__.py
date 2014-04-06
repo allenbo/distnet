@@ -2,7 +2,7 @@ from pycuda import gpuarray, driver
 from pycuda.gpuarray import GPUArray, to_gpu, zeros, zeros_like, empty, empty_like
 import numpy as np
 from cuda_kernel import *
-from distnet.util import divup, make_copy, timer
+from distbase.util import divup, make_copy, timer
 import time
 import traceback
 

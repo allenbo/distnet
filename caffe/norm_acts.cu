@@ -2,6 +2,7 @@
 #include "math_functions.cuh"
 #include <assert.h>
 #include <cfloat>
+#include <iostream>
 
 template <typename Dtype>
 __global__ void CrossMapRNorm(const int nthreads, const Dtype* in, Dtype* out,
@@ -135,7 +136,7 @@ void convResponseNormCrossMap(Blob& input, Blob& denoms, Blob& output,
 
 
 void convResponseNormCrossMapUndo(Blob& ingrad, Blob& denoms, Blob& input, Blob& output, Blob& outgrad,
-    int num_filter, int norm_size, int input_y, float scaler, float pow, bool blocked) 
+    int num_filter, int norm_size, int input_y, float scaler, float pow, bool blocked, float a, float b) 
 {
   const float* input_data = input.gpu_data();
   const float* denoms_data = denoms.gpu_data();
@@ -203,14 +204,14 @@ __global__ void RNormComputeDiff(const int nthreads, const Dtype* bottom_data,
     int wend = min(w - pre_pad + size, width);
   
     Dtype accum_ratio = 0;
-    top_data += (n*channels + c) * height * width;
-    scale_data += (n*channels + c) * height * width;
-    top_diff += (n*channels + c) * height * width;
+    const Dtype* top_data_off = top_data + (n*channels + c) * height * width;
+    const Dtype* scale_data_off = scale_data + (n*channels + c) * height * width;
+    const Dtype* top_diff_off = top_diff + (n*channels + c) * height * width;
 
     for(int hi = hstart; hi < hend; hi ++) {
       for(int wi = wstart; wi < wend; wi ++){
-        const int idx = wi * width + hi;
-        accum_ratio += top_data[idx] * top_diff[idx] / scale_data[idx];
+        const int idx = hi * width + wi;
+        accum_ratio += top_data_off[idx] * top_diff_off[idx] / scale_data_off[idx];
       }
     }
 
@@ -242,7 +243,7 @@ void convResponseNorm(Blob& input, Blob& denoms, Blob& output,
 }
 
 void convResponseNormUndo(Blob& ingrad, Blob& denoms, Blob& input, Blob& output, Blob& outgrad,
-    int num_filter, int norm_size, int input_y, float scaler, float pow) 
+    int num_filter, int norm_size, int input_y, float scaler, float pow, float a, float b) 
 {
   const float* input_data = input.gpu_data();
   const float* denoms_data = denoms.gpu_data();
@@ -252,7 +253,7 @@ void convResponseNormUndo(Blob& ingrad, Blob& denoms, Blob& input, Blob& output,
  
   int count = input.count();
   int input_x = input.width();
-
+  
   RNormComputeDiff<float><<<CAFFE_GET_BLOCKS(count), CAFFE_CUDA_NUM_THREADS>>>(
       count, input_data, output_data, denoms_data, ingrad_data, num_filter, input_y, input_x,
       norm_size, -pow, float(2. * scaler * pow), outgrad_data);

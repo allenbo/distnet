@@ -1,7 +1,8 @@
-from pycuda import gpuarray, driver, autoinit
+from pycuda import gpuarray, driver
 import numpy as np
 import time
 import garray
+garray.device_init()
 
 
 input_size = 9216

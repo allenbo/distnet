@@ -1,4 +1,4 @@
-from util import isfloat, isinteger
+from distbase.util import isfloat, isinteger
 
 class SettingReader(object):
   @staticmethod

@@ -1,5 +1,6 @@
 import garray
 import numpy as np
+garray.device_init()
 
 
 def test_1():
