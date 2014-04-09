@@ -9,6 +9,8 @@ from distbase.state import State, combination_conv, combination_fc, state0, disw
 
 from pycuda import driver, autoinit
 import numpy as np
+import argparse
+import glob
 
 import os
 import sys
@@ -163,7 +165,7 @@ def print_details(model, states):
   cfs = ConvFC.conv
   
   prev_nw = -1
-  #print '\033[93m{:10}\t{:30}\t{:20}\t{:20}\t{:20}\033[0m'.format('layer', 'distribution', 'cp_cost', 'cm_cost', 'num_worker')
+  print '\033[93m{:10}\t{:30}\t{:20}\t{:20}\t{:20}\033[0m'.format('layer', 'distribution', 'cp_cost', 'cm_cost', 'num_worker')
   for i in range(len(model)):
     layer = model[i]
     curr_state = states[i]
@@ -205,71 +207,106 @@ def print_details(model, states):
         cm_cost += 0 if cm_cost == 0 else latency * 2
     cp_cost = layer['comp_cost'][curr_state][0]
 
-    #print '{:10}\t{:30}\t{:20}\t{:20}\t{:20}'.format(layer['name'], curr_state, cp_cost, cm_cost, cur_nw)
+    print '{:10}\t{:30}\t{:20}\t{:20}\t{:20}'.format(layer['name'], curr_state, cp_cost, cm_cost, cur_nw)
     prev_state = curr_state
     prev_nw = cur_nw
     total_comp_cost += cp_cost
     total_comm_cost += cm_cost
-  #print 'total computation cost is', total_comp_cost
-  #print 'total communication cost is', total_comm_cost
+  print 'total computation cost is', total_comp_cost
+  print 'total communication cost is', total_comm_cost
   print 'total cost is \033[33m%f\033[0m' % (total_comp_cost + total_comm_cost)
 
 
+if __name__ == '__main__':
+  parser = argparse.ArgumentParser()
+  parser.add_argument('--num-worker', help='Set number of workers', required=True, type=int)
+  parser.add_argument('--backend', help='Computation backend, [cudaconv, caffe, mix](cudaconv default)', default = 'cudaconv', choices=['cudaconv', 'caffe', 'mix'])
+  parser.add_argument('--model-path', help='Path of model file', required=True)
+  parser.add_argument('--ideal', help='Assume the backend ideally scale to any number of GPUs', default=False, action='store_true')
+  parser.add_argument('--strategy-path', help='Path of generated strategy file', default='strategy')
+  parser.add_argument('--bandwidth', help='Bandwidth of the underlying network', default=2.5, type = float)
+  parser.add_argument('--single', help='Get the running time when the number of worker is 1', default=False, action = 'store_true')
 
-name = device_name()
-latency = 0.000001
-bandwidth = 2.5e9
+  args = parser.parse_args()
+
+  config = {}
+  config['num_worker'] = args.num_worker
+  config['backend'] = args.backend
+  config['model-path'] = args.model_path
+  config['ideal'] = args.ideal
+  config['strategy-path'] = args.strategy_path
+  config['bandwidth'] = args.bandwidth
+  config['single'] = args.single
+
+  name = device_name()
+  latency = 0.000001
 
 
-backend = 'cudaconv'
-n = int(sys.argv[1])
-if len(sys.argv) == 3:
-  backend = sys.argv[2]
+  bandwidth = config['bandwidth'] * 1e9
+  backend = config['backend']
+  n = config['num_worker']
+  model_file = config['model-path']
 
-assert backend in ['cudaconv', 'caffe', 'mix']
-if backend == 'cudaconv' or backend == 'mix':
-  import cudaconv_backend as cm_backend
-elif backend == 'caffe':
-  import caffe_backend as cm_backend
-else:
-  assert False, 'There is no such backend %s' % (backend)
+  if backend == 'cudaconv' or backend == 'mix':
+    import cudaconv_backend as cm_backend
+  elif backend == 'caffe':
+    import caffe_backend as cm_backend
+  else:
+    assert False, 'There is no such backend %s' % (backend)
 
-color = 3
-image_size = 224
-batch_size = 128
+  color = 3
+  image_size = 224
+  batch_size = 128
 
-image_shape = cm_backend.get_image_shape(color, image_size, image_size,  batch_size)
+  image_shape = cm_backend.get_image_shape(color, image_size, image_size,  batch_size)
 
-model_file = '../config/imagenet.cfg'
-strategy_file = 'strategy'
-model = reader.getmodel(model_file)
-filename = '%s-%d.%s.%s' % (name, n, os.path.basename(model_file), cm_backend.backend)
-if not os.path.exists(filename):
-  req_filename = filename + '-req'
-  with open(req_filename, 'w') as fout:
-    req =  request.RequestProxy(fout, backend)
-    computation_cost(model, image_shape, None, req)
-    req.finish()
-  executer = RequestExecuter(req_filename, filename)
-  executer.execute()
+  strategy_file = config['strategy-path']
+  model = reader.getmodel(model_file)
+  model_basename = os.path.basename(model_file)
+  
+  ideal_filename = '%s-%d.%s.%s.ideal' % (name, n, model_basename, backend)
+  prat_filename = '%s-%d.%s.%s' % (name, n, model_basename, backend)
+   
+  if not config['ideal']:
+    filename = prat_filename
+  else:
+    filename = ideal_filename
 
-with open(filename) as f:
-  comp_cost = pickle.load(f)
-computation_cost(model, image_shape, comp_cost)
-cost, states = find_best(model, state0, ConvFC.conv, -1)
-print 'Total cost is \033[44m%f\033[0m' % cost
-states = [disw_i] * (len(model) - 6) + [sisw] * 6
-print_details(model, states)
-states = [sidw] * (len(model) - 6) + [sisw] * 6
-print_details(model, states)
-states = [disw_b] * (len(model) - 6) + [sisw] * 6
-print_details(model, states)
-#states = [sisw] * len(model)
-print 'Number of worker is \033[32m%d\033[0m' % n
 
-strategy = {}
-for i, layer in enumerate(model):
-  strategy[layer['name']] = states[i]
+  # print out the running time when the number of worker is 1
+  if config['single']:
+    glob_str = '%s-*.%s.%s' % (name, model_basename, backend)
+    glob_str = [glob_str, glob_str + '.ideal']
+    
+    files = glob.glob(glob_str[0]) + glob.glob(glob_str[1])
+    if len(files) != 0:
+      with open(files[0]) as f:
+        comp_cost = pickle.load(f)
+        computation_cost(model, image_shape, comp_cost)
+        print_details(model, [sisw] * len(model))
+      sys.exit(0)
 
-with open(strategy_file, 'w') as fout:
-    pickle.dump(strategy, fout)
+  # when the number of worker is not 1 
+  if not os.path.exists(filename):
+    req_filename = filename + '-req'
+    with open(req_filename, 'w') as fout:
+      req =  request.RequestProxy(fout, backend)
+      computation_cost(model, image_shape, None, req)
+      req.finish()
+    executer = RequestExecuter(req_filename, filename, config['ideal'])
+    executer.execute()
+
+  with open(filename) as f:
+    comp_cost = pickle.load(f)
+  computation_cost(model, image_shape, comp_cost)
+  cost, states = find_best(model, state0, ConvFC.conv, -1)
+  print 'Total cost is \033[44m%f\033[0m' % cost
+  print 'Number of worker is \033[32m%d\033[0m' % n
+  print_details(model, states)
+  
+  strategy = {}
+  for i, layer in enumerate(model):
+    strategy[layer['name']] = states[i]
+
+  with open(strategy_file, 'w') as fout:
+      pickle.dump(strategy, fout)

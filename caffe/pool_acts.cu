@@ -1,16 +1,15 @@
 #include "blob.cuh"
-#include "math_functions.cuh"
 #include <assert.h>
 #include <cfloat>
 #include <iostream>
+#include <assert.h>
 
 template <typename Dtype>
 __global__ void MaxPoolForward(const int nthreads, const Dtype* bottom_data,
     const int channels, const int height,
     const int width, const int pooled_height, const int pooled_width,
     const int ksize, const int stride, Dtype* top_data) {
-  int index = threadIdx.x + blockIdx.x * blockDim.x;
-  if (index < nthreads) {
+  CAFFE_LOOP(index, nthreads) {
     int pw = index % pooled_width;
     int ph = (index / pooled_width) % pooled_height;
     int c = (index / pooled_width / pooled_height) % channels;
@@ -31,13 +30,13 @@ __global__ void MaxPoolForward(const int nthreads, const Dtype* bottom_data,
 }
 
 template <typename Dtype>
-__global__ void MaxPoolBackward(const int nthreads, const Dtype* bottom_data,
-    const Dtype* top_data, const Dtype* top_diff,
+__global__ void MaxPoolBackward(const int nthreads,
+    const Dtype* bottom_data, const Dtype* top_data, const Dtype* top_diff,
     const int channels, const int height,
     const int width, const int pooled_height, const int pooled_width,
     const int ksize, const int stride, Dtype* bottom_diff) {
-  int index = threadIdx.x + blockIdx.x * blockDim.x;
-  if (index < nthreads) {
+  CAFFE_LOOP(index, nthreads) {
+    // printf("[%d|%d] deal with %d\n", threadIdx.x, blockIdx.x, index);
     // find out the local index
     // find out the local offset
     int w = index % width;
@@ -48,17 +47,18 @@ __global__ void MaxPoolBackward(const int nthreads, const Dtype* bottom_data,
     int phend = min(h / stride + 1, pooled_height);
     int pwstart = (w < ksize) ? 0 : (w - ksize) / stride + 1;
     int pwend = min(w / stride + 1, pooled_width);
+
     Dtype gradient = 0;
     Dtype bottom_datum =
         bottom_data[((n * channels + c) * height + h) * width + w];
     top_data += (n * channels + c) * pooled_height * pooled_width;
     top_diff += (n * channels + c) * pooled_height * pooled_width;
-    for (int ph = phstart; ph < phend; ++ph) {
-      for (int pw = pwstart; pw < pwend; ++pw) {
-        gradient += top_diff[ph * pooled_width + pw] *
-            (bottom_datum == top_data[ph * pooled_width + pw]);
-      }
-    }
+    gradient += top_diff[0] * (bottom_datum == top_data[0]);
+    //for (int ph = phstart; ph < phend; ++ph) {
+    //  for (int pw = pwstart; pw < pwend; ++pw) {
+    //    gradient += top_diff[ph * pooled_width + pw] * (bottom_datum == top_data[ph * pooled_width + pw]);
+    //  }
+    //}
     bottom_diff[index] = gradient;
   }  // (if index < nthreads)
 }
@@ -69,8 +69,7 @@ __global__ void AvgPoolForward(const int nthreads, const Dtype* bottom_data,
     const int channels, const int height,
     const int width, const int pooled_height, const int pooled_width,
     const int ksize, const int stride, Dtype* top_data) {
-  int index = threadIdx.x + blockIdx.x * blockDim.x;
-  if (index < nthreads) {
+  CAFFE_LOOP(index, nthreads) {
     int pw = index % pooled_width;
     int ph = (index / pooled_width) % pooled_height;
     int c = (index / pooled_width / pooled_height) % channels;
@@ -95,8 +94,7 @@ __global__ void AvgPoolBackward(const int nthreads, const Dtype* top_diff,
     const int channels, const int height,
     const int width, const int pooled_height, const int pooled_width,
     const int ksize, const int stride, Dtype* bottom_diff) {
-  int index = threadIdx.x + blockIdx.x * blockDim.x;
-  if (index < nthreads) {
+  CAFFE_LOOP(index, nthreads) {
     // find out the local index
     // find out the local offset
     int w = index % width;

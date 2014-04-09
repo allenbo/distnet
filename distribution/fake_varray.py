@@ -148,7 +148,8 @@ class VArray(object):
         self.nprow = self.global_shape[first] / (local_nrow + 1)
       self.num_worker = self.nprow ** 2
       local_nrow = 1.0 * self.global_shape[first] / self.nprow
-      print 'Global shape is %s, Too many workers for image split, change the number of workers to %d' % ( self.global_shape, self.num_worker)
+      if rank == 0:
+        print 'Global shape is %s, Too many workers for image split, change the number of workers to %d' % ( self.global_shape, self.num_worker)
     local_ncol = local_nrow
     if rank >= self.num_worker:
       self.dummy = True
@@ -181,7 +182,8 @@ class VArray(object):
       self.num_worker = self.global_shape[self.slice_dim] / nrow
       if self.num_worker * nrow != self.global_shape[self.slice_dim]:
         self.num_worker = self.global_shape[self.slice_dim] / (nrow+1)
-      print 'Globla shape is %s, Too many workers for stripe splitting, change the number of workers to %d' % ( self.global_shape, self.num_worker)
+      if rank == 0:
+        print 'Globla shape is %s, Too many workers for stripe splitting, change the number of workers to %d' % ( self.global_shape, self.num_worker)
 
     nrow = 1.0 * self.global_shape[self.slice_dim] / self.num_worker
     if rank >= self.num_worker:

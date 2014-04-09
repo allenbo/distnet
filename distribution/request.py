@@ -129,16 +129,19 @@ class ConvRequestWriter(RequestWriter):
 
     elif self.state == sidw:
       dic_set = set()
+      min_num = 1
+      if self.name == 'cmrnorm':
+        min_num = self.dict['size']
       for i in range(self.num_worker):
-        output_varray = VArray(self.output_shape, self.num_worker, i, self.IMAGE_CHANNEL, min_num = 1)
+        output_varray = VArray(self.output_shape, self.num_worker, i, self.IMAGE_CHANNEL, min_num = min_num)
         output_shape = output_varray.local_shape
         if self.name == 'conv':
-          filter_varray = VArray(self.weight_shape, self.num_worker, i, self.FILTER_NUM, min_num = 1)
+          filter_varray = VArray(self.weight_shape, self.num_worker, i, self.FILTER_NUM, min_num = min_num)
           filter_shape = filter_varray.local_shape
           if filter_shape:
             dic_set.add((filter_shape, output_shape))
         else:
-          input_varray = VArray(self.input_shape, self.num_worker, i, self.IMAGE_CHANNEL, min_num = 1)
+          input_varray = VArray(self.input_shape, self.num_worker, i, self.IMAGE_CHANNEL, min_num = min_num)
           input_shape = input_varray.local_shape
           if input_shape:
             dic_set.add((input_shape, output_shape))
@@ -157,7 +160,6 @@ class ConvRequestWriter(RequestWriter):
       overlapping_max =  0
       actual_data_max =  0
       dic_set = set()
-      print self.layer_name
       for i in range(self.num_worker):
         if issquare(self.num_worker):
           input_varray = VArray(self.input_shape, self.num_worker, i, (self.IMAGE_HEIGHT, self.IMAGE_WIDTH))
@@ -167,7 +169,6 @@ class ConvRequestWriter(RequestWriter):
           output_varray = VArray(self.output_shape, self.num_worker, i, self.IMAGE_HEIGHT)
         output_shape = output_varray.local_shape
         input_shape = input_varray.local_shape
-        print input_shape, output_shape
         if self.name not in ['neuron', 'cmrnorm']:
           input_shape, actual_data, overlapping = input_varray.image_communicate((self.IMAGE_HEIGHT, self.IMAGE_WIDTH), self.stride, self.filter_size, -self.padding, output_area = output_varray.local_area)
 
@@ -175,7 +176,6 @@ class ConvRequestWriter(RequestWriter):
             output_shape = input_shape
           
           if input_shape:
-            print input_shape, input_varray.tmp_local_area
             overlapping_max = max(overlapping, overlapping_max)
             actual_data_max = max(actual_data, actual_data_max)
 

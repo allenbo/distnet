@@ -9,8 +9,7 @@ __global__ void CrossMapRNorm(const int nthreads, const Dtype* in, Dtype* out,
     const int num, const int channels, const int height,
     const int width, const int size, const Dtype alpha_over_size, const Dtype negative_beta,
     Dtype* scale) {
-  int index = threadIdx.x + blockIdx.x * blockDim.x;
-  if (index < nthreads) {
+  CAFFE_LOOP(index, nthreads) {
     // find out the local offset
     int w = index % width;
     int h = (index / width) % height;
@@ -62,8 +61,7 @@ __global__ void CrossMapRNormComputeDiff(const int nthreads, const Dtype* bottom
     const int num, const int channels, const int height, const int width, const int size,
     const Dtype negative_beta, const Dtype cache_ratio,
     Dtype* bottom_diff) {
-  int index = threadIdx.x + blockIdx.x * blockDim.x;
-  if (index < nthreads) {
+  CAFFE_LOOP(index, nthreads) {
     // find out the local offset
     int w = index % width;
     int h = (index / width) % height;
@@ -161,8 +159,7 @@ template <typename Dtype>
 __global__ void RNorm(const int nthreads, const Dtype* bottom_data,
     const int channels, const int height, const int width,
     const int size, const Dtype alpha_over_size, const Dtype negative_beta, Dtype* scale_data, Dtype* top_data) {
-  int index = threadIdx.x + blockIdx.x * blockDim.x;
-  if (index < nthreads) {
+  CAFFE_LOOP(index, nthreads) {
     const int pre_pad = (size - 1) / 2;
     int w = index % width;
     int h = (index / width) % height;
@@ -190,8 +187,7 @@ __global__ void RNormComputeDiff(const int nthreads, const Dtype* bottom_data,
     const Dtype* top_data, const Dtype* scale_data, const Dtype* top_diff,
     const int channels, const int height, const int width,
     const int size, const Dtype negative_beta, const Dtype cache_ratio, Dtype* bottom_diff) {
-  int index = threadIdx.x + blockIdx.x * blockDim.x;
-  if (index < nthreads) {
+  CAFFE_LOOP(index, nthreads) {
     const int pre_pad = (size - 1) / 2;
     int w = index % width;
     int h = (index / width) % height;

@@ -6,8 +6,8 @@ caffe.init()
 
 
 batch_size = 128
-image_size = 27
-color = 96
+image_size = 55
+color = 1
 input_shape = (batch_size, color, image_size, image_size)
 
 size = 5

@@ -1,13 +1,13 @@
+from distbase.state import sisw
+
 import cudaconv
 import caffe
 import json
-from pycuda import gpuarray, driver
+from pycuda import gpuarray, driver, autoinit
 import numpy as np
 import time
 import garray
 import cPickle as pickle
-
-cudaconv.init()
 
 executer_dict = {}
 def register_executer(name, _class):
@@ -79,12 +79,12 @@ class ConvExecuter(Executer):
         print '\033[33mChange the number of filters to %d and  make it a multiple of 16\033[0m' % num_filter
         output_shape = cm_backend.get_image_shape(num_filter, output_y, output_x, output_shape[cm_backend.ConvDataLayout.BATCH])
 
-      input = gpuarray.to_gpu(np.random.randn(*input_shape).astype(np.float32))
-      output = gpuarray.to_gpu(np.random.randn(*output_shape).astype(np.float32))
-      filter = gpuarray.to_gpu(np.random.randn(*filter_shape).astype(np.float32))
+      input = gpuarray.to_gpu(np.ndarray(input_shape).astype(np.float32))
+      output = gpuarray.to_gpu(np.ndarray(output_shape).astype(np.float32))
+      filter = gpuarray.to_gpu(np.ndarray(filter_shape).astype(np.float32))
        
-      ingrad = gpuarray.to_gpu(np.random.randn(*output_shape).astype(np.float32))
-      outgrad = gpuarray.to_gpu(np.random.randn(*input_shape).astype(np.float32))
+      ingrad = gpuarray.to_gpu(np.ndarray(output_shape).astype(np.float32))
+      outgrad = gpuarray.to_gpu(np.ndarray(input_shape).astype(np.float32))
     
       padding = param['padding']
       stride = param['stride']
@@ -148,24 +148,24 @@ class PoolExecuter(Executer):
       output_y = output_shape[height_idx]
       output_x = output_shape[width_idx]
 
-      if input_shape[channel_idx] % 16 != 0:
+      if input_shape[channel_idx] % 16 != 0 and backend == 'cudaconv':
         num_filter = (input_shape[channel_idx] + 16 -1 ) / 16 * 16
         input_shape = cm_backend.get_image_shape(num_filter, input_y, input_x, input_shape[batch_idx])
         output_shape = cm_backend.get_image_shape(num_filter, output_y, output_x, output_shape[batch_idx])
         print '\033[33mChange the number of filters to %d and  make it a multiple of 16\033[0m' % num_filter
       
-      input = gpuarray.to_gpu(np.random.randn(*input_shape).astype(np.float32))
-      outgrad = gpuarray.to_gpu(np.random.randn(*input_shape).astype(np.float32))
-      output = gpuarray.to_gpu(np.random.randn(*output_shape).astype(np.float32))
-      ingrad = gpuarray.to_gpu(np.random.randn(*output_shape).astype(np.float32))
-
       channel = input_shape[channel_idx]
+      #input_shape = (input_shape[channel_idx], input_y, input_x, input_shape[batch_idx])
+      #output_shape = (output_shape[channel_idx], output_y, output_x, output_shape[batch_idx])
+      input = gpuarray.to_gpu(np.ndarray(input_shape).astype(np.float32))
+      outgrad = gpuarray.to_gpu(np.ndarray(input_shape).astype(np.float32))
+      output = gpuarray.to_gpu(np.ndarray(output_shape).astype(np.float32))
+      ingrad = gpuarray.to_gpu(np.ndarray(output_shape).astype(np.float32))
+
       pool_size = param['pool_size']
       start = param['start']
       stride = param['stride']
 
-      print 'input.shape', input.shape
-      print 'output.shape', output.shape
       operation.convLocalMaxPool(input, output, channel, pool_size, start, stride, input_y,
           output_y, output_x)
       operation.convLocalMaxUndo(input, ingrad, output, outgrad, pool_size, start, stride, output_y,
@@ -223,18 +223,18 @@ class RNormExecuter(Executer):
       output_x = output_shape[width_idx]
 
  
-      if input_shape[channel_idx] % 16 != 0:
+      if input_shape[channel_idx] % 16 != 0 and backend == 'cudaconv':
         num_filter = (input_shape[channel_idx] + 16 -1 ) / 16 * 16
         input_shape = cm_backend.get_image_shape(num_filter, input_y, input_x, input_shape[batch_idx])
         output_shape = cm_backend.get_image_shape(num_filter, output_y, output_x, output_shape[batch_idx])
         print '\033[33mChange the number of filters to %d and  make it a multiple of 16\033[0m' % num_filter
      
-      input = gpuarray.to_gpu(np.random.randn(*input_shape).astype(np.float32))
-      outgrad = gpuarray.to_gpu(np.random.randn(*input_shape).astype(np.float32))
-      output = gpuarray.to_gpu(np.random.randn(*output_shape).astype(np.float32))
-      ingrad = gpuarray.to_gpu(np.random.randn(*output_shape).astype(np.float32))
+      input = gpuarray.to_gpu(np.ndarray(input_shape).astype(np.float32))
+      outgrad = gpuarray.to_gpu(np.ndarray(input_shape).astype(np.float32))
+      output = gpuarray.to_gpu(np.ndarray(output_shape).astype(np.float32))
+      ingrad = gpuarray.to_gpu(np.ndarray(output_shape).astype(np.float32))
       
-      denom = gpuarray.to_gpu(np.random.randn(*output_shape).astype(np.float32))
+      denom = gpuarray.to_gpu(np.ndarray(output_shape).astype(np.float32))
 
       channel = input_shape[channel_idx]
       size = param['size']
@@ -293,25 +293,28 @@ class CMRNormExecuter(Executer):
       output_x = output_shape[width_idx]
 
  
-      if input_shape[channel_idx] % 16 != 0:
+      if input_shape[channel_idx] % 16 != 0 and backend == 'cudaconv':
         num_filter = (input_shape[channel_idx] + 16 -1 ) / 16 * 16
         input_shape = cm_backend.get_image_shape(num_filter, input_y, input_x, input_shape[batch_idx])
         output_shape = cm_backend.get_image_shape(num_filter, output_y, output_x, output_shape[batch_idx])
         print '\033[33mChange the number of filters to %d and  make it a multiple of 16\033[0m' % num_filter
      
-      input = gpuarray.to_gpu(np.random.randn(*input_shape).astype(np.float32))
-      outgrad = gpuarray.to_gpu(np.random.randn(*input_shape).astype(np.float32))
-      output = gpuarray.to_gpu(np.random.randn(*output_shape).astype(np.float32))
-      ingrad = gpuarray.to_gpu(np.random.randn(*output_shape).astype(np.float32))
-      
-      denom = gpuarray.to_gpu(np.random.randn(*output_shape).astype(np.float32))
-
       channel = input_shape[channel_idx]
+      #input_shape = (input_shape[channel_idx], input_y, input_x, input_shape[batch_idx])
+      #output_shape = (output_shape[channel_idx], output_y, output_x, output_shape[batch_idx])
+      input = gpuarray.to_gpu(np.ndarray(input_shape).astype(np.float32))
+      outgrad = gpuarray.to_gpu(np.ndarray(input_shape).astype(np.float32))
+      output = gpuarray.to_gpu(np.ndarray(output_shape).astype(np.float32))
+      ingrad = gpuarray.to_gpu(np.ndarray(output_shape).astype(np.float32))
+      
+      denom = gpuarray.to_gpu(np.ndarray(output_shape).astype(np.float32))
+
       size = param['size']
       scaler = param['scale']
       pow = param['pow']
 
       operation.convResponseNormCrossMap(input, denom, output, channel, size, input_y, scaler, pow, False)
+      driver.Context.synchronize()
       operation.convResponseNormCrossMapUndo(ingrad, denom, input, output, outgrad, channel, size, input_y,
           scaler, pow, False, 0.0, 1.0)
       driver.Context.synchronize()
@@ -341,12 +344,12 @@ class FCExecuter(Executer):
       output_shape = tuple(param['output_shape'])
       weight_shape = tuple(param['weight_shape'])
       
-      input = gpuarray.to_gpu(np.random.randn(*input_shape).astype(np.float32))
-      output = gpuarray.to_gpu(np.random.randn(*output_shape).astype(np.float32))
-      weight = gpuarray.to_gpu(np.random.randn(*weight_shape).astype(np.float32))
+      input = gpuarray.to_gpu(np.ndarray(input_shape).astype(np.float32))
+      output = gpuarray.to_gpu(np.ndarray(output_shape).astype(np.float32))
+      weight = gpuarray.to_gpu(np.ndarray(weight_shape).astype(np.float32))
        
-      ingrad = gpuarray.to_gpu(np.random.randn(*output_shape).astype(np.float32))
-      outgrad = gpuarray.to_gpu(np.random.randn(*input_shape).astype(np.float32))
+      ingrad = gpuarray.to_gpu(np.ndarray(output_shape).astype(np.float32))
+      outgrad = gpuarray.to_gpu(np.ndarray(input_shape).astype(np.float32))
 
       drop_out = param['drop_out']
 
@@ -392,9 +395,9 @@ class SoftmaxExecuter(Executer):
       input_shape = param['input_shape']
       output_shape = param['output_shape']
 
-      input = gpuarray.to_gpu(np.random.randn(*input_shape).astype(np.float32))
-      outgrad = gpuarray.to_gpu(np.random.randn(*input_shape).astype(np.float32))
-      output = gpuarray.to_gpu(np.random.randn(*output_shape).astype(np.float32))
+      input = gpuarray.to_gpu(np.ndarray(input_shape).astype(np.float32))
+      outgrad = gpuarray.to_gpu(np.ndarray(input_shape).astype(np.float32))
+      output = gpuarray.to_gpu(np.ndarray(output_shape).astype(np.float32))
       ingrad = gpuarray.to_gpu(np.array([np.random.choice(output_shape[0]) for i in
         range(output_shape[1])]).astype(np.float32)).reshape(output_shape[1], 1)
 
@@ -430,15 +433,30 @@ class NeuronExecuter(Executer):
     times = []
     for param in self.param:
       print param
-      input_shape = tuple(param['input_shape'])
-      input_shape = (np.prod(input_shape[:-1]), input_shape[-1])
-      output_shape = tuple(param['output_shape'])
-      output_shape = (np.prod(output_shape[:-1]), output_shape[-1])
+      backend = param['backend']
+
+      if backend == 'cudaconv':
+        import cudaconv_backend as cm_backend
+      elif backend == 'caffe':
+        import caffe_backend as cm_backend
+      else:
+        assert False, 'There is no such backend %s' % (backend)
       
-      input = gpuarray.to_gpu(np.random.randn(*input_shape).astype(np.float32))
-      outgrad = gpuarray.to_gpu(np.random.randn(*input_shape).astype(np.float32))
-      output = gpuarray.to_gpu(np.random.randn(*output_shape).astype(np.float32))
-      ingrad = gpuarray.to_gpu(np.random.randn(*output_shape).astype(np.float32))
+      input_shape = tuple(param['input_shape'])
+
+      if len(input_shape) == 2: # fc layer
+        batch_idx = cm_backend.FCDataLayout.BATCH
+      else:
+        batch_idx = cm_backend.ConvDataLayout.BATCH
+
+      input_shape = (np.prod(input_shape)/input_shape[batch_idx], input_shape[batch_idx])
+      output_shape = tuple(param['output_shape'])
+      output_shape = (np.prod(output_shape)/output_shape[batch_idx], output_shape[batch_idx])
+      
+      input = gpuarray.to_gpu(np.ndarray(input_shape).astype(np.float32))
+      outgrad = gpuarray.to_gpu(np.ndarray(input_shape).astype(np.float32))
+      output = gpuarray.to_gpu(np.ndarray(output_shape).astype(np.float32))
+      ingrad = gpuarray.to_gpu(np.ndarray(output_shape).astype(np.float32))
       
       garray.relu_activate(input, output, 0.0)
       garray.relu_compute_grad(ingrad, output, outgrad, 0.0)
@@ -467,10 +485,11 @@ register_executer('fc', FCExecuter)
 register_executer('softmax', SoftmaxExecuter)
 
 class RequestExecuter(object):
-  def __init__(self, filename, output_filename):
+  def __init__(self, filename, output_filename, ideal = False):
     self.filename = filename
     self.output_filename = output_filename
     self.comput_cost = {}
+    self.ideal = ideal
     self.open_request()
     
   def open_request(self):
@@ -482,15 +501,20 @@ class RequestExecuter(object):
       if 'end' in request:
         self.write_cost()
       else:
-        print '\033[31mRunning request ...\033[0m'
         decr = request['decr']
         param = request['param']
         layer_name = decr['layer_name']
         num_worker = decr['workers']
         state = tuple(decr['state'])
+
+        print '\033[31mRunning request [%d workers] ...\033[0m' % (num_worker)
         
-        executer = get_executer(decr['op'])(decr, param)
-        elapsed = executer.execute()
+        if self.ideal and state != sisw: # assume the backend scale perfectly to any number of GPUs
+          print 'Ideally scaled'
+          elapsed = self.comput_cost[layer_name][sisw][0] / num_worker
+        else:
+          executer = get_executer(decr['op'])(decr, param)
+          elapsed = executer.execute()
         print 'elapsed = \033[1m%f\033[0m second' % elapsed
         
         if layer_name not in self.comput_cost:
@@ -506,5 +530,5 @@ class RequestExecuter(object):
       pickle.dump(self.comput_cost, f)
 
 if __name__ == '__main__':
-  executer = RequestExecuter('TeslaC2075-2.imagenet.cfg-req', 'output')
+  executer = RequestExecuter('D15U-50-49.imagenet_larger.cfg.caffe-req', 'output')
   executer.execute()

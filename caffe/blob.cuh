@@ -5,6 +5,7 @@
 
 #include "common.cuh"
 #include "pyassert.cuh"
+#include <iostream>
 
 class Blob {
   public:
@@ -29,6 +30,11 @@ class Blob {
 
     const float* gpu_data() const;
     float* mutable_gpu_data();
+
+    friend std::ostream& operator<<(std::ostream & out, const Blob& b) {
+      out << "( " << b.num_ << " , " << b.channels_ << " , " << b.height_ << " , " << b.width_ << " )";
+      return out;
+    }
 
   protected:
     float* data_;

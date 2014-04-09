@@ -14,5 +14,3 @@ long cluster_seedgen(void) {
   seed = abs(((s * 181) * ((pid - 83) * 359)) % 104729);
   return seed;
 }
-
-Caffe Caffe::instance;
