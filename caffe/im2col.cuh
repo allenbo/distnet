@@ -1,5 +1,6 @@
 // Copyright 2013 Yangqing Jia
 
+// Modified by Justin Lin justin.lin@nyu.edu
 #ifndef _CAFFE_UTIL_IM2COL_HPP_
 #define _CAFFE_UTIL_IM2COL_HPP_
 

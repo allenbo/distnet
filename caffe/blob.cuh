@@ -1,5 +1,6 @@
 // Copyright 2013 Yangqing Jia
 
+// Modified by Justin Lin justin.lin@nyu.edu
 #ifndef CAFFE_BLOB_HPP_
 #define CAFFE_BLOB_HPP_
 

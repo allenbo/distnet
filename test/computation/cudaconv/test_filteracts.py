@@ -13,11 +13,11 @@ data_amount = []
 comput_amount = []
 
 image_sizes = [224, 27, 13]
-filter_sizes = [11, 5, 3]
+filter_sizes = [7, 5, 3]
 colors = [3, 96, 256]
 channels = [96, 256, 384]
 paddings = [0, 2, 1]
-strides = [4, 1, 1]
+strides = [2, 1, 1]
 
 band_width = int(test_base.memory_bandwidth(0))
 

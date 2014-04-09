@@ -59,7 +59,10 @@ def computation_cost(model, image_shape, comp_cost, req = None):
       layer['output_shape'] = cm_backend.get_image_shape(channel, output_size, output_size, batch_size)
 
     elif layer['type'] == 'fc':
-      image_size, batch_size = cm_backend.fold_image(input_shape)
+      if conv_end == True:
+        image_size, batch_size = input_shape
+      else:
+        image_size, batch_size = cm_backend.fold_image(input_shape)
       output_size = layer['outputSize']
       layer['input_shape'] = (image_size, batch_size)
       layer['weight_shape'] = (output_size, image_size)
@@ -299,8 +302,9 @@ if __name__ == '__main__':
   with open(filename) as f:
     comp_cost = pickle.load(f)
   computation_cost(model, image_shape, comp_cost)
-  cost, states = find_best(model, state0, ConvFC.conv, -1)
-  print 'Total cost is \033[44m%f\033[0m' % cost
+  states = [disw_i] * (len(model) - 6) + [sisw] * 6
+  #cost, states = find_best(model, state0, ConvFC.conv, -1)
+  #print '%s: Total cost is \033[44m%f\033[0m' % (model_basename.upper(), cost)
   print 'Number of worker is \033[32m%d\033[0m' % n
   print_details(model, states)
   

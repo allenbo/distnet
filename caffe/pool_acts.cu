@@ -1,3 +1,7 @@
+// Copyright 2013 Yangqing Jia
+
+// Modified by Justin Lin justin.lin@nyu.edu
+
 #include "blob.cuh"
 #include <assert.h>
 #include <cfloat>
@@ -36,9 +40,6 @@ __global__ void MaxPoolBackward(const int nthreads,
     const int width, const int pooled_height, const int pooled_width,
     const int ksize, const int stride, Dtype* bottom_diff) {
   CAFFE_LOOP(index, nthreads) {
-    // printf("[%d|%d] deal with %d\n", threadIdx.x, blockIdx.x, index);
-    // find out the local index
-    // find out the local offset
     int w = index % width;
     int h = (index / width) % height;
     int c = (index / width / height) % channels;
@@ -53,12 +54,12 @@ __global__ void MaxPoolBackward(const int nthreads,
         bottom_data[((n * channels + c) * height + h) * width + w];
     top_data += (n * channels + c) * pooled_height * pooled_width;
     top_diff += (n * channels + c) * pooled_height * pooled_width;
-    gradient += top_diff[0] * (bottom_datum == top_data[0]);
-    //for (int ph = phstart; ph < phend; ++ph) {
-    //  for (int pw = pwstart; pw < pwend; ++pw) {
-    //    gradient += top_diff[ph * pooled_width + pw] * (bottom_datum == top_data[ph * pooled_width + pw]);
-    //  }
-    //}
+    //gradient += top_diff[0] * (bottom_datum == top_data[0]);
+    for (int ph = phstart; ph < phend; ++ph) {
+      for (int pw = pwstart; pw < pwend; ++pw) {
+        gradient += top_diff[ph * pooled_width + pw] * (bottom_datum == top_data[ph * pooled_width + pw]);
+      }
+    }
     bottom_diff[index] = gradient;
   }  // (if index < nthreads)
 }

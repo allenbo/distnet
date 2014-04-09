@@ -1,5 +1,6 @@
 // Copyright 2013 Yangqing Jia
 
+// Modified by Justin Lin justin.lin@nyu.edu
 #include <cmath>
 #include <cstdlib>
 #include <stdio.h>

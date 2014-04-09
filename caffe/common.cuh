@@ -1,5 +1,6 @@
 // Copyright 2013 Yangqing Jia
 
+// Modified by Justin Lin justin.lin@nyu.edu
 #ifndef CAFFE_COMMON_HPP_
 #define CAFFE_COMMON_HPP_
 

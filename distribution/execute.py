@@ -530,5 +530,5 @@ class RequestExecuter(object):
       pickle.dump(self.comput_cost, f)
 
 if __name__ == '__main__':
-  executer = RequestExecuter('D15U-50-49.imagenet_larger.cfg.caffe-req', 'output')
+  executer = RequestExecuter('D15U-50-2.imagenet.cfg.caffe-req', 'output')
   executer.execute()

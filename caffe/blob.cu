@@ -1,11 +1,13 @@
 // Copyright 2013 Yangqing Jia
 
+// Modified by Justin Lin justin.lin@nyu.edu
+
+
 #include <cuda_runtime.h>
 //#include <cublas_v2.h>
 
 #include "blob.cuh"
 #include "common.cuh"
-#include "math_functions.cuh"
 
 
 Blob::Blob(const int num, const int channels, const int height,

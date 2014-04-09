@@ -25,8 +25,6 @@ for image_size, color, channel, padding, stride, filter_size in zip(image_sizes,
 
   input_local = np.random.randn(*input_shape).astype(np.float32)
   filter_local = np.random.randn(*filter_shape).astype(np.float32)
-  #input_local = np.ones(input_shape).astype(np.float32)
-  #filter_local = np.ones(filter_shape).astype(np.float32)
   output_local = np.zeros(output_shape).astype(np.float32)
 
   input_caffe = gpuarray.to_gpu(input_local)
@@ -66,9 +64,6 @@ for image_size, color, channel, padding, stride, filter_size in zip(image_sizes,
           output_local[b, c, x, y] = o
   output_caffe = output_caffe.get()
   diff = output_caffe[0, :, :, :] - output_local[0, :, :, :]
-  #print output_caffe[0, 0, :, :]
-  #print '=' * 40
-  #print output_local[0, 0, :, :]
   assert (diff < 1e-3).all()
   print 'Convolution passed the test'
   batch_size = BATCH

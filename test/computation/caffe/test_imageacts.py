@@ -1,11 +1,10 @@
 import caffe
+import time
 from pycuda import gpuarray, driver
 import numpy as np
 from distbase.util import divup
-import time
 caffe.init()
 
-real_time = []
 
 image_sizes = [224, 27, 13]
 filter_sizes = [7, 5, 3]
@@ -18,27 +17,28 @@ for image_size, color, channel, padding, stride, filter_size in zip(image_sizes,
   print 'color = %d channel = %d image_size = %d' % (color, channel, image_size)
   print '%10s\t%10s' %('batch','real')
   for batch_size in [32, 64, 128, 256]:
-    input_shape = (batch_size, color, image_size, image_size)
+    outgrad_shape = (batch_size, color, image_size, image_size)
     filter_shape = (channel, color, filter_size, filter_size)
     output_size = 1 + divup(2 * padding + image_size - filter_size, stride)
-    output_shape = (batch_size, channel, output_size, output_size)
+    ingrad_shape = (batch_size, channel, output_size, output_size)
 
-    input_local = np.ndarray(input_shape).astype(np.float32)
+    outgrad_local = np.ndarray(outgrad_shape).astype(np.float32)
     filter_local = np.ndarray(filter_shape).astype(np.float32)
-    output_local = np.zeros(output_shape).astype(np.float32)
+    ingrad_local = np.ndarray(ingrad_shape).astype(np.float32)
 
-    input = gpuarray.to_gpu(input_local)
+    outgrad = gpuarray.to_gpu(outgrad_local)
     filter = gpuarray.to_gpu(filter_local)
-    output = gpuarray.to_gpu(output_local)
+    ingrad = gpuarray.to_gpu(ingrad_local)
 
-    caffe.convFilterActs(input, filter, output, image_size, output_size, output_size, -padding, stride, color, 1)
+    caffe.convImgActs(ingrad, filter, outgrad, image_size, image_size, output_size, -padding, stride,
+        color, 1)
     driver.Context.synchronize()
 
     count = 3
     start = time.time()
     for i in range(count):
-      caffe.convFilterActs(input, filter, output, image_size, output_size, output_size, -padding, stride, color, 1)
+      caffe.convImgActs(ingrad, filter, outgrad, image_size, image_size, output_size, -padding, stride,
+          color, 1)
       driver.Context.synchronize()
-    real_time.append((time.time() - start) / count)
-
-    print '%10s\t%3.7f' %(batch_size, real_time[-1])
+    real_time = (time.time() - start) / count
+    print '%10s\t%3.7f' %(batch_size, real_time)

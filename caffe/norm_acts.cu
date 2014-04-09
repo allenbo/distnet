@@ -1,12 +1,14 @@
+//Copyright 2013 Yangqing Jia
+
+// Modified by Justin Lin justin.lin@nyu.edu
 #include "blob.cuh"
-#include "math_functions.cuh"
 #include <assert.h>
 #include <cfloat>
 #include <iostream>
 
 template <typename Dtype>
 __global__ void CrossMapRNorm(const int nthreads, const Dtype* in, Dtype* out,
-    const int num, const int channels, const int height,
+    const int channels, const int height,
     const int width, const int size, const Dtype alpha_over_size, const Dtype negative_beta,
     Dtype* scale) {
   CAFFE_LOOP(index, nthreads) {
@@ -31,8 +33,8 @@ __global__ void CrossMapRNorm(const int nthreads, const Dtype* in, Dtype* out,
     }
     // until we reach size, nothing needs to be subtracted
     while (head < size) {
-      index = (head - post_pad) * step;
       accum_scale += in[head * step] * in[head * step];
+      index = (head - post_pad) * step;
       scale[index] = 1. + accum_scale * alpha_over_size;
       out[index] = in[index] * pow(scale[index], negative_beta);
       ++head;
@@ -58,7 +60,7 @@ __global__ void CrossMapRNorm(const int nthreads, const Dtype* in, Dtype* out,
 template <typename Dtype>
 __global__ void CrossMapRNormComputeDiff(const int nthreads, const Dtype* bottom_data,
     const Dtype* top_data, const Dtype* scale, const Dtype* top_diff,
-    const int num, const int channels, const int height, const int width, const int size,
+    const int channels, const int height, const int width, const int size,
     const Dtype negative_beta, const Dtype cache_ratio,
     Dtype* bottom_diff) {
   CAFFE_LOOP(index, nthreads) {
@@ -124,10 +126,9 @@ void convResponseNormCrossMap(Blob& input, Blob& denoms, Blob& output,
 
   int n_threads = input.count() / num_filter;
   int input_x = input.width();
-  int batch_size = input.num();
   
   CrossMapRNorm<float><<<CAFFE_GET_BLOCKS(n_threads), CAFFE_CUDA_NUM_THREADS>>>(
-      n_threads, input_data, output_data, batch_size,  num_filter, input_y, input_x,
+      n_threads, input_data, output_data, num_filter, input_y, input_x,
       norm_size, scaler, -pow, denoms_data);
   CUDA_POST_KERNEL_CHECK;
 }
@@ -149,7 +150,7 @@ void convResponseNormCrossMapUndo(Blob& ingrad, Blob& denoms, Blob& input, Blob&
   int n_threads = batch_size * input_y * input_x;
   
   CrossMapRNormComputeDiff<float><<<CAFFE_GET_BLOCKS(n_threads), CAFFE_CUDA_NUM_THREADS>>>(
-      n_threads, input_data, output_data, denoms_data, ingrad_data, batch_size, channel, input_y,
+      n_threads, input_data, output_data, denoms_data, ingrad_data, channel, input_y,
       input_x, norm_size, -pow, float(2. * scaler * pow), outgrad_data);
 
   CUDA_POST_KERNEL_CHECK;
@@ -176,8 +177,8 @@ __global__ void RNorm(const int nthreads, const Dtype* bottom_data,
         accum_scale += bottom_data[hi*width+wi] * bottom_data[hi*width+wi];
       }
     }
-    scale_data[index] = pow(accum_scale + 1, negative_beta);
-    top_data[index] = scale_data[index] * bottom_data[index];
+    scale_data[index] = pow(accum_scale * alpha_over_size + 1, negative_beta);
+    top_data[index] = scale_data[index] * bottom_data[h * width + w];
   }  // (if index < nthreads)
 }
 

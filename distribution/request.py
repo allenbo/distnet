@@ -63,12 +63,12 @@ class RequestWriter(object):
   def define_request(self):
     assert False, 'Implementation missing in RequestWriter'
 
-  def define_disw_b(self):
+  def define_disw_b(self, min_num):
     dic_set = set()
     for i in range(self.num_worker):
       batch_idx = self.FC_BATCH if len(self.input_shape) == 2 else self.IMAGE_BATCH
-      input_varray = VArray(self.input_shape, self.num_worker, i, batch_idx, min_num = 8)
-      output_varray = VArray(self.output_shape, self.num_worker, i, batch_idx, min_num = 8)
+      input_varray = VArray(self.input_shape, self.num_worker, i, batch_idx, min_num = min_num)
+      output_varray = VArray(self.output_shape, self.num_worker, i, batch_idx, min_num = min_num)
       input_shape = input_varray.local_shape
       output_shape = output_varray.local_shape
 
@@ -125,7 +125,7 @@ class ConvRequestWriter(RequestWriter):
       self.list.append(self.dict)
  
     elif self.state == disw_b:
-      self.define_disw_b()
+      self.define_disw_b(1)
 
     elif self.state == sidw:
       dic_set = set()
@@ -216,7 +216,7 @@ class FCRequestWriter(RequestWriter):
       self.list.append(self.dict)
  
     elif self.state == disw_b:
-      self.define_disw_b()
+      self.define_disw_b(8)
 
     elif self.state == sidw_f:
       dic_set = set()
