@@ -66,6 +66,16 @@ def get_weight_distribution(state, conv):
     assert not conv
     return WeightLayout.OUTPUT
 
+def get_bias_distribution(state, conv):
+  if state == sidw:
+    assert conv
+    return 0 # bias has to be distributed
+  if state == sidw_f:
+    assert conv
+    return 0
+
+  return None
+
 def get_state_from_distribution(output_dist, conv):
   if conv:
       if output_dist == ConvDataLayout.BATCH:

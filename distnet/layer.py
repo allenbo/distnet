@@ -4,9 +4,10 @@ from distnet.weights import WEIGHTS
 import os
 import numpy as np
 import garray
+from garray import ConvDataLayout, FilterLayout, FCDataLayout, WeightLayout
 
 from multigpu import convert_shape, allocate, arr, uniformed_array, rank, multi_gpu
-from multigpu import get_state, get_weight_distribution, get_output_distribution
+from multigpu import get_state, get_weight_distribution, get_output_distribution, get_bias_distribution
 
 PFout = False
 PBout = False
@@ -67,7 +68,7 @@ class DataLayer(Layer):
     Layer.__init__(self, name, 'data', True)
     self.name = name
     self.image_shape = image_shape
-    self.batch_size = image_shape[-1]
+    self.batch_size = image_shape[ConvDataLayout.BATCH]
 
   def attach(self, prev):
     assert False, 'Must be first layer!'
@@ -82,7 +83,9 @@ class DataLayer(Layer):
     pass
 
   def get_output_shape(self):
-    return tuple(list(self.image_shape[:3]) + [self.batch_size])
+    image_shape = list(self.image_shape)
+    image_shape[ConvDataLayout.BATCH] = self.batch_size
+    return tuple(image_shape)
 
 
 class WeightedLayer(Layer):
@@ -94,6 +97,7 @@ class WeightedLayer(Layer):
 
     slice_dim = get_weight_distribution(self.state, conv = (self.type == 'conv'))
     self.weight = WEIGHTS.empty('weight.' + self.name, epsW, momW, wc, slice_dim = slice_dim)
+    slice_dim = get_bias_distribution(self.state, conv = (self.type == 'conv'))
     self.bias = WEIGHTS.empty('bias.' + self.name, epsB, momB, 0.0, slice_dim = slice_dim)
 
     if weight is not None:
@@ -117,10 +121,12 @@ class WeightedLayer(Layer):
     self.weight.shape = weight_shape
 
     if self.weight.wt is None:
+      print weight_shape
       self.weight.set_weight(col_randn(weight_shape, np.float32) * self.initW)
 
     if self.bias.wt is None:
       self.bias.set_weight(np.ones(bias_shape, dtype=np.float32) * self.initB)
+    print self.weight.grad.shape
 
   def clear_weight_incr(self):
     self.weight.incr.fill(0)
@@ -176,7 +182,6 @@ class ConvLayer(WeightedLayer):
       bias=None, weight=None, weightIncr=None, biasIncr=None, disable_bprop=False):
 
     self.numFilter = num_filters
-
     assert filter_shape[0] == filter_shape[1], 'Non-square filters not yet supported.'
     self.filterSize = filter_shape[0]
     self.padding = padding
@@ -187,9 +192,9 @@ class ConvLayer(WeightedLayer):
 
     if weight is not None:
       if len(weight.shape) == 2:
-        num_filter = weight.shape[-1]
-        num_color = weight.shape[0] / (self.filterSize ** 2)
-        new_shape = convert_shape((num_color, self.filterSize, self.filterSize, num_filter))
+        num_filter = weight.shape[FilterLayout.NUM]
+        num_color = weight.shape[FilterLayout.CHANNEL]
+        new_shape = convert_shape(FilterLayout.get_filter_shape(self.filterSize, num_color, num_filter))
         weight = weight.reshape(new_shape)
         weightIncr = weightIncr.reshape(new_shape)
 
@@ -204,33 +209,30 @@ class ConvLayer(WeightedLayer):
 
   def attach(self, prev_layer):
     image_shape = prev_layer.get_output_shape()
-    self.numColor, self.img_size, _, self.batch_size = image_shape
+    self.numColor = image_shape[ConvDataLayout.CHANNEL]
+    self.img_size = image_shape[ConvDataLayout.HEIGHT]
+    self.batch_size = image_shape[ConvDataLayout.BATCH]
     self.outputSize = 1 + divup(2 * self.padding + self.img_size - self.filterSize, self.stride)
     util.log_info('%s %s %s %s: %s', self.padding, self.img_size, self.filterSize, self.stride,
                   self.outputSize)
     self.modules = self.outputSize ** 2
 
-    weight_shape = convert_shape((self.numColor, self.filterSize, self.filterSize,  self.numFilter))
+    weight_shape = FilterLayout.get_filter_shape(self.filterSize, self.numColor, self.numFilter)
     bias_shape = (self.numFilter, 1)
 
     self._init_weights(weight_shape, bias_shape)
 
-
-  def get_cross_width(self):
-    return self.filterSize - 1
-
-  def get_single_img_size(self):
-    return self.modules * self.numFilter
-
   def get_output_shape(self):
-    return (self.numFilter, self.outputSize, self.outputSize, self.batch_size)
+    return ConvDataLayout.get_output_shape(self.outputSize, self.outputSize, self.numFilter, self.batch_size)
 
 
   def fprop(self, input, output, train=TRAIN):
+    # Apply convolution operation to output
     arr.convolution(input, self.weight.wt, output, self.img_size, self.outputSize,
         self.outputSize, -self.padding, self.stride, self.numColor, 1)
 
-    output.add(self.bias.wt, dst = output, shape = self.get_output_shape(), axis = 0)
+    # Add bias to output
+    output.add(self.bias.wt, dst = output, shape = self.get_output_shape(), axis = ConvDataLayout.CHANNEL)
     if self.neuron == 'relu':
       arr.relu_activate(output, output, 0)
 
@@ -253,7 +255,7 @@ class ConvLayer(WeightedLayer):
         self.outputSize, self.filterSize, -self.padding, self.stride, self.numColor)
 
     # bprop bias
-    self.bias.set_grad(grad.sumto(shape = self.get_output_shape(), axis = 0))
+    self.bias.set_grad(grad.sumto(shape = self.get_output_shape(), axis = ConvDataLayout.CHANNEL))
 
 
 class MaxPoolLayer(Layer):
@@ -267,14 +269,13 @@ class MaxPoolLayer(Layer):
 
   def attach(self, prev):
     image_shape = prev.get_output_shape()
-    self.numColor, self.img_size, _, self.batch_size = image_shape
+    self.numColor = image_shape[ConvDataLayout.CHANNEL]
+    self.img_size = image_shape[ConvDataLayout.HEIGHT]
+    self.batch_size = image_shape[ConvDataLayout.BATCH]
     self.outputSize = divup(self.img_size - self.poolSize - self.start, self.stride) + 1
 
   def get_output_shape(self):
-    return (self.numColor, self.outputSize, self.outputSize, self.batch_size)
-
-  def get_cross_width(self):
-    return self.poolSize - 1
+    return ConvDataLayout.get_output_shape(self.outputSize, self.outputSize, self.numColor, self.batch_size)
 
   def fprop(self, input, output, train=TRAIN):
     arr.maxpool(input, output, self.numColor, self.poolSize, self.start, self.stride, self.img_size,
@@ -297,13 +298,14 @@ class AvgPoolLayer(Layer):
 
   def attach(self, prev):
     image_shape = prev.get_output_shape()
-    self.numColor, self.img_size, _, self.batch_size = image_shape
+    self.numColor = image_shpae[ConvDataLayout.CHANNEL]
+    self.img_size = image_shape[ConvDataLayout.HEIGHT]
+    self.batch_size = image_shape[ConvDataLayout.BATCH]
     self.outputSize = divup(self.img_size - self.poolSize - self.start, self.stride) + 1
 
   def get_output_shape(self):
-    return (self.numColor, self.outputSize, self.outputSize, self.batch_size)
+    return ConvDataLayout.get_output_shape(self.outputSize, self.outputSize, self.numColor, self.batch_size)
 
-  def get_cross_width(self): return self.poolSize - 1
 
   def fprop(self, input, output, train=TRAIN):
     arr.avgpool(input, output, self.numColor, self.poolSize, self.start, self.stride,
@@ -327,19 +329,21 @@ class ResponseNormLayer(Layer):
 
   def attach(self, prev):
     image_shape = prev.get_output_shape()
-    self.numColor, self.img_size, _, self.batch_size = image_shape
+    self.numColor = image_shape[ConvDataLayout.CHANNEL]
+    self.img_size  = image_shape[ConvDataLayout.HEIGHT]
+    self.batch_size = image_shape[ConvDataLayout.BATCH]
 
     slice_dim = get_output_distribution(self.state, True)
-    self.denom = allocate((self.numColor , self.img_size , self.img_size, self.batch_size), slice_dim = slice_dim)
+    self.denom = allocate(image_shape, slice_dim = slice_dim)
 
 
   def get_output_shape(self):
-    return (self.numColor, self.img_size, self.img_size, self.batch_size)
+    return ConvDataLayout.get_output_shape(self.img_size, self.img_size, self.numColor, self.batch_size)
 
   def change_batch_size(self, batch_size):
     Layer.change_batch_size(self, batch_size)
     slice_dim = get_output_distribution(self.state, True)
-    self.denom = allocate((self.numColor , self.img_size , self.img_size, self.batch_size), slice_dim = slice_dim)
+    self.denom = allocate(ConvDataLayout.get_output_shape(self.img_size , self.img_size, self.numColor, self.batch_size), slice_dim = slice_dim)
 
   def fprop(self, input, output, train=TRAIN):
     arr.rnorm(input, self.denom, output, self.numColor, self.size, self.img_size, self.scaler,
@@ -347,7 +351,6 @@ class ResponseNormLayer(Layer):
     if PFout:
       print_matrix(output, self.name)
 
-  def get_cross_width(self): return self.size - 1
 
   def bprop(self, grad, input, output, outGrad):
     arr.rnormundo(grad, self.denom, input, output, outGrad, self.numColor,
@@ -364,7 +367,6 @@ class CrossMapResponseNormLayer(ResponseNormLayer):
 
     util.log("pow:%s size:%s, scale:%s scaler:%s", self.pow, self.size, self.scale, self.scaler)
 
-  def get_cross_width(self): return self.size - 1
 
   def fprop(self, input, output, train=TRAIN):
     arr.rnormcrossmap(input, self.denom, output, self.numColor, self.size, self.img_size, self.scaler, self.pow, self.blocked)
@@ -377,6 +379,8 @@ class CrossMapResponseNormLayer(ResponseNormLayer):
 
 
 class FCLayer(WeightedLayer):
+  ''' When the backend is caffe, we have to transpose the input to make batch as the second
+  dimension of matrix'''
   def __init__(self, name, n_out, epsW=0.001, epsB=0.002, initW=None, initB=None,
       momW=0.9, momB=0.9, wc=0.004, dropRate=0.0, weight=None, bias=None, weightIncr=None,
       biasIncr=None, disable_bprop=False):
@@ -391,18 +395,23 @@ class FCLayer(WeightedLayer):
 
   def attach(self, prev):
     input_shape = prev.get_output_shape()
-    self.inputSize = int(np.prod(input_shape[:-1]))
-    self.batch_size = input_shape[-1]
-    weight_shape = (self.outputSize, self.inputSize)
+    if len(input_shape) == 4:
+      self.batch_size = input_shape[ConvDataLayout.BATCH]
+    else:
+      self.batch_size = input_shape[FCDataLayout.BATCH]
+
+    self.inputSize = int(np.prod(input_shape)) / self.batch_size
+    weight_shape = WeightLayout.get_weight_shape(self.inputSize, self.outputSize)
+
     bias_shape = (self.outputSize, 1)
     self._init_weights(weight_shape, bias_shape)
-
+    
 
   def get_input_size(self):
     return self.inputSize
 
   def get_output_shape(self):
-    return (self.outputSize, self.batch_size)
+    return FCDataLayout.get_output_shape(self.outputSize, self.batch_size)
 
   def fprop(self, input, output, train=TRAIN):
     arr.matrixmult(self.weight.wt, input,  dest = output)

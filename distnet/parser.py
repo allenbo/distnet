@@ -176,8 +176,6 @@ class FastNetBuilder(Builder):
     n_out = Builder.set_val(ld , 'outputSize')
     bias = Builder.set_val(ld, 'bias')
     weight = Builder.set_val(ld, 'weight')
-    #if isinstance(weight, list):
-    #  weight = np.concatenate(weight)
 
     weightIncr = Builder.set_val(ld, 'weightIncr')
     biasIncr = Builder.set_val(ld, 'biasIncr')

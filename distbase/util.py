@@ -231,6 +231,7 @@ def make_copy(f, name):
             f.func_closure)
   return wrapper
 
+
 def lazyinit(initializer_fn):
   '''
   (Lazily) call initializer_fn prior to invocation.

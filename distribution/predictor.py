@@ -229,6 +229,7 @@ if __name__ == '__main__':
   parser.add_argument('--strategy-path', help='Path of generated strategy file', default='strategy')
   parser.add_argument('--bandwidth', help='Bandwidth of the underlying network', default=2.5, type = float)
   parser.add_argument('--single', help='Get the running time when the number of worker is 1', default=False, action = 'store_true')
+  parser.add_argument('--batch-size', help='The size of batch', default=128, type = int)
 
   args = parser.parse_args()
 
@@ -240,6 +241,7 @@ if __name__ == '__main__':
   config['strategy-path'] = args.strategy_path
   config['bandwidth'] = args.bandwidth
   config['single'] = args.single
+  config['batch-size'] = args.batch_size
 
   name = device_name()
   latency = 0.000001
@@ -259,7 +261,7 @@ if __name__ == '__main__':
 
   color = 3
   image_size = 224
-  batch_size = 128
+  batch_size = config['batch-size']
 
   image_shape = cm_backend.get_image_shape(color, image_size, image_size,  batch_size)
 
@@ -302,9 +304,12 @@ if __name__ == '__main__':
   with open(filename) as f:
     comp_cost = pickle.load(f)
   computation_cost(model, image_shape, comp_cost)
-  states = [disw_i] * (len(model) - 6) + [sisw] * 6
-  #cost, states = find_best(model, state0, ConvFC.conv, -1)
-  #print '%s: Total cost is \033[44m%f\033[0m' % (model_basename.upper(), cost)
+  if config['single']:
+    states = [sisw] * len(model)
+    cost = 10000
+  else:
+    cost, states = find_best(model, state0, ConvFC.conv, -1)
+  print '%s: Total cost is \033[44m%f\033[0m' % (model_basename.upper(), cost)
   print 'Number of worker is \033[32m%d\033[0m' % n
   print_details(model, states)
   

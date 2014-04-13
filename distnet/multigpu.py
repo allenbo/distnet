@@ -39,9 +39,7 @@ def issquare(x):
 
 def zeros(shape, dtype = np.float32, unique = False, slice_dim = None):
   if not multi_gpu:
-    col = shape[-1]
-    row = int(np.prod(shape[:-1]))
-    return garray.zeros((row, col), dtype = dtype)
+    return garray.zeros(shape, dtype = dtype)
   else:
     if issquare(num_gpu):
       slice_method = DistMethod.Square
@@ -65,9 +63,7 @@ def zeros(shape, dtype = np.float32, unique = False, slice_dim = None):
 
 def allocate(shape, dtype = np.float32, slice_dim = None):
   if not multi_gpu:
-    col = shape[-1]
-    row = int(np.prod(shape[:-1]))
-    return garray.GPUArray((row, col), dtype = dtype)
+    return garray.GPUArray(shape, dtype = dtype)
   else:
     if issquare(num_gpu):
       slice_method = DistMethod.Square

@@ -22,8 +22,8 @@ class Request(object):
     decr_dic = {'id': self.id, 'op':self.name, 'layer_name':self.layer_name, 'type':self.type, 'workers':self.num_worker,
         'state':self.state, 'tests':len(self.list)}
     item = {'decr': decr_dic, 'param': self.list}
-    json.dump(item, string_out, sort_keys = True, indent = 2, separators = (',', ': '))
-    #json.dump(item, string_out)
+    #json.dump(item, string_out, sort_keys = True, indent = 2, separators = (',', ': '))
+    json.dump(item, string_out)
     print >> fout , string_out.getvalue(), ','
 
 class RequestWriter(object):

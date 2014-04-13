@@ -1,24 +1,5 @@
 from .cudaconv2 import *
 
-# driver.init()
-# device_info = (0, 0)
-# for i in range(driver.Device.count()):
-#  dev = driver.Device(i)
-#  ctx = dev.make_context()
-#  ctx.push()
-#  free, total = driver.mem_get_info()
-#  print 'Free Memory for Device', i, 'is', free / 1000000, 'MB'
-#
-#  if device_info[1] < free:
-#    device_info = (i, free)
-#
-#  ctx.pop()
-#  ctx.detach()
-
-# print 'Choose Device', device_info[0]
-# dev = driver.Device(device_info[0])
-
-CONTEXT = None
 
 class ConvDataLayout(object):
   CHANNEL = 0
@@ -26,6 +7,10 @@ class ConvDataLayout(object):
   WIDTH = 2
   BATCH = 3
   DIM = 4
+
+  @staticmethod
+  def get_output_shape(image_y, image_x, channel, batch_size):
+    return (channel, image_y, image_x, batch_size)
   
 
 class FilterLayout(object):
@@ -35,18 +20,31 @@ class FilterLayout(object):
   NUM = 3
   DIM = 4
 
+  @staticmethod
+  def get_filter_shape(filter_size, channel, num):
+    return (channel, filter_size, filter_size, num)
+
 class FCDataLayout(object):
   NEURON = 0
   BATCH = 1
   DIM = 2
+
+  @staticmethod
+  def get_output_shape(neuron, batch_size):
+    return (neuron, batch_size)
 
 class WeightLayout(object):
   OUTPUT = 0
   INPUT = 1
   DIM = 2
 
+  @staticmethod
+  def get_weight_shape(input, output):
+    return (output, input)
+
 backend = 'cudaconv'
 
+CONTEXT = None
 def init(device=-1):
   global CONTEXT
   if CONTEXT is not None:

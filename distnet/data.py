@@ -160,9 +160,7 @@ class ImageNetDataProvider(DataProvider):
         num_images = min(self.batch_size, len(image_index) - index)
         num_images = util.divup(num_images, num_gpu)
         self.batches.append(image_index[index + rank * num_images: index + (rank+1) * num_images ])
-      #self.batches.append(image_index[index: index + self.batch_size])
       index += self.batch_size
-    #self.batches = np.array_split(image_index, util.divup(len(self.images), self.batch_size))
 
     self.batch_range = range(len(self.batches))
 

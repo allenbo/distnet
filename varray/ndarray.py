@@ -665,12 +665,13 @@ class VArray(object):
     else:
       data = other
 
-    if axis == len(self.local_shape) - 1:
-      tmp = garray.reshape_last(self.local_data) + data
-    elif axis == 0:
-      tmp = garray.reshape_first(self.local_data) + data
-    else:
-      assert False, 'No implementation for axis = %s' % axis
+    #if axis == len(self.local_shape) - 1:
+    #  tmp = garray.reshape_last(self.local_data) + data
+    #elif axis == 0:
+    #  tmp = garray.reshape_first(self.local_data) + data
+    #else:
+    #  assert False, 'No implementation for axis = %s' % axis
+    tmp = self.local_data.add(other, dst = dst , shape = shape, axis = axis)
 
     if dst is not None:
       assert self.check_param(dst)

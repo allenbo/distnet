@@ -11,6 +11,7 @@ import os
 import sys
 import time
 import math
+from garray import ConvDataLayout
 
 
 def cache_outputs(net, dp, dumper, layer_name = 'pool5', index = -1):
@@ -335,7 +336,7 @@ class ImageNetLayerwisedTrainer(Trainer):
     self.train_layer_output_dumper = None
     self.test_layer_output_dumper = None
     size = self.net['fc8'].get_input_size()
-    image_shape = (size, 1, 1, self.batch_size)
+    image_shape = ConvDataLayout.get_output_shape(1, 1, size, self.batch_size)
     self.net = FastNet(self.learning_rate, image_shape, model)
     self.replaynet = self.net
     self.num_epoch = self.replaynet_epoch
@@ -561,7 +562,7 @@ if __name__ == '__main__':
 
 
   # create a checkpoint dumper
-  image_shape = (param_dict['image_color'], param_dict['image_size'], param_dict['image_size'], param_dict['batch_size'])
+  image_shape = ConvDataLayout.get_output_shape(param_dict['image_size'], param_dict['image_size'], param_dict['image_color'], param_dict['batch_size'])
   param_dict['image_shape'] = image_shape
   cp_dumper = CheckpointDumper(param_dict['checkpoint_dir'], param_dict['test_id'])
   param_dict['checkpoint_dumper'] = cp_dumper

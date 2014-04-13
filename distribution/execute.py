@@ -91,19 +91,22 @@ class ConvExecuter(Executer):
 
       operation.convFilterActs(input, filter, output, image_y, output_y, output_x, -padding, stride,
           channel, 1)
+      driver.Context.synchronize()
       operation.convImgActs(ingrad, filter, outgrad, image_y, image_x, output_y,
           -padding, stride, channel, 1)
+      driver.Context.synchronize()
       operation.convWeightActs(input, ingrad, filter, image_y, output_y, output_x, filter_size,
           -padding, stride, channel, 1, 0)
-
       driver.Context.synchronize()
 
       start = time.time()
       for i in range(self.count):
         operation.convFilterActs(input, filter, output, image_y, output_y, output_x, -padding, stride,
             channel, 1)
+        driver.Context.synchronize()
         operation.convImgActs(ingrad, filter, outgrad, image_y, image_x, output_y,
             -padding, stride, channel, 1)
+        driver.Context.synchronize()
         operation.convWeightActs(input, ingrad, filter, image_y, output_y, output_x, filter_size,
             -padding, stride, channel, 1, 0)
         driver.Context.synchronize()
@@ -168,15 +171,17 @@ class PoolExecuter(Executer):
 
       operation.convLocalMaxPool(input, output, channel, pool_size, start, stride, input_y,
           output_y, output_x)
+      driver.Context.synchronize()
       operation.convLocalMaxUndo(input, ingrad, output, outgrad, pool_size, start, stride, output_y,
           output_x, input_y)
-
       driver.Context.synchronize()
+
       s = time.time()
       for i in range(self.count):
         # forward
         operation.convLocalMaxPool(input, output, channel, pool_size, start, stride, input_y,
             output_y, output_x)
+        driver.Context.synchronize()
         # backward
         operation.convLocalMaxUndo(input, ingrad, output, outgrad, pool_size, start, stride, output_y,
             output_x, input_y)
@@ -242,6 +247,7 @@ class RNormExecuter(Executer):
       pow = param['pow']
       
       operation.convResponseNorm(input, denom, output, channel, size, input_y, scaler, pow)
+      driver.Context.synchronize()
       operation.convResponseNormUndo(ingrad, denom, input, output, outgrad, channel, size, input_y,
           scaler, pow, 0.0, 1.0)
       driver.Context.synchronize()
@@ -249,6 +255,7 @@ class RNormExecuter(Executer):
       start = time.time()
       for i in range(self.count):
         operation.convResponseNorm(input, denom, output, channel, size, input_y, scaler, pow)
+        driver.Context.synchronize()
         operation.convResponseNormUndo(ingrad, denom, input, output, outgrad, channel, size, input_y,
             scaler, pow, 0.0, 1.0)
         driver.Context.synchronize()
@@ -322,6 +329,7 @@ class CMRNormExecuter(Executer):
       start = time.time()
       for i in range(self.count):
         operation.convResponseNormCrossMap(input, denom, output, channel, size, input_y, scaler, pow, False)
+        driver.Context.synchronize()
         operation.convResponseNormCrossMapUndo(ingrad, denom, input, output, outgrad, channel, size, input_y,
             scaler, pow, False, 0.0, 1.0)
         driver.Context.synchronize()
@@ -351,6 +359,7 @@ class FCExecuter(Executer):
       ingrad = gpuarray.to_gpu(np.ndarray(output_shape).astype(np.float32))
       outgrad = gpuarray.to_gpu(np.ndarray(input_shape).astype(np.float32))
 
+      time.sleep(1)
       drop_out = param['drop_out']
 
       garray.matrixmult(weight, input, dest = output)
@@ -530,5 +539,5 @@ class RequestExecuter(object):
       pickle.dump(self.comput_cost, f)
 
 if __name__ == '__main__':
-  executer = RequestExecuter('D15U-50-2.imagenet.cfg.caffe-req', 'output')
+  executer = RequestExecuter('D15U-50-2.imagenet_larger.cfg.cudaconv-req', 'output')
   executer.execute()

@@ -3,6 +3,53 @@ from distbase import cuda_base
 from pycuda import gpuarray, driver
 import numpy as np
 
+class ConvDataLayout(object):
+  BATCH = 0
+  CHANNEL = 1
+  HEIGHT = 2
+  WIDTH = 3
+  DIM = 4
+  
+  @staticmethod
+  def get_output_shape(image_y, image_x, channel, batch_size):
+    return (batch_size, channel, image_y, image_x)
+  
+
+class FilterLayout(object):
+  NUM = 0
+  CHANNEL = 1
+  HEIGHT = 2
+  WIDTH = 3
+  DIM = 4
+
+  @staticmethod
+  def get_filter_shape(filter_size, channel, num):
+    return (num, channel, filter_size, filter_size)
+
+class FCDataLayout(object):
+  NEURON = 0
+  BATCH = 1
+  DIM = 2
+
+  @staticmethod
+  def get_output_shape(neuron, batch_size):
+    return (neuron, batch_size)
+
+class WeightLayout(object):
+  OUTPUT = 0
+  INPUT = 1
+  DIM = 2
+
+  @staticmethod
+  def get_weight_shape(input, output):
+    return (output, input)
+
+backend = 'caffe'
+
+
+def get_output_shape_4D(image_y, image_x, channel, batch_size):
+  return (batch_size, channel, image_y, image_x)
+
 CONTEXT = None
 
 def init(device=-1):
