@@ -121,12 +121,10 @@ class WeightedLayer(Layer):
     self.weight.shape = weight_shape
 
     if self.weight.wt is None:
-      print weight_shape
       self.weight.set_weight(col_randn(weight_shape, np.float32) * self.initW)
 
     if self.bias.wt is None:
       self.bias.set_weight(np.ones(bias_shape, dtype=np.float32) * self.initB)
-    print self.weight.grad.shape
 
   def clear_weight_incr(self):
     self.weight.incr.fill(0)
@@ -392,11 +390,13 @@ class FCLayer(WeightedLayer):
     util.log('outputSize:%s initW:%s initB:%s dropRate:%s w: %s, b: %s',
         self.outputSize, self.initW, self.initB, self.dropRate, self.weight, self.bias)
     self.merge_neuron = True
+    self.prev_conv = False
 
   def attach(self, prev):
     input_shape = prev.get_output_shape()
     if len(input_shape) == 4:
       self.batch_size = input_shape[ConvDataLayout.BATCH]
+      self.prev_conv = True # previous layer is a conv-related layer, needs 4 dimension input and output
     else:
       self.batch_size = input_shape[FCDataLayout.BATCH]
 
@@ -414,7 +414,12 @@ class FCLayer(WeightedLayer):
     return FCDataLayout.get_output_shape(self.outputSize, self.batch_size)
 
   def fprop(self, input, output, train=TRAIN):
-    arr.matrixmult(self.weight.wt, input,  dest = output)
+    if self.prev_conv:
+      self.input = arr.convert_to_fc(input)
+    else:
+      self.input = input
+    
+    arr.matrixmult(self.weight.wt, self.input,  dest = output)
     output.add(self.bias.wt, dst = output, axis = 0)
     if train == TEST:
       if self.dropRate > 0.0:
@@ -441,8 +446,11 @@ class FCLayer(WeightedLayer):
     if tmp != outGrad:
       arr.copy_to(tmp, outGrad)
     
-    arr.matrixmult(grad, arr.transpose(input), dest = self.weight.grad)
+    arr.matrixmult(grad, arr.transpose(self.input), dest = self.weight.grad)
     self.bias.set_grad(grad.sumto(axis = 0))
+
+    if self.prev_conv:
+      arr.copy_to(arr.convert_to_conv(grad), grad)
 
 
 class SoftmaxLayer(Layer):

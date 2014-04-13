@@ -1,6 +1,7 @@
 from backend import cm_backend
 import aux_operation
 from aux_operation import sync_function, reshape_first, reshape_last
+import numpy as np
 
 convolution = sync_function(cm_backend.convFilterActs)
 
@@ -50,3 +51,22 @@ def transpose(mat, dest = None):
     mat = reshape_last(mat)
   
   return aux_operation.transpose(mat, dest)
+
+def convert_to_fc(input):
+  if cm_backend.backend == 'cudaconv':
+    return input
+  
+  if cm_backend.backend == 'caffe':
+    batch_size = input.shape[cm_backend.ConvDataLayout.BATCH]
+    new_shape = (batch_size, int(np.prod(input.shape) / batch_size))
+    rst = transpose(input.reshape(new_shape))
+    return rst
+
+  assert False
+
+def convert_to_conv(grad):
+  if cm_backend.backend == 'cudaconv':
+    return grad
+
+  if cm_backend.backend == 'caffe':
+    return transpose(grad)

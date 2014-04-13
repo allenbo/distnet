@@ -9,21 +9,6 @@ from pycuda import driver
 from distbase.state import *
 from garray import ConvDataLayout, FCDataLayout, FilterLayout, WeightLayout
 
-
-gpu_cache = {}
-
-def get_from_cache(shape):
-  if shape in gpu_cache:
-    c = gpu_cache[shape]
-    del gpu_cache[shape]
-  else:
-    c = garray.GPUArray(shape, dtype = np.float32)
-
-  return c
-
-def put_to_cache(shape, c):
-  gpu_cache[shape] = c
-
 def copy_to(input, output):
   if output.unique:
     if not input.unique:
@@ -52,20 +37,18 @@ def matrixmult(x, y, dest = None):
   assert isinstance(y, VArray)
 
   if x.unique:
-    x = garray.reshape_last(x.fetch(x.global_area))
+    x = x.fetch(x.global_area)
   else:
     x = x.local_data
   if y.unique:
-    y = garray.reshape_last(y.fetch(y.global_area))
+    y = y.fetch(y.global_area)
   else:
     y = y.local_data
   shape = (x.shape[0], y.shape[1])
   #c = garray.matrixmult(x, y, atrans = atrans, btrans = btrans)
   if dest is None or dest.unique == True:
-    c = get_from_cache(shape)
-    garray.matrixmult(x, y, c)
+    c = garray.matrixmult(x, y)
     rst = VArray(c, unique = False)
-    put_to_cache(shape, c)
     return rst
   else:
     garray.matrixmult(x, y, dest.local_data)

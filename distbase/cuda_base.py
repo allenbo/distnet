@@ -1454,6 +1454,8 @@ def stride_write_sum(data, container, slices):
 
 @util.timed_fn
 def gpu_copy_to(x, y):
+  if x is y:
+    return 
   pycuda.driver.memcpy_dtod(y.gpudata, x.gpudata, x.nbytes)
   
 

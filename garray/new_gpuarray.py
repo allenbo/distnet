@@ -208,15 +208,23 @@ GPUArray.setitem_sum = setitem_sum
 def object_sumto(self, shape= None, axis = 0):
   if shape is None:
     shape = self.shape
+  assert axis >= 0 and axis < len(shape)
 
-  assert axis == 0 or axis == len(shape) -1
   tmp = self.reshape(shape) if self.shape != shape else self
+
   if axis == 0:
     tmp = reshape_first(tmp) if len(tmp.shape) != 2 else tmp
     c = sum(tmp, axis = 1)
-  else:
+  elif axis == len(shape) -1:
     tmp = reshape_last(tmp) if len(tmp.shape) != 2 else tmp
     c = sum(tmp, axis = 0)
+  else:
+    sd = int(np.prod(tmp.shape[axis+1:]))
+    c = gpuarray.zeros((tmp.shape[axis], 1), dtype = self.dtype)
+    for i in range(np.prod(tmp.shape[:axis])):
+      partial = gpuarray.GPUArray(shape = (tmp.shape[axis], sd), dtype = tmp.dtype, gpudata = tmp.ptr + i * tmp.strides[axis])
+      partial_rst = sum(partial, 1)
+      c += partial_rst
   return c
 GPUArray.sumto = object_sumto
 
@@ -287,7 +295,8 @@ def object_add(self, other, dst = None, shape = None, axis = 0):
       sd = int(np.prod(tmp_shape[axis+1:]))
       for i in range(np.prod(tmp_shape[:axis])):
         partial = gpuarray.GPUArray(shape = (tmp_shape[axis], sd), dtype = tmp.dtype, gpudata = tmp.ptr + i * tmp.strides[axis])
-        copy_to(partial + other, c.ptr + i * tmp.strides[axis])
+        partial_dest = gpuarray.GPUArray(shape = (tmp_shape[axis], sd), dtype = tmp.dtype, gpudata = c.ptr + i * tmp.strides[axis])
+        copy_to(partial + other, partial_dest)
   if dst is None:
     c = c.reshape(self.shape)
   return c
