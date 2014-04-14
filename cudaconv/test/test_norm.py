@@ -19,19 +19,24 @@ for image_size, color in zip(image_sizes, colors):
   output_size  = image_size
   output_shape = input_shape
 
-  input_local = np.random.randn(*input_shape).astype(np.float32)
-  output_local = np.random.randn(*output_shape).astype(np.float32)
-  denom_local = np.random.randn(*output_shape).astype(np.float32)
+  print 'build input/output/denom'
+  input_local = np.random.randint(10, size = input_shape).astype(np.float32)
+  output_local = np.zeros(output_shape).astype(np.float32)
+  denom_local = np.zeros(output_shape).astype(np.float32)
 
   input = gpuarray.to_gpu(input_local)
   output = gpuarray.to_gpu(output_local)
   denom = gpuarray.to_gpu(denom_local)
 
   print 'input.shape', input.shape
+  print 'finished'
 
+  print 'gpu computation for RNorm'
   cudaconv.convResponseNorm(input, denom, output, color, size, image_size, scaler, pow)
   driver.Context.synchronize()
+  print 'finished'
 
+  print 'cpu computation for RNorm'
   batch_size = 1
   for b in range(batch_size):
     for c in range(color):
@@ -45,18 +50,26 @@ for image_size, color in zip(image_sizes, colors):
           denom_local[c, x, y, b] = o ** pow
           output_local[c, x, y, b] = input_local[c, x, y, b] / (o ** pow)
 
-  diff = output.get()[:, :, :, 0] = output_local[:, :, :, 0]
-  diff = diff / np.abs(output_local[:, :, :, 0])
+  print 'finished'
+  diff = output.get()[:, :, :, 0] - output_local[:, :, :, 0]
   assert(diff < 1e5).all()
-  diff = denom.get()[:, :, :, 0] = denom_local[:, :, :, 0]
-  diff = diff / np.abs(denom_local[:, :, :, 0])
+  diff = denom.get()[:, :, :, 0] - denom_local[:, :, :, 0]
   assert(diff < 1e5).all()
   print 'Response Norm passed the test'
 
+  print 'reset output/denom to 0'
+  output.fill(0.0)
+  output_local.fill(0)
+  denom.fill(0)
+  denom_local.fill(0)
+
+  print 'gpu computation for cross map'
   scaler = scale / size
   cudaconv.convResponseNormCrossMap(input, denom, output, color, size, image_size, scaler, pow, False)
   driver.Context.synchronize()
 
+  print 'finished'
+  print 'cpu computation for cross map'
   batch_size = 1
   for b in range(batch_size):
     for c in range(color):
@@ -67,11 +80,10 @@ for image_size, color in zip(image_sizes, colors):
           o = 2 + scaler * (input_local[start_c:end_c, x, y, b] ** 2).sum()
           output_local[c, x, y, b] = input_local[c, x, y, b] / (o ** pow)
 
-  diff = output.get()[:, :, :, 0] = output_local[:, :, :, 0]
-  diff = diff / np.abs(output_local[:, :, :, 0])
+  print 'finished'
+  diff = output.get()[:, :, :, 0] - output_local[:, :, :, 0]
   assert(diff < 1e5).all()
-  diff = denom.get()[:, :, :, 0] = denom_local[:, :, :, 0]
-  diff = diff / np.abs(denom_local[:, :, :, 0])
+  diff = denom.get()[:, :, :, 0] - denom_local[:, :, :, 0]
   assert(diff < 1e5).all()
   print 'Response Norm Cross Map passed the test'
   batch_size = BATCH

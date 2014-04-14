@@ -22,21 +22,35 @@ for image_size, color, channel, padding, stride, filter_size in zip(image_sizes,
   input_shape = (batch_size, color, image_size, image_size)
   filter_shape = (channel, color, filter_size, filter_size)
   output_shape = (batch_size, channel, output_size, output_size)
+  bias_shape = (channel, 1)
 
-  input_local = np.random.randn(*input_shape).astype(np.float32)
-  filter_local = np.random.randn(*filter_shape).astype(np.float32)
+  print 'build input/output/filter/bias'
+  # build input
+  input_local = np.random.randint(10, size= input_shape).astype(np.float32)
+  filter_local = np.random.randint(10, size = filter_shape).astype(np.float32)
   output_local = np.zeros(output_shape).astype(np.float32)
+
+  # build bias
+  bias_local = np.arange(np.prod(bias_shape)).astype(np.float32)
+  np.random.shuffle(bias_local)
+  bias_local = bias_local.reshape(bias_shape)
 
   input_caffe = gpuarray.to_gpu(input_local)
   filter_caffe = gpuarray.to_gpu(filter_local)
   output_caffe = gpuarray.to_gpu(output_local)
+  bias_caffe = gpuarray.to_gpu(bias_local)
   
   print 'input.shape', input_caffe.shape
   print 'output.shape', output_caffe.shape
+  print 'bias.shape', bias_caffe.shape
+  print 'finished'
 
-  caffe.convFilterActs(input_caffe, filter_caffe, output_caffe, image_size, output_size, output_size, -padding,
+  print 'gpu computation'
+  caffe.convFilterActs(input_caffe, filter_caffe, output_caffe, bias_caffe, image_size, output_size, output_size, -padding,
       stride, color, 1)
+  print 'finished'
 
+  print 'cpu computation'
   if padding != 0:
     tmp_shape  = (batch_size, color, image_size + 2 * padding, image_size + 2 * padding)
     tmp_input = np.zeros(tmp_shape).astype(np.float32)
@@ -61,7 +75,10 @@ for image_size, color, channel, padding, stride, filter_size in zip(image_sizes,
             left = input_local[b, cr, start_x:start_x+filter_size, start_y:start_y+filter_size]
             right = f[c, cr, :, :]
             o += (left * right).sum()
-          output_local[b, c, x, y] = o
+          output_local[b, c, x, y] = o + bias_local[c, 0]
+  
+  print 'finished'
+
   output_caffe = output_caffe.get()
   diff = output_caffe[0, :, :, :] - output_local[0, :, :, :]
   assert (diff < 1e-3).all()
