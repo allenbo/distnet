@@ -292,11 +292,19 @@ def object_add(self, other, dst = None, shape = None, axis = 0):
       tmp = reshape_last(tmp)
       copy_to(tmp + other, c)
     else:
-      sd = int(np.prod(tmp_shape[axis+1:]))
-      for i in range(np.prod(tmp_shape[:axis])):
-        partial = gpuarray.GPUArray(shape = (tmp_shape[axis], sd), dtype = tmp.dtype, gpudata = tmp.ptr + i * tmp.strides[axis])
-        partial_dest = gpuarray.GPUArray(shape = (tmp_shape[axis], sd), dtype = tmp.dtype, gpudata = c.ptr + i * tmp.strides[axis])
-        copy_to(partial + other, partial_dest)
+      #sd = int(np.prod(tmp_shape[axis+1:]))
+      #for i in range(np.prod(tmp_shape[:axis])):
+      #  partial = gpuarray.GPUArray(shape = (tmp_shape[axis], sd), dtype = tmp.dtype, gpudata = tmp.ptr + i * tmp.strides[axis])
+      #  partial_dest = gpuarray.GPUArray(shape = (tmp_shape[axis], sd), dtype = tmp.dtype, gpudata = c.ptr + i * tmp.strides[axis])
+      #  copy_to(partial + other, partial_dest)
+      fd = int(np.prod(tmp_shape[:axis]))
+      sd = int(np.prod(tmp_shape[axis:]))
+      intermidiate_shape = tuple(tmp_shape[axis:] + tmp_shape[:axis])
+      transpose_tmp = transpose(tmp.reshape((fd, sd))).reshape(intermidiate_shape)
+      transpose_tmp = reshape_first(transpose_tmp)
+      rst_tmp = transpose_tmp + other
+      rst_tmp = reshape_last(rst_tmp.reshape(intermidiate_shape))
+      copy_to(transpose(rst_tmp), c)
   if dst is None:
     c = c.reshape(self.shape)
   return c

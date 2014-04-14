@@ -7,6 +7,8 @@ import pyximport
 pyximport.install()
 from distnet import data, trainer, net, parser
 from mpi4py import MPI
+from garray import ConvDataLayout
+from distbase import util
 
 
 test_id = 'imagenet_dummy'
@@ -40,10 +42,10 @@ num_epoch = 1
 learning_rate = 0.1
 batch_size = 128
 image_color = 3
-image_shape = (image_color, image_size, image_size, batch_size)
+image_shape = ConvDataLayout.get_output_shape(image_size, image_size, image_color, batch_size)
 net = parser.load_model(net.FastNet(image_shape), model)
 
 param_dict = globals()
 t = trainer.Trainer(**param_dict)
-
+util.enable_profile()
 t.train(num_epoch)

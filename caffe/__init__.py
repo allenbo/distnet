@@ -74,7 +74,7 @@ def init(device=-1):
   atexit.register(CONTEXT.detach)
   return CONTEXT
 
-def convFilterActs(input, weight, output, image_y, output_y, output_x, padding, stride, color, group):
+def convFilterActs(input, weight, output, bias, image_y, output_y, output_x, padding, stride, color, group):
   batch_size = input.shape[0]
   image_x = input.shape[-1]
   filter_size = weight.shape[-1]
@@ -82,6 +82,8 @@ def convFilterActs(input, weight, output, image_y, output_y, output_x, padding, 
 
   assert group == 1, 'Group has to be 1, now it\'s %d' % group
   col_buffer = gpuarray.zeros(shape = (weight.size / weight.shape[0], output_y * output_x), dtype = np.float32)
+  bias_multiplier = gpuarray.GPUArray(shape = (1, output_y * output_x), dtype = np.float32)
+  bias_multiplier.fill(1.0)
 
   for i in range(batch_size):
     im2col_gpu(input.ptr + input.strides[0] * i, color, image_y, image_x, filter_size, stride, padding, col_buffer.ptr)
@@ -89,6 +91,8 @@ def convFilterActs(input, weight, output, image_y, output_y, output_x, padding, 
     weight_buffer = weight.reshape((num_filter, color * filter_size * filter_size))
 
     cuda_base.matrixmult(weight_buffer, col_buffer, dest = output_buffer)
+    # bias term
+    cuda_base.matrixmult(bias, bias_multiplier, dest = output_buffer, alpha = 1.0, beta = 1.0)
 
 
 def convImgActs(ingrad, weight, outgrad, image_y, image_x, output_y, padding, stride, color,
@@ -108,7 +112,7 @@ def convImgActs(ingrad, weight, outgrad, image_y, image_x, output_y, padding, st
     cuda_base.matrixmult(weight_buffer, ingrad_buffer, dest = col_buffer)
     col2im_gpu(col_buffer.ptr, color, image_y, image_x, filter_size, stride, padding, outgrad.ptr + outgrad.strides[0] * i)
 
-def convWeightActs(input, ingrad, weight_grad, image_y, output_y, output_x, filter_size, padding, stride, color, group, partial_sum):
+def convWeightActs(input, ingrad, weight_grad, bias_grad, image_y, output_y, output_x, filter_size, padding, stride, color, group, partial_sum):
   batch_size = input.shape[0]
   image_x = input.shape[-1]
   filter_size = weight_grad.shape[-1]
@@ -116,8 +120,12 @@ def convWeightActs(input, ingrad, weight_grad, image_y, output_y, output_x, filt
 
   assert group == 1, 'Group has to be 1, now it\'s %d' % group
   col_buffer = gpuarray.zeros(shape = (weight_grad.size / weight_grad.shape[0], output_y * output_x), dtype = np.float32)
+  bias_multiplier = gpuarray.GPUArray(shape = (output_y * output_x, 1), dtype = np.float32)
+  bias_multiplier.fill(1.0)
   for i in range(batch_size):
     im2col_gpu(input.ptr + input.strides[0] * i, color, image_y, image_x, filter_size, stride, padding, col_buffer.ptr)
 
     ingrad_buffer = gpuarray.GPUArray(shape = (num_filter, output_x* output_y), dtype = ingrad.dtype, gpudata = ingrad.ptr + ingrad.strides[0] * i)
     cuda_base.matrixmult(ingrad_buffer, cuda_base.transpose(col_buffer), dest = weight_grad, alpha = 1.0, beta = 1.0)
+    # bias term
+    cuda_base.matrixmult(ingrad_buffer, bias_multiplier, bias_grad, alpha = 1.0, beta = 1.0)

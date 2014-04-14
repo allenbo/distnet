@@ -1,4 +1,5 @@
 from .cudaconv2 import *
+import cudaconv2
 
 
 class ConvDataLayout(object):
@@ -66,3 +67,20 @@ def init(device=-1):
   import atexit
   atexit.register(CONTEXT.detach)
   return CONTEXT
+
+def convFilterActs(input, weight, output, bias, image_y, output_y, output_x, padding, stride, color, group):
+  from distbase import cuda_base
+  cudaconv2.convFilterActs(input, weight, output, image_y, output_y, output_x, padding, stride,
+      color, group)
+  batch_size = output.shape[ConvDataLayout.BATCH]
+  channel = output.shape[ConvDataLayout.CHANNEL]
+  
+  # bias term
+  cuda_base.add_vec_to_rows(output.reshape((channel, output_y * output_x * batch_size)), bias)
+
+def convWeightActs(input, ingrad, weight_grad, bias_grad, image_y, output_y, output_x, filter_size, padding, stride, color, group, partial_sum):
+  cudaconv2.convWeightActs(input, ingrad, weight_grad, image_y, output_y, output_x, filter_size, padding, stride, color, group, partial_sum)
+  batch_size = ingrad.shape[ConvDataLayout.BATCH]
+  channel = ingrad.shape[ConvDataLayout.CHANNEL]
+  
+  cudaconv2.sum(ingrad.reshape((channel, output_y * output_x * batch_size)), 1, bias_grad)

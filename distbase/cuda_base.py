@@ -8,7 +8,6 @@ from pycuda.elementwise import ElementwiseKernel
 from pycuda.gpuarray import GPUArray
 import numpy as np
 from time import time
-import cudaconv
 
 from scikits.cuda import cublas
 sgemm = None
@@ -1026,6 +1025,7 @@ def add_row_sum_to_vec(vec, mat, alpha=1.0, beta=1.0):
   vh, vw = vec.shape
   assert(vw == 1 and vh == mh or vh == 1 and vw == mh)
   if mw != 1:
+    import cudaconv
     cudaconv.sum(mat, 1, vec)
   else:
     gpu_partial_copy_to(mat, vec, 0, mh, 0, 1)
@@ -1060,6 +1060,7 @@ def add_col_sum_to_vec(vec, mat, alpha=1.0, beta=1.0):
   vh, vw = vec.shape
   assert(vw == 1 and vh == mw or vh == 1 and vw == mw)
 
+  import cudaconv
   cudaconv.sum(mat, 0, vec)
   #grid = (mw, 1)
   #block = (1, mh, 1)

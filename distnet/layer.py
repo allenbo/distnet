@@ -226,11 +226,12 @@ class ConvLayer(WeightedLayer):
 
   def fprop(self, input, output, train=TRAIN):
     # Apply convolution operation to output
-    arr.convolution(input, self.weight.wt, output, self.img_size, self.outputSize,
+    # Merge bias addition to convolution operation
+    arr.convolution(input, self.weight.wt, output, self.bias.wt, self.img_size, self.outputSize,
         self.outputSize, -self.padding, self.stride, self.numColor, 1)
 
     # Add bias to output
-    output.add(self.bias.wt, dst = output, shape = self.get_output_shape(), axis = ConvDataLayout.CHANNEL)
+    #output.add(self.bias.wt, dst = output, shape = self.get_output_shape(), axis = ConvDataLayout.CHANNEL)
     if self.neuron == 'relu':
       arr.relu_activate(output, output, 0)
 
@@ -249,11 +250,11 @@ class ConvLayer(WeightedLayer):
         self.outputSize, -self.padding, self.stride, self.numColor)
 
     # bprop weight
-    arr.wconvolution(input, grad, self.weight.grad, self.img_size, self.outputSize,
+    arr.wconvolution(input, grad, self.weight.grad, self.bias.grad, self.img_size, self.outputSize,
         self.outputSize, self.filterSize, -self.padding, self.stride, self.numColor)
 
     # bprop bias
-    self.bias.set_grad(grad.sumto(shape = self.get_output_shape(), axis = ConvDataLayout.CHANNEL))
+    #self.bias.set_grad(grad.sumto(shape = self.get_output_shape(), axis = ConvDataLayout.CHANNEL))
 
 
 class MaxPoolLayer(Layer):

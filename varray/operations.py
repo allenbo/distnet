@@ -141,7 +141,7 @@ def tanh_activate(input, output, a, b):
 def tanh_compute_grad(grad, output, out_grad, a, b):
   garray.tanh_compute_grad(grad.local_data, output.local_data, out_grad.local_data, a, b)
 
-def convolution(input, filter ,output, image_y, output_y, output_x, padding, stride, channel, group):
+def convolution(input, filter ,output, bias, image_y, output_y, output_x, padding, stride, channel, group):
   assert isinstance(input, VArray) and isinstance(filter, VArray) and isinstance(output, VArray)
 
   filter_size_index = FilterLayout.HEIGHT 
@@ -165,6 +165,7 @@ def convolution(input, filter ,output, image_y, output_y, output_x, padding, str
       input_data,
       filter.local_data,
       output.local_data,
+      bias.local_data, 
       image_y, output_y, output_x, 0, stride, channel, group)
 
 def bconvolution(input, grad, filter, out_grad, image_y, image_x, output_size, padding, stride, channel):
@@ -208,7 +209,7 @@ def bconvolution(input, grad, filter, out_grad, image_y, image_x, output_size, p
   tmp_out_grad = input.unpad(tmp_out_grad, padding)
   out_grad.write(area = input.tmp_local_area, data = tmp_out_grad, propagate = propagate)
 
-def wconvolution(input, grad, weight_grad, image_y, output_y, output_x, filter_size, padding, stride, channel):
+def wconvolution(input, grad, weight_grad, bias_grad, image_y, output_y, output_x, filter_size, padding, stride, channel):
 
   propagate = True
   filter_size_index = FilterLayout.HEIGHT
@@ -232,9 +233,13 @@ def wconvolution(input, grad, weight_grad, image_y, output_y, output_x, filter_s
     if not hasattr(weight_grad, 'tmp_local_data'):
       weight_grad.tmp_local_data = garray.GPUArray(weight_grad.shape, dtype = weight_grad.dtype)
     tmp_weight_grad = weight_grad.tmp_local_data
+    if not hasattr(bias_grad, 'tmp_local_data'):
+      bias_grad.tmp_local_data = garray.GPUArray(bias_grad.shape, dtype = bias_grad.dtype)
+    tmp_bias_grad = bias_grad.tmp_local_data
   else:
     propagate = False
     tmp_weight_grad = weight_grad.local_data
+    tmp_bias_grad = bias_grad.local_data
 
   image_y = input_data.shape[r]
   output_y = grad.local_shape[r]
@@ -244,9 +249,11 @@ def wconvolution(input, grad, weight_grad, image_y, output_y, output_x, filter_s
       input_data,
       grad.local_data,
       tmp_weight_grad,
+      tmp_bias_grad,
       image_y, output_y, output_x, filter_size, 0, stride, channel)
 
   weight_grad.write(area = weight_grad.global_area, data = tmp_weight_grad, propagate = propagate)
+  bias_grad.write(area = bias_grad.global_area, data = tmp_bias_grad, propagate = propagate)
 
 def maxpool(input, output, channel, pool_size, start, stride, input_y, output_y, output_x):
   r, c = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH
