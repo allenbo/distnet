@@ -148,7 +148,7 @@ def matrixmult(x, y, dest = None, alpha = 1.0, beta = 0.0):
     assert k == y.shape[0], (x.shape, y.shape)
 
     if dest is None:
-      result = GPUArray((n, m), dtype=x.dtype)
+      result = gpuarray.zeros((n, m), dtype=x.dtype)
     else:
       result = dest
     sgemm('n', 'n', m, n, k, alpha, y.gpudata, m, x.gpudata,
@@ -1276,14 +1276,14 @@ def stride_copy_4(input, output, slices):
   start1, _, stride1 = slices[0].indices(input.shape[0])
   start2, _, stride2 = slices[1].indices(input.shape[1])
   start3, _, stride3 = slices[2].indices(input.shape[2])
-  start4, _, stride4 = slices[3].indices(input.shape[3])
+  start4, end4, stride4 = slices[3].indices(input.shape[3])
 
   sz1, sz2, sz3, sz4 = output.shape
 
   ifleading, isleading, itleading = [x / 4 for x in input.strides[:3]]
   ofleading, osleading, otleading = [x / 4 for x in output.strides[:3]]
 
-  if start4 == 0 and stride4 == 1:
+  if start4 == 0 and stride4 == 1 and end4 == input.shape[3]:
     copy = driver.Memcpy3D()
     copy.set_src_device(input.ptr)
     copy.set_dst_device(output.ptr)
