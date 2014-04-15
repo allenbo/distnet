@@ -243,21 +243,21 @@ class RNormExecuter(Executer):
 
       channel = input_shape[channel_idx]
       size = param['size']
-      scaler = param['scale']
+      scalar = param['scale']
       pow = param['pow']
       
-      operation.convResponseNorm(input, denom, output, channel, size, input_y, scaler, pow)
+      operation.convResponseNorm(input, denom, output, channel, size, input_y, scalar, pow)
       driver.Context.synchronize()
       operation.convResponseNormUndo(ingrad, denom, input, output, outgrad, channel, size, input_y,
-          scaler, pow, 0.0, 1.0)
+          scalar, pow, 0.0, 1.0)
       driver.Context.synchronize()
 
       start = time.time()
       for i in range(self.count):
-        operation.convResponseNorm(input, denom, output, channel, size, input_y, scaler, pow)
+        operation.convResponseNorm(input, denom, output, channel, size, input_y, scalar, pow)
         driver.Context.synchronize()
         operation.convResponseNormUndo(ingrad, denom, input, output, outgrad, channel, size, input_y,
-            scaler, pow, 0.0, 1.0)
+            scalar, pow, 0.0, 1.0)
         driver.Context.synchronize()
 
       elapsed = (time.time() - start) / self.count
@@ -317,21 +317,21 @@ class CMRNormExecuter(Executer):
       denom = gpuarray.to_gpu(np.ndarray(output_shape).astype(np.float32))
 
       size = param['size']
-      scaler = param['scale']
+      scalar = param['scale']
       pow = param['pow']
 
-      operation.convResponseNormCrossMap(input, denom, output, channel, size, input_y, scaler, pow, False)
+      operation.convResponseNormCrossMap(input, denom, output, channel, size, input_y, scalar, pow, False)
       driver.Context.synchronize()
       operation.convResponseNormCrossMapUndo(ingrad, denom, input, output, outgrad, channel, size, input_y,
-          scaler, pow, False, 0.0, 1.0)
+          scalar, pow, False, 0.0, 1.0)
       driver.Context.synchronize()
       
       start = time.time()
       for i in range(self.count):
-        operation.convResponseNormCrossMap(input, denom, output, channel, size, input_y, scaler, pow, False)
+        operation.convResponseNormCrossMap(input, denom, output, channel, size, input_y, scalar, pow, False)
         driver.Context.synchronize()
         operation.convResponseNormCrossMapUndo(ingrad, denom, input, output, outgrad, channel, size, input_y,
-            scaler, pow, False, 0.0, 1.0)
+            scalar, pow, False, 0.0, 1.0)
         driver.Context.synchronize()
       elapsed = (time.time() - start) / self.count
       times.append(elapsed)
@@ -365,7 +365,7 @@ class FCExecuter(Executer):
       garray.matrixmult(weight, input, dest = output)
       if drop_out > 0.0:
         drop_mask = gpuarray.to_gpu(np.random.uniform(0, 1, output.size).astype(np.float32).reshape(output.shape))
-        garray.bigger_than_scaler(drop_mask, drop_out)
+        garray.bigger_than_scalar(drop_mask, drop_out)
         garray.copy_to(output * drop_mask, output)
         garray.copy_to(ingrad * drop_mask, ingrad)
 
@@ -378,7 +378,7 @@ class FCExecuter(Executer):
         garray.matrixmult(weight, input, dest = output)
         if drop_out > 0.0:
           drop_mask = gpuarray.to_gpu(np.random.uniform(0, 1, output.size).astype(np.float32).reshape(output.shape))
-          garray.bigger_than_scaler(drop_mask, drop_out)
+          garray.bigger_than_scalar(drop_mask, drop_out)
           garray.copy_to(output * drop_mask, output)
           # backward
           garray.copy_to(ingrad * drop_mask, ingrad)

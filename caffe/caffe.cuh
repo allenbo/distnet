@@ -23,16 +23,16 @@ void convLocalAvgPool(Blob& bottom, Blob& top, int num_filter, int pool_size, in
 void convLocalAvgUndo(Blob& ingrad, Blob& outgrad, int pool_size, int start, int stride, int output_y, int output_x, int input_y, int input_x);
 
 // Forward operation of crmrnorm layer
-void convResponseNormCrossMap(Blob& input, Blob& denoms, Blob& output, int num_filter, int norm_size, int input_y, float scaler, float pow, bool blocked);
+void convResponseNormCrossMap(Blob& input, Blob& denoms, Blob& output, int num_filter, int norm_size, int input_y, float scalar, float pow, bool blocked);
 
 // Backward operation of crmrnorm layer
-void convResponseNormCrossMapUndo(Blob& ingrad, Blob& denoms, Blob& input, Blob& output, Blob& outgrad, int num_filter, int norm_size, int input_y, float scaler, float pow, bool blocked, float a, float b);
+void convResponseNormCrossMapUndo(Blob& ingrad, Blob& denoms, Blob& input, Blob& output, Blob& outgrad, int num_filter, int norm_size, int input_y, float scalar, float pow, bool blocked, float a, float b);
 
 // Forward operation of rnorm layer
-void convResponseNorm(Blob& input, Blob& denoms, Blob& output, int num_filter, int norm_size, int input_y, float scaler, float pow);
+void convResponseNorm(Blob& input, Blob& denoms, Blob& output, int num_filter, int norm_size, int input_y, float scalar, float pow);
 
 // Backward operation of rnorm layer
-void convResponseNormUndo(Blob& ingrad, Blob& denoms, Blob& input, Blob& output, Blob& outgrad, int num_filter, int norm_size, int input_y, float scaler, float pow, float a, float b);
+void convResponseNormUndo(Blob& ingrad, Blob& denoms, Blob& input, Blob& output, Blob& outgrad, int num_filter, int norm_size, int input_y, float scalar, float pow, float a, float b);
 
 
 #endif

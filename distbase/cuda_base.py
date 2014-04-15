@@ -11,6 +11,8 @@ from time import time
 
 from scikits.cuda import cublas
 sgemm = None
+MAX_BLOCK = 65535
+MAX_THREAD = 1024
 
 def _initialize_cublas():
   global sgemm
@@ -168,40 +170,44 @@ _row_max_reduce_ = CompiledSource('''
     int i = blockDim.x * blockIdx.x + threadIdx.x;
     int j = blockDim.y * blockIdx.y + threadIdx.y;
 
-    __shared__ float buffer[INTERNAL_SIZE];
-    if(i < cols && i < INTERNAL_SIZE)
-      buffer[i] = mat[i + j * leading];
-    __syncthreads();
+    while ( j < rows ) {
+      __shared__ float buffer[INTERNAL_SIZE];
+      if(i < cols && i < INTERNAL_SIZE)
+        buffer[i] = mat[i + j * leading];
+      __syncthreads();
 
-    int index = 1;
-    if(cols > INTERNAL_SIZE) {
-      if(threadIdx.x < INTERNAL_SIZE ) {
-        int forwardInd = threadIdx.x + index * INTERNAL_SIZE;
-        while(forwardInd < cols) {
-          if (buffer[threadIdx.x] < mat[forwardInd + j* leading])
-            buffer[threadIdx.x] = mat[forwardInd + j * leading];
-          index ++;
-          forwardInd = threadIdx.x + index * INTERNAL_SIZE;
-        }
-      }
-    }
-    __syncthreads();
-
-    int total = INTERNAL_SIZE > cols? cols : INTERNAL_SIZE;
-    while(total > 1) {
-      int halfPoint = ((1+total) >> 1);
-      if (threadIdx.x < halfPoint)  {
-        if(threadIdx.x+halfPoint < total) {
-          if(buffer[threadIdx.x] < buffer[threadIdx.x + halfPoint])
-            buffer[threadIdx.x] = buffer[threadIdx.x + halfPoint];
+      int index = 1;
+      if(cols > INTERNAL_SIZE) {
+        if(threadIdx.x < INTERNAL_SIZE ) {
+          int forwardInd = threadIdx.x + index * INTERNAL_SIZE;
+          while(forwardInd < cols) {
+            if (buffer[threadIdx.x] < mat[forwardInd + j* leading])
+              buffer[threadIdx.x] = mat[forwardInd + j * leading];
+            index ++;
+            forwardInd = threadIdx.x + index * INTERNAL_SIZE;
+          }
         }
       }
       __syncthreads();
-      total = ((1+total) >> 1);
+
+      int total = INTERNAL_SIZE > cols? cols : INTERNAL_SIZE;
+      while(total > 1) {
+        int halfPoint = ((1+total) >> 1);
+        if (threadIdx.x < halfPoint)  {
+          if(threadIdx.x+halfPoint < total) {
+            if(buffer[threadIdx.x] < buffer[threadIdx.x + halfPoint])
+              buffer[threadIdx.x] = buffer[threadIdx.x + halfPoint];
+          }
+        }
+        __syncthreads();
+        total = ((1+total) >> 1);
+      }
+      __syncthreads();
+      if(threadIdx.x == 0)
+        vec[j] = buffer[0];
+    
+    j += blockDim.y * gridDim.y;
     }
-    __syncthreads();
-    if(threadIdx.x == 0)
-      vec[blockIdx.y] = buffer[0];
    }''', 'row_max_reduce')
 
 
@@ -211,41 +217,44 @@ _col_max_reduce_ = CompiledSource('''
     const int INTERNAL_SIZE = 256;
     int i = blockDim.x * blockIdx.x + threadIdx.x;
     int j = blockDim.y * blockIdx.y + threadIdx.y;
+  
+    while( i < cols ) {
+      __shared__ float buffer[INTERNAL_SIZE];
+      if(j < INTERNAL_SIZE && j < rows)
+        buffer[j] = mat[i + j * leading];
+      __syncthreads();
 
-    __shared__ float buffer[INTERNAL_SIZE];
-    if(j < INTERNAL_SIZE && j < rows)
-      buffer[j] = mat[i + j * leading];
-    __syncthreads();
-
-    int index = 1;
-    if(rows > INTERNAL_SIZE) {
-      if(threadIdx.y < INTERNAL_SIZE) {
-        int forwardInd = threadIdx.y + index * INTERNAL_SIZE;
-        while(forwardInd < rows) {
-          if (buffer[threadIdx.y] < mat[i +forwardInd * leading])
-            buffer[threadIdx.y] = mat[i  + forwardInd * leading];
-          index ++;
-          forwardInd = threadIdx.y + index * INTERNAL_SIZE;
-        }
-      }
-    }
-    __syncthreads();
-
-    int total = INTERNAL_SIZE > rows ? rows : INTERNAL_SIZE;
-    while(total > 1) {
-      int halfPoint = ((1+total) >> 1);
-      if (threadIdx.y < halfPoint)  {
-        if(threadIdx.y+halfPoint < total) {
-          if(buffer[threadIdx.y] < buffer[threadIdx.y + halfPoint])
-            buffer[threadIdx.y] = buffer[threadIdx.y + halfPoint];
+      int index = 1;
+      if(rows > INTERNAL_SIZE) {
+        if(threadIdx.y < INTERNAL_SIZE) {
+          int forwardInd = threadIdx.y + index * INTERNAL_SIZE;
+          while(forwardInd < rows) {
+            if (buffer[threadIdx.y] < mat[i +forwardInd * leading])
+              buffer[threadIdx.y] = mat[i  + forwardInd * leading];
+            index ++;
+            forwardInd = threadIdx.y + index * INTERNAL_SIZE;
+          }
         }
       }
       __syncthreads();
-      total = ((1+total) >> 1);
+
+      int total = INTERNAL_SIZE > rows ? rows : INTERNAL_SIZE;
+      while(total > 1) {
+        int halfPoint = ((1+total) >> 1);
+        if (threadIdx.y < halfPoint)  {
+          if(threadIdx.y+halfPoint < total) {
+            if(buffer[threadIdx.y] < buffer[threadIdx.y + halfPoint])
+              buffer[threadIdx.y] = buffer[threadIdx.y + halfPoint];
+          }
+        }
+        __syncthreads();
+        total = ((1+total) >> 1);
+      }
+      __syncthreads();
+      if(threadIdx.y == 0)
+        vec[i] = buffer[0];
+      i += blockDim.x * gridDim.x;
     }
-    __syncthreads();
-    if(threadIdx.y == 0)
-      vec[i] = buffer[0];
    }
     ''', 'col_max_reduce')
 
@@ -257,47 +266,51 @@ _find_row_max_id_ = CompiledSource('''
     int i = blockDim.x * blockIdx.x + threadIdx.x;
     int j = blockDim.y * blockIdx.y + threadIdx.y;
 
-    __shared__ float buffer[INTERNAL_SIZE];
-    __shared__ int mind[INTERNAL_SIZE];
-    if(i < INTERNAL_SIZE && i < cols){
-      buffer[i] = mat[i + j * leading];
-      mind[i] = threadIdx.x;
-    }
-    __syncthreads();
-
-    int index = 1;
-    if(cols > INTERNAL_SIZE)  {
-      if(threadIdx.x < INTERNAL_SIZE) {
-        int forwardInd = threadIdx.x + index * INTERNAL_SIZE;
-        while(forwardInd < cols)  {
-          if (buffer[threadIdx.x] < mat[forwardInd + j * leading]) {
-            buffer[threadIdx.x] = mat[forwardInd + j * leading];
-            mind[threadIdx.x] = forwardInd;
-          }
-          index ++;
-          forwardInd = threadIdx.x + index * INTERNAL_SIZE;
-        }
+    while( j < rows ) {
+      __shared__ float buffer[INTERNAL_SIZE];
+      __shared__ int mind[INTERNAL_SIZE];
+      if(i < INTERNAL_SIZE && i < cols){
+        buffer[i] = mat[i + j * leading];
+        mind[i] = threadIdx.x;
       }
-    }
-    __syncthreads();
+      __syncthreads();
 
-    int total = INTERNAL_SIZE > cols ? cols : INTERNAL_SIZE;
-    while(total > 1) {
-      int halfPoint = ((1+total) >> 1);
-      if (threadIdx.x < halfPoint)  {
-        if(threadIdx.x+halfPoint < total) {
-          if(buffer[threadIdx.x] < buffer[threadIdx.x + halfPoint]) {
-            buffer[threadIdx.x] = buffer[threadIdx.x + halfPoint];
-            mind[threadIdx.x] = mind[threadIdx.x + halfPoint];
+      int index = 1;
+      if(cols > INTERNAL_SIZE)  {
+        if(threadIdx.x < INTERNAL_SIZE) {
+          int forwardInd = threadIdx.x + index * INTERNAL_SIZE;
+          while(forwardInd < cols)  {
+            if (buffer[threadIdx.x] < mat[forwardInd + j * leading]) {
+              buffer[threadIdx.x] = mat[forwardInd + j * leading];
+              mind[threadIdx.x] = forwardInd;
+            }
+            index ++;
+            forwardInd = threadIdx.x + index * INTERNAL_SIZE;
           }
         }
       }
       __syncthreads();
-      total = ((1+total) >> 1);
+
+      int total = INTERNAL_SIZE > cols ? cols : INTERNAL_SIZE;
+      while(total > 1) {
+        int halfPoint = ((1+total) >> 1);
+        if (threadIdx.x < halfPoint)  {
+          if(threadIdx.x+halfPoint < total) {
+            if(buffer[threadIdx.x] < buffer[threadIdx.x + halfPoint]) {
+              buffer[threadIdx.x] = buffer[threadIdx.x + halfPoint];
+              mind[threadIdx.x] = mind[threadIdx.x + halfPoint];
+            }
+          }
+        }
+        __syncthreads();
+        total = ((1+total) >> 1);
+      }
+      __syncthreads();
+      if(threadIdx.x == 0)
+        vec[j] = mind[0];
+
+      j += blockDim.y * gridDim.y;
     }
-    __syncthreads();
-    if(threadIdx.x == 0)
-      vec[blockIdx.y] = mind[0];
    }
     ''', 'row_max_id')
 
@@ -309,47 +322,50 @@ _find_col_max_id_ = CompiledSource('''
     int i = blockDim.x * blockIdx.x + threadIdx.x;
     int j = blockDim.y * blockIdx.y + threadIdx.y;
 
-    __shared__ float buffer[INTERNAL_SIZE];
-    __shared__ int mind[INTERNAL_SIZE];
-    if( j < INTERNAL_SIZE && j < rows){
-      buffer[j] = mat[i + j * leading];
-      mind[j] = threadIdx.y;
-     }
-    __syncthreads();
+    while( i < cols ) {
+      __shared__ float buffer[INTERNAL_SIZE];
+      __shared__ int mind[INTERNAL_SIZE];
+      if( j < INTERNAL_SIZE && j < rows){
+        buffer[j] = mat[i + j * leading];
+        mind[j] = threadIdx.y;
+       }
+      __syncthreads();
 
-    int index = 1;
-    if(rows > INTERNAL_SIZE) {
-      if(threadIdx.y < INTERNAL_SIZE ){
-        int forwardInd = threadIdx.y + index * INTERNAL_SIZE;
-        while(forwardInd < rows) {
-          if (buffer[threadIdx.y] < mat[i + forwardInd * leading]) {
-            buffer[threadIdx.y] = mat[i + forwardInd * leading];
-            mind[threadIdx.y] = forwardInd;
-          }
-          index ++;
-          forwardInd = threadIdx.y + index * INTERNAL_SIZE;
-        }
-      }
-    }
-    __syncthreads();
-
-    int total = INTERNAL_SIZE > rows ? rows : INTERNAL_SIZE;
-    while(total > 1) {
-      int halfPoint = ((1+total) >> 1);
-      if (threadIdx.y < halfPoint)  {
-        if(threadIdx.y+halfPoint < total) {
-          if(buffer[threadIdx.y] < buffer[threadIdx.y  + halfPoint]) {
-            buffer[threadIdx.y] = buffer[threadIdx.y + halfPoint];
-            mind[threadIdx.y] = mind[threadIdx.y + halfPoint];
+      int index = 1;
+      if(rows > INTERNAL_SIZE) {
+        if(threadIdx.y < INTERNAL_SIZE ){
+          int forwardInd = threadIdx.y + index * INTERNAL_SIZE;
+          while(forwardInd < rows) {
+            if (buffer[threadIdx.y] < mat[i + forwardInd * leading]) {
+              buffer[threadIdx.y] = mat[i + forwardInd * leading];
+              mind[threadIdx.y] = forwardInd;
+            }
+            index ++;
+            forwardInd = threadIdx.y + index * INTERNAL_SIZE;
           }
         }
       }
       __syncthreads();
-      total = ((1+total) >> 1);
+
+      int total = INTERNAL_SIZE > rows ? rows : INTERNAL_SIZE;
+      while(total > 1) {
+        int halfPoint = ((1+total) >> 1);
+        if (threadIdx.y < halfPoint)  {
+          if(threadIdx.y+halfPoint < total) {
+            if(buffer[threadIdx.y] < buffer[threadIdx.y  + halfPoint]) {
+              buffer[threadIdx.y] = buffer[threadIdx.y + halfPoint];
+              mind[threadIdx.y] = mind[threadIdx.y + halfPoint];
+            }
+          }
+        }
+        __syncthreads();
+        total = ((1+total) >> 1);
+      }
+      __syncthreads();
+      if(threadIdx.y == 0)
+        vec[i] = mind[0];
+      i += blockDim.x * gridDim.x;
     }
-    __syncthreads();
-    if(threadIdx.y == 0)
-      vec[i] = mind[0];
    }
     ''', 'col_max_id')
 
@@ -400,8 +416,8 @@ _div_vec_to_cols_ = CompiledSource('''
     }
     ''', 'div_vec_to_cols')
 
-_add_row_sum_to_vec_ = CompiledSource(
-  '''__global__ void add_row_sum(float* mat, float alpha, float* vec, float beta, int leading, int
+_add_row_sum_to_vec_ = CompiledSource('''
+__global__ void add_row_sum(float* mat, float alpha, float* vec, float beta, int leading, int
   rows, int cols) {
     const int INTERNAL_SIZE = 256;
     int i = blockDim.x * blockIdx.x + threadIdx.x;
@@ -413,7 +429,6 @@ _add_row_sum_to_vec_ = CompiledSource(
     __syncthreads();
 
     int total = INTERNAL_SIZE > cols ? cols : INTERNAL_SIZE;
-    #pragma unroll
     while(total > 1) {
       int halfPoint = ((1+total) >> 1);
       if (threadIdx.x < halfPoint && i < cols)  {
@@ -481,47 +496,47 @@ _add_col_sum_to_vec_ = CompiledSource('''
 
 _same_reduce_ = CompiledSource('''
     __global__
-    void same(float* tgt, float* vec, float* tmp) {
-      int i = threadIdx.x;
+    void same(float* tgt, float* vec, float* tmp, int size) {
+      int i = threadIdx.x + blockDim.x * blockIdx.x;
+      if (i >= size) return;
       if( tgt[i] == vec[i] )
-        tmp[i] = 1;
+        tmp[i] = 1.0;
       else
-        tmp[i] = 0;
+        tmp[i] = 0.0;
 
     }
   ''', 'same')
 
 _same_reduce_multiview_ = CompiledSource('''
+    #include <stdio.h>
     __global__
-    void same(float* tgt, float* vec, float* tmp, float* ids, int num_view) {
-      int id = threadIdx.x;
-      int j;
-      int i;
-      float ret[10];
-      int num_ret[10];
-      int k = 0;
+    void same(float* tgt, float* vec, float* tmp, int size, int num_view) {
+      int id = threadIdx.x + blockDim.x * blockIdx.x;
+      if (id >= size) return;
+      int i, j, k = 0;
+      float ret[12];
+      int num_ret[12];
       for(i = 0; i < num_view; i ++ ) {
         for(j = 0; j < k; j ++ ) {
-          if(vec[id + blockDim.x * i] == ret[j]) {
+          if(vec[id + size * i] == ret[j]) {
             num_ret[j] ++;
             break;
           }
         }
         if( j == k ) {
           num_ret[k] = 1;
-          ret[k++] = vec[id+blockDim.x*i];
+          ret[k++] = vec[id+size*i];
         }
       }
-      int max = 0;
-      float value = 0;
-      for(i = 0; i < k; i ++ ) {
+
+      int max = num_ret[0];
+      float value = ret[0];
+      for(i = 1; i < k; i ++ ) {
         if( max < num_ret[i] ) {
           max = num_ret[i];
           value = ret[i];
         }
       }
-      ids[id] = value;
-
       if( tgt[id] == value ) {
         tmp[id] = 1;
       }else {
@@ -532,26 +547,30 @@ _same_reduce_multiview_ = CompiledSource('''
 
 _logreg_cost_row_reduce_ = CompiledSource('''
     __global__
-    void log_reg_row(float* mat, float* label, float* cost, int leading){
-      int i = threadIdx.x;
-      int idx = i * leading + label[i];
-      cost[i] = 0 - __logf(mat[idx]);
+    void log_reg_row(float* mat, float* label, float* cost, int rows, int leading){
+      int i = threadIdx.x + blockDim.x * blockIdx.x;
+      if (i <  rows) {
+        int idx = i * leading + int(label[i]);
+        cost[i] = 0 - __logf(mat[idx]);
+      }
     }
     ''', 'log_reg_row')
 
 
 _logreg_cost_col_reduce_ = CompiledSource('''
+    #include <stdio.h>
     __global__
-    void log_reg_col(float* mat, float* label, float* cost, int leading){
-      int i = threadIdx.x;
-      int idx = i + label[i] * leading;
-      cost[i] = 0 - __logf(mat[idx]);
+    void log_reg_col(float* mat, float* label, float* cost, int cols, int leading){
+      int i = threadIdx.x + blockDim.x * blockIdx.x;
+      if (i < cols){
+        int idx = i + int(label[i]) * leading;
+        cost[i] = 0 - __logf(mat[idx]);
+      }
     }
     ''', 'log_reg_col')
 
 
-_softmax_bprop_ = CompiledSource(
-      '''
+_softmax_bprop_ = CompiledSource('''
       __global__
       void softmax_bprop_grad(float* mat, float* label, float* grad, int leading, int rows, int cols){
         int i = blockDim.x * blockIdx.x + threadIdx.x;
@@ -824,10 +843,10 @@ _gpu_partial_copy_to_ = CompiledSource('''
       dest[didx] = src[sidx];
     }''', 'gpu_partial_copy_to')
 
-_bigger_than_scaler_ = CompiledSource('''
+_bigger_than_scalar_ = CompiledSource('''
     __global__
-    void bigger_than_scaler(float* src, float* dest, float scaler, int rows, int cols, int leading)
-    {
+    void bigger_than_scalar(float* src, float* dest, float scalar, int rows, int cols, int leading)
+   {
       int i = blockIdx.x * blockDim.x + threadIdx.x;
       int j = blockIdx.y * blockDim.y + threadIdx.y;
 
@@ -836,8 +855,8 @@ _bigger_than_scaler_ = CompiledSource('''
 
       int idx = i + j * leading;
 
-      dest[idx] = src[idx] >= scaler ? 1.0 : 0.0;
-    }''', 'bigger_than_scaler')
+      dest[idx] = src[idx] >= scalar ? 1.0 : 0.0;
+    }''', 'bigger_than_scalar')
 
 _eltwise_exp_ = CompiledSource('''
     __global__
@@ -878,8 +897,8 @@ def row_max_reduce(x, mat):
 
   assert(vw == 1 and vh == mh or vh == 1 and vw == mh)
 
-  grid = (1, mh)
-  block = (mw, 1, 1)
+  block = ( min(mw, MAX_THREAD), 1, 1)
+  grid = (1, min(mh, MAX_BLOCK))
   leading = mat.strides[0] / 4
   _row_max_reduce_(mat, x, I(leading), I(mh), I(mw), block=block, grid=grid)
 
@@ -894,8 +913,8 @@ def col_max_reduce(x, mat):
   vh, vw = x.shape
   assert(vw == 1 and vh == mw or vh == 1 and vw == mw)
 
-  grid = (mw, 1)
-  block = (1, mh, 1)
+  block = (1, min(mh, MAX_THREAD), 1)
+  grid = (min(mw, MAX_BLOCK), 1)
   leading = mat.strides[0] / 4
   _col_max_reduce_(mat, x, I(leading), I(mh), I(mw), block=block, grid=grid)
 
@@ -911,8 +930,8 @@ def find_row_max_id(x, mat):
   vh, vw = x.shape
   assert(vw == 1 and vh == mh or vh == 1 and vw == mh), (x.shape, mat.shape)
 
-  grid = (1, mh)
-  block = (mw, 1, 1)
+  grid = (1, min(mh, MAX_BLOCK))
+  block = (min(mw, MAX_THREAD), 1, 1)
   leading = mat.strides[0] / 4
   _find_row_max_id_(mat, x, I(leading), I(mh), I(mw), block=block, grid=grid)
   
@@ -929,8 +948,8 @@ def find_col_max_id(x, mat):
   vh, vw = x.shape
   assert(vw == 1 and vh == mw or vh == 1 and vw == mw)
 
-  grid = (mw, 1)
-  block = (1, mh, 1)
+  block = (1, min(mh, MAX_THREAD), 1)
+  grid = (min(mw, MAX_BLOCK), 1)
   leading = mat.strides[0] / 4
 
   _find_col_max_id_(mat, x, I(leading), I(mh), I(mw), block=block, grid=grid)
@@ -1019,16 +1038,19 @@ def add_row_sum_to_vec(vec, mat, alpha=1.0, beta=1.0):
   This function would sum up the element int a matrix row and store the result to
   the corresponding position of the vec
   Unlike other function that only provide small computation, this function raise the
-  upper bound for the number of column to 2^16, actually it could be 2^20
-  '''
+  upper bound for the number of column to 2^16, actually it could be 2^20.
+  TODO: should find a way to avoid cudaconv function'''
   mh, mw = mat.shape
   vh, vw = vec.shape
   assert(vw == 1 and vh == mh or vh == 1 and vw == mh)
+  tmp = gpuarray.GPUArray(shape = vec.shape, dtype = vec.dtype)
   if mw != 1:
     import cudaconv
-    cudaconv.sum(mat, 1, vec)
+    cudaconv.sum(mat, 1, tmp)
   else:
-    gpu_partial_copy_to(mat, vec, 0, mh, 0, 1)
+    gpu_partial_copy_to(mat, tmp, 0, mh, 0, 1)
+
+  matrix_add(vec, tmp, alpha = alpha, beta = beta) 
   # if mat.shape[1] <= INTERNAL_SIZE:
   #  grid = (1, mh)
   #  block = (mw, 1,  1)
@@ -1060,8 +1082,10 @@ def add_col_sum_to_vec(vec, mat, alpha=1.0, beta=1.0):
   vh, vw = vec.shape
   assert(vw == 1 and vh == mw or vh == 1 and vw == mw)
 
+  tmp = gpuarray.GPUArray(shape = vec.shape, dtype = vec.dtype)
   import cudaconv
-  cudaconv.sum(mat, 0, vec)
+  cudaconv.sum(mat, 0, tmp)
+  matrix_add(vec, tmp, alpha = alpha, beta = beta)
   #grid = (mw, 1)
   #block = (1, mh, 1)
   #leading = mat.strides[0] / 4
@@ -1074,10 +1098,10 @@ def same_reduce(target, vec):
   '''
   Return the number of same values in the same offset of two vecs
   '''
-  block = (target.size, 1, 1)
-  grid = (1, 1)
+  block = (min(target.size, MAX_THREAD), 1, 1)
+  grid = (divup(target.size, block[0]), 1)
   tmp = gpuarray.zeros_like(target)
-  _same_reduce_(target, vec, tmp, block=block, grid=grid)
+  _same_reduce_(target, vec, tmp, I(target.size), block=block, grid=grid)
   tmp.shape = (1, tmp.size)
   res = gpuarray.to_gpu(np.zeros((1, 1)).astype(np.float32))
   add_row_sum_to_vec(res, tmp)
@@ -1086,11 +1110,10 @@ def same_reduce(target, vec):
 
 @util.timed_fn
 def same_reduce_multiview(target, vec, num_view):
-  block = (target.size, 1, 1)
-  grid = (1, 1)
+  block = (min(target.size, MAX_THREAD), 1, 1)
+  grid = (divup(target.size, block[0]), 1)
   tmp = gpuarray.zeros_like(target)
-  ids = gpuarray.zeros_like(target)
-  _same_reduce_multiview_(target, vec, tmp, ids, I(num_view), block = block , grid = grid)
+  _same_reduce_multiview_(target, vec, tmp, I(target.size), I(num_view), block = block , grid = grid)
   tmp = tmp.reshape((1, tmp.size))
   res = gpuarray.to_gpu(np.zeros((1, 1)).astype(np.float32))
   add_row_sum_to_vec(res, tmp)
@@ -1103,9 +1126,9 @@ def logreg_cost_row_reduce(mat, label, cost):
   vh, vw = label.shape
   assert(vh == 1 and vw == mh or vw == 1 and vh == mh)
 
-  block = (mh, 1, 1)
-  grid = (1, 1)
-  _logreg_cost_row_reduce_(mat, label, cost, np.int32(mat.strides[0] / 4), block=block, grid=grid)
+  block = (min(mh, MAX_THREAD), 1, 1)
+  grid = (divup(mh, block[0]), 1)
+  _logreg_cost_row_reduce_(mat, label, cost, I(mh), np.int32(mat.strides[0] / 4), block=block, grid=grid)
   
 
 
@@ -1118,9 +1141,9 @@ def logreg_cost_col_reduce(mat, label, cost):
     util.log_info('%s ==> %s', mat.shape, label.shape)
     assert False
 
-  block = (mw, 1, 1)
-  grid = (1, 1)
-  _logreg_cost_col_reduce_(mat, label, cost, np.int32(mat.strides[0] / 4), block=block, grid=grid)
+  block = (min(mw, MAX_THREAD), 1, 1)
+  grid = (divup(mw, block[0]), 1)
+  _logreg_cost_col_reduce_(mat, label, cost, I(mw), np.int32(mat.strides[0] / 4), block=block, grid=grid)
   
 
 
@@ -1176,7 +1199,7 @@ def tanh_compute_grad(grad, output, outGrad, a, b):
   mh, mw = output.shape
 
   block = (ELTWISE_X, ELTWISE_Y, 1)
-  grid = (divup(mw, ELTWISE_X), divup(mh, ELTWIS_Y))
+  grid = (divup(mw, ELTWISE_X), divup(mh, ELTWISE_Y))
   leading = output.strides[0] / 4
   _n4ab = -4.0 * a * b
   _tanh_compute_grad_(grad, output, outGrad, F(a), F(_n4ab), I(leading), I(mh), I(mw), block=block , grid=grid)
@@ -1492,7 +1515,7 @@ def matrix_add(src, v, dest=None, alpha=1.0, beta=1.0):
 
 
 @util.timed_fn
-def bigger_than_scaler(src, scaler, dest=None):
+def bigger_than_scalar(src, scalar, dest=None):
   if dest is not None:
     assert dest.shape == src.shape
   else:
@@ -1503,7 +1526,7 @@ def bigger_than_scaler(src, scaler, dest=None):
   block = (ELTWISE_X, ELTWISE_Y, 1)
   grid = (divup(mw, ELTWISE_X), divup(mh, ELTWISE_Y))
   leading = src.strides[0] / 4
-  _bigger_than_scaler_(src, dest, F(scaler), I(mh), I(mw), I(leading), block=block , grid=grid)
+  _bigger_than_scalar_(src, dest, F(scalar), I(mh), I(mw), I(leading), block=block , grid=grid)
 
 @util.timed_fn
 def eltwise_exp(src, dest = None):

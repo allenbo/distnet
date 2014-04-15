@@ -118,7 +118,7 @@ __global__ void CrossMapRNormComputeDiff(const int nthreads, const Dtype* bottom
 }
 
 void convResponseNormCrossMap(Blob& input, Blob& denoms, Blob& output,
-    int num_filter, int norm_size, int input_y, float scaler, float pow, bool blocked)
+    int num_filter, int norm_size, int input_y, float scalar, float pow, bool blocked)
 {
   const float* input_data = input.gpu_data();
   float* denoms_data = denoms.mutable_gpu_data();
@@ -129,13 +129,13 @@ void convResponseNormCrossMap(Blob& input, Blob& denoms, Blob& output,
   
   CrossMapRNorm<float><<<CAFFE_GET_BLOCKS(n_threads), CAFFE_CUDA_NUM_THREADS>>>(
       n_threads, input_data, output_data, num_filter, input_y, input_x,
-      norm_size, scaler, -pow, denoms_data);
+      norm_size, scalar, -pow, denoms_data);
   CUDA_POST_KERNEL_CHECK;
 }
 
 
 void convResponseNormCrossMapUndo(Blob& ingrad, Blob& denoms, Blob& input, Blob& output, Blob& outgrad,
-    int num_filter, int norm_size, int input_y, float scaler, float pow, bool blocked, float a, float b) 
+    int num_filter, int norm_size, int input_y, float scalar, float pow, bool blocked, float a, float b) 
 {
   const float* input_data = input.gpu_data();
   const float* denoms_data = denoms.gpu_data();
@@ -151,7 +151,7 @@ void convResponseNormCrossMapUndo(Blob& ingrad, Blob& denoms, Blob& input, Blob&
   
   CrossMapRNormComputeDiff<float><<<CAFFE_GET_BLOCKS(n_threads), CAFFE_CUDA_NUM_THREADS>>>(
       n_threads, input_data, output_data, denoms_data, ingrad_data, channel, input_y,
-      input_x, norm_size, -pow, float(2. * scaler * pow), outgrad_data);
+      input_x, norm_size, -pow, float(2. * scalar * pow), outgrad_data);
 
   CUDA_POST_KERNEL_CHECK;
 }
@@ -218,7 +218,7 @@ __global__ void RNormComputeDiff(const int nthreads, const Dtype* bottom_data,
 }
 
 void convResponseNorm(Blob& input, Blob& denoms, Blob& output,
-    int num_filter, int norm_size, int input_y, float scaler, float pow)
+    int num_filter, int norm_size, int input_y, float scalar, float pow)
 {
   const float* input_data = input.gpu_data();
   float* denoms_data = denoms.mutable_gpu_data();
@@ -235,12 +235,12 @@ void convResponseNorm(Blob& input, Blob& denoms, Blob& output,
 
   RNorm<float><<<CAFFE_GET_BLOCKS(count), CAFFE_CUDA_NUM_THREADS>>>(
       count, input_data, num_filter, input_y, input_x,
-      norm_size, scaler, -pow, denoms_data, output_data);
+      norm_size, scalar, -pow, denoms_data, output_data);
   CUDA_POST_KERNEL_CHECK;
 }
 
 void convResponseNormUndo(Blob& ingrad, Blob& denoms, Blob& input, Blob& output, Blob& outgrad,
-    int num_filter, int norm_size, int input_y, float scaler, float pow, float a, float b) 
+    int num_filter, int norm_size, int input_y, float scalar, float pow, float a, float b) 
 {
   const float* input_data = input.gpu_data();
   const float* denoms_data = denoms.gpu_data();
@@ -253,6 +253,6 @@ void convResponseNormUndo(Blob& ingrad, Blob& denoms, Blob& input, Blob& output,
   
   RNormComputeDiff<float><<<CAFFE_GET_BLOCKS(count), CAFFE_CUDA_NUM_THREADS>>>(
       count, input_data, output_data, denoms_data, ingrad_data, num_filter, input_y, input_x,
-      norm_size, -pow, float(2. * scaler * pow), outgrad_data);
+      norm_size, -pow, float(2. * scalar * pow), outgrad_data);
   CUDA_POST_KERNEL_CHECK;
 }

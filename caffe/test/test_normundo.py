@@ -13,7 +13,7 @@ for image_size, color in zip(image_sizes, colors):
   size = 5
   scale = 0.0001
   pow = 0.75
-  scaler = scale/(size * size)
+  scalar = scale/(size * size)
 
   output_size  = image_size
   output_shape = input_shape
@@ -32,13 +32,13 @@ for image_size, color in zip(image_sizes, colors):
 
   print 'input.shape', input.shape
 
-  caffe.convResponseNormUndo(ingrad, denom, input, output, outgrad, color, size, image_size, scaler, pow, 0.0, 1.0)
+  caffe.convResponseNormUndo(ingrad, denom, input, output, outgrad, color, size, image_size, scalar, pow, 0.0, 1.0)
   driver.Context.synchronize()
 
   print 'Response Norm Undo pass the test'
 
-  scaler = scale / size
-  caffe.convResponseNormCrossMapUndo(ingrad, denom, input, output, outgrad, color, size, image_size, scaler, pow, False, 0.0, 1.0)
+  scalar = scale / size
+  caffe.convResponseNormCrossMapUndo(ingrad, denom, input, output, outgrad, color, size, image_size, scalar, pow, False, 0.0, 1.0)
   driver.Context.synchronize()
 
   print 'Cross Map Response Norm Undo pass the test'

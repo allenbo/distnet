@@ -120,7 +120,7 @@ def newadd(self, other):
     elif self.shape[0] == other.shape[0] and self.shape[1] == 1:
       add_row_sum_to_vec(rst, other)
     elif self.shape[1] == other.shape[1] and self.shape[0] == 1:
-      ass_col_sum_to_vec(rst, other)
+      add_col_sum_to_vec(rst, other)
     else:
       assert False, 'Shape mismatch' + str(self.shape) + '+' + str(other.shape)
     return rst

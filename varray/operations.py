@@ -29,8 +29,8 @@ def partial_copy(input, f, t):
   return rst
 
 
-def bigger_than_scaler(input, scaler):
-  garray.bigger_than_scaler(input.local_data, scaler)
+def bigger_than_scalar(input, scalar):
+  garray.bigger_than_scalar(input.local_data, scalar)
 
 def matrixmult(x, y, dest = None):
   assert isinstance(x, VArray)
@@ -382,7 +382,7 @@ def avgundo(input, grad, out_grad, pool_size, start, stride, output_y, output_x,
 
   out_grad.write(data = tmp_out_grad, area = input.tmp_local_area, propagate = propagate)
 
-def rnorm(input, denom, output, channel, size, image_y, scaler, pow):
+def rnorm(input, denom, output, channel, size, image_y, scalar, pow):
   r, c = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH
   state = get_state_from_distribution(output.slice_dim, conv = True)
 
@@ -413,13 +413,13 @@ def rnorm(input, denom, output, channel, size, image_y, scaler, pow):
       input_data,
       tmp_denom_data,
       tmp_output_data,
-      channel, size, image_y, scaler, pow)
+      channel, size, image_y, scalar, pow)
 
   if input.tmp_local_area != denom.local_area:
     output.write(area = input.tmp_local_area, data = tmp_output_data, propagate = False)
     denom.write(area = input.tmp_local_area, data = tmp_denom_data, propagate = False)
 
-def rnormundo(grad, denom, input, output, out_grad, channel, size, image_y, scaler, pow):
+def rnormundo(grad, denom, input, output, out_grad, channel, size, image_y, scalar, pow):
   propagate = True
   r, c = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH
   state = get_state_from_distribution(grad.slice_dim, conv = True)
@@ -469,13 +469,13 @@ def rnormundo(grad, denom, input, output, out_grad, channel, size, image_y, scal
       input_data,
       output_data,
       tmp_out_grad,
-      channel, size, image_y, scaler, pow)
+      channel, size, image_y, scalar, pow)
   
   if state == disw_i and propagate:
     tmp_out_grad = output.local_patch(tmp_out_grad)
   out_grad.write(data = tmp_out_grad, area = output.local_area, propagate = propagate)
 
-def rnormcrossmap(input, denom, output, channel, size,image_y, scaler, pow, blocked):
+def rnormcrossmap(input, denom, output, channel, size,image_y, scalar, pow, blocked):
   r, c = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH
   state = get_state_from_distribution(output.slice_dim, conv = True)
   if state == disw_i:
@@ -502,13 +502,13 @@ def rnormcrossmap(input, denom, output, channel, size,image_y, scaler, pow, bloc
       input.local_data,
       denom.local_data,
       output.local_data,
-      channel, size, image_y, scaler, pow, blocked)
+      channel, size, image_y, scalar, pow, blocked)
 
   if input.tmp_local_data != denom.local_data:
     output.write(area = denom.local_area, data = tmp_output_data, propagate = False)
     denom.write(area = denom.local_area, data = tmp_denom_data, propagate = False)
 
-def rnormcrossmapundo(grad, denom, input, output, out_grad, channel, size, image_y, scaler, pow, blocked):
+def rnormcrossmapundo(grad, denom, input, output, out_grad, channel, size, image_y, scalar, pow, blocked):
   propagate = True
   r, c = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH
   state = get_state_from_distribution(grad.slice_dim, conv = True)
@@ -558,7 +558,7 @@ def rnormcrossmapundo(grad, denom, input, output, out_grad, channel, size, image
       input_data,
       output_data,
       tmp_out_grad,
-      channel, size, image_y, scaler, pow, blocked)
+      channel, size, image_y, scalar, pow, blocked)
 
   if state == sidw and propagate:
     tmp_out_grad = output.local_path(tmp_out_grad)

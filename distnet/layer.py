@@ -322,9 +322,9 @@ class ResponseNormLayer(Layer):
     self.pow = pow
     self.size = size
     self.scale = scale
-    self.scaler = self.scale / self.size ** 2
+    self.scalar = self.scale / self.size ** 2
     self.denom = None
-    util.log("pow:%s size:%s scale:%s scaler:%s", self.pow, self.size, self.scale, self.scaler)
+    util.log("pow:%s size:%s scale:%s scalar:%s", self.pow, self.size, self.scale, self.scalar)
 
   def attach(self, prev):
     image_shape = prev.get_output_shape()
@@ -345,7 +345,7 @@ class ResponseNormLayer(Layer):
     self.denom = allocate(ConvDataLayout.get_output_shape(self.img_size , self.img_size, self.numColor, self.batch_size), slice_dim = slice_dim)
 
   def fprop(self, input, output, train=TRAIN):
-    arr.rnorm(input, self.denom, output, self.numColor, self.size, self.img_size, self.scaler,
+    arr.rnorm(input, self.denom, output, self.numColor, self.size, self.img_size, self.scalar,
         self.pow)
     if PFout:
       print_matrix(output, self.name)
@@ -353,7 +353,7 @@ class ResponseNormLayer(Layer):
 
   def bprop(self, grad, input, output, outGrad):
     arr.rnormundo(grad, self.denom, input, output, outGrad, self.numColor,
-        self.size, self.img_size, self.scaler, self.pow)
+        self.size, self.img_size, self.scalar, self.pow)
 
 
 class CrossMapResponseNormLayer(ResponseNormLayer):
@@ -361,20 +361,20 @@ class CrossMapResponseNormLayer(ResponseNormLayer):
       False):
     ResponseNormLayer.__init__(self, name, pow, size, scale, disable_bprop)
     self.type = 'cmrnorm'
-    self.scaler = self.scale / self.size
+    self.scalar = self.scale / self.size
     self.blocked = blocked
 
-    util.log("pow:%s size:%s, scale:%s scaler:%s", self.pow, self.size, self.scale, self.scaler)
+    util.log("pow:%s size:%s, scale:%s scalar:%s", self.pow, self.size, self.scale, self.scalar)
 
 
   def fprop(self, input, output, train=TRAIN):
-    arr.rnormcrossmap(input, self.denom, output, self.numColor, self.size, self.img_size, self.scaler, self.pow, self.blocked)
+    arr.rnormcrossmap(input, self.denom, output, self.numColor, self.size, self.img_size, self.scalar, self.pow, self.blocked)
     if PFout:
       print_matrix(output, self.name)
 
   def bprop(self, grad, input, output, outGrad):
     arr.rnormcrossmapundo(grad, self.denom, input, output, outGrad, self.numColor,
-        self.size, self.img_size,self.scaler, self.pow, self.blocked)
+        self.size, self.img_size,self.scalar, self.pow, self.blocked)
 
 
 class FCLayer(WeightedLayer):
@@ -428,7 +428,7 @@ class FCLayer(WeightedLayer):
     else:
       if self.dropRate > 0.0:
         self.dropMask = uniformed_array(np.random.uniform(0, 1, output.size).astype(np.float32).reshape(output.shape), slice_dim = None)
-        arr.bigger_than_scaler(self.dropMask, self.dropRate)
+        arr.bigger_than_scalar(self.dropMask, self.dropRate)
         arr.copy_to(output * self.dropMask, output)
 
     if self.neuron == 'relu':

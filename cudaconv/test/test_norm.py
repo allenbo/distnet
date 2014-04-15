@@ -13,7 +13,7 @@ for image_size, color in zip(image_sizes, colors):
   size = 5
   scale = 0.0001
   pow = 0.75
-  scaler = scale/(size * size)
+  scalar = scale/(size * size)
 
   input_shape = (color, image_size, image_size, batch_size)
   output_size  = image_size
@@ -32,7 +32,7 @@ for image_size, color in zip(image_sizes, colors):
   print 'finished'
 
   print 'gpu computation for RNorm'
-  cudaconv.convResponseNorm(input, denom, output, color, size, image_size, scaler, pow)
+  cudaconv.convResponseNorm(input, denom, output, color, size, image_size, scalar, pow)
   driver.Context.synchronize()
   print 'finished'
 
@@ -46,7 +46,7 @@ for image_size, color in zip(image_sizes, colors):
           start_y = max(y - size / 2, 0)
           end_x = min(x - size / 2 + size, input.shape[1])
           end_y = min(y - size / 2 + size, input.shape[2])
-          o = 2 + scaler * (input_local[c: start_x:end_x, start_y:end_y, b] ** 2).sum()
+          o = 2 + scalar * (input_local[c: start_x:end_x, start_y:end_y, b] ** 2).sum()
           denom_local[c, x, y, b] = o ** pow
           output_local[c, x, y, b] = input_local[c, x, y, b] / (o ** pow)
 
@@ -64,8 +64,8 @@ for image_size, color in zip(image_sizes, colors):
   denom_local.fill(0)
 
   print 'gpu computation for cross map'
-  scaler = scale / size
-  cudaconv.convResponseNormCrossMap(input, denom, output, color, size, image_size, scaler, pow, False)
+  scalar = scale / size
+  cudaconv.convResponseNormCrossMap(input, denom, output, color, size, image_size, scalar, pow, False)
   driver.Context.synchronize()
 
   print 'finished'
@@ -77,7 +77,7 @@ for image_size, color in zip(image_sizes, colors):
         for y in range(output_size):
           start_c = max(c - size / 2, 0)
           end_c = min(c - size / 2 + size, input.shape[0])
-          o = 2 + scaler * (input_local[start_c:end_c, x, y, b] ** 2).sum()
+          o = 2 + scalar * (input_local[start_c:end_c, x, y, b] ** 2).sum()
           output_local[c, x, y, b] = input_local[c, x, y, b] / (o ** pow)
 
   print 'finished'
