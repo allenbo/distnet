@@ -84,3 +84,13 @@ def convWeightActs(input, ingrad, weight_grad, bias_grad, image_y, output_y, out
   channel = ingrad.shape[ConvDataLayout.CHANNEL]
   
   cudaconv2.sum(ingrad.reshape((channel, output_y * output_x * batch_size)), 1, bias_grad)
+
+def convert_to_fc(input):
+  return input
+
+def convert_to_conv(input):
+  return input
+
+def convert_from_data(input, output):
+  from distbase import cuda_base
+  cuda_base.gpu_copy_to(input, output) 

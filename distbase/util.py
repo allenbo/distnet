@@ -6,6 +6,8 @@ import time
 import traceback
 import math
 import numpy as np
+import warnings
+import functools
 
 #if os.environ.get('MULTIGPU', 'no') == 'yes':
 #  from varray import distlog
@@ -256,6 +258,23 @@ def timed_fn(fn):
     return result
     
   return make_copy(_fn, fn.__name__)
+
+def deprecated(fn):
+  '''
+  A decorator which can be used to mark functions as deprecated, It will result in a warning being
+  emitted when the function is used. Copy from
+  https://wiki.python.org/moin/PythonDecoratorLibrary#Smart_deprecation_warnings_.28with_valid_filenames.2C_line_numbers.2C_etc..29
+  '''
+  @functools.wraps(fn)
+  def new_func(*args, **kwargs):
+    warnings.warn_explicit(
+        'Call to deprecated function. {}.'.format(fn.__name__),
+        category = DeprecationWarning,
+        filename = fn.func_code.co_filaname,
+        lineno = fn.func_code.co_firstlineno + 1
+        )
+    return fn(*args, **kwargs)
+  return new_func
 
 PROFILER = None
 

@@ -85,29 +85,30 @@ class ConvExecuter(Executer):
        
       ingrad = gpuarray.to_gpu(np.ndarray(output_shape).astype(np.float32))
       outgrad = gpuarray.to_gpu(np.ndarray(input_shape).astype(np.float32))
+      bias = gpuarray.to_gpu(np.ndarray(num_filter, 1).astype(np.float32))
     
       padding = param['padding']
       stride = param['stride']
 
-      operation.convFilterActs(input, filter, output, image_y, output_y, output_x, -padding, stride,
+      operation.convFilterActs(input, filter, output, bias, image_y, output_y, output_x, -padding, stride,
           channel, 1)
       driver.Context.synchronize()
       operation.convImgActs(ingrad, filter, outgrad, image_y, image_x, output_y,
           -padding, stride, channel, 1)
       driver.Context.synchronize()
-      operation.convWeightActs(input, ingrad, filter, image_y, output_y, output_x, filter_size,
+      operation.convWeightActs(input, ingrad, filter, bias, image_y, output_y, output_x, filter_size,
           -padding, stride, channel, 1, 0)
       driver.Context.synchronize()
 
       start = time.time()
       for i in range(self.count):
-        operation.convFilterActs(input, filter, output, image_y, output_y, output_x, -padding, stride,
+        operation.convFilterActs(input, filter, output, bias, image_y, output_y, output_x, -padding, stride,
             channel, 1)
         driver.Context.synchronize()
         operation.convImgActs(ingrad, filter, outgrad, image_y, image_x, output_y,
             -padding, stride, channel, 1)
         driver.Context.synchronize()
-        operation.convWeightActs(input, ingrad, filter, image_y, output_y, output_x, filter_size,
+        operation.convWeightActs(input, ingrad, filter, bias, image_y, output_y, output_x, filter_size,
             -padding, stride, channel, 1, 0)
         driver.Context.synchronize()
       
@@ -410,20 +411,20 @@ class SoftmaxExecuter(Executer):
       ingrad = gpuarray.to_gpu(np.array([np.random.choice(output_shape[0]) for i in
         range(output_shape[1])]).astype(np.float32)).reshape(output_shape[1], 1)
 
-      maximum = input.maxto(axis = 1)
+      maximum = garray.max(input, axis = 0)
       garray.copy_to(input-maximum, output)
       garray.iexp(output)
-      sum = output.sumto(axis = 1)
+      sum = output.sum(axis = 0)
       garray.copy_to(output/sum, output)
       
       garray.softmax_bprop(output, ingrad, outgrad)
 
       start = time.time()
       for i in range(self.count):
-        maximum = input.maxto(axis = 1)
+        maximum = garray.max(input, axis = 0)
         garray.copy_to(input-maximum, output)
         garray.iexp(output)
-        sum = output.sumto(axis = 1)
+        sum = output.sum(axis = 0)
         garray.copy_to(output/sum, output)
         
         garray.softmax_bprop(output, ingrad, outgrad)

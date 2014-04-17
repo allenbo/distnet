@@ -43,14 +43,11 @@ def convert_shape_fn(fn):
 
   return make_copy(_fn, fn.__name__)
 
-same_reduce = convert_shape_fn(cuda_base.same_reduce)
-same_reduce_multiview = convert_shape_fn(cuda_base.same_reduce_multiview)
 relu_activate = convert_shape_fn(cuda_base.relu_activate)
 relu_compute_grad = convert_shape_fn(cuda_base.relu_compute_grad)
 tanh_activate = convert_shape_fn(cuda_base.tanh_activate)
 tanh_compute_grad = convert_shape_fn(cuda_base.tanh_compute_grad)
 gpu_copy_to = convert_shape_fn(cuda_base.gpu_copy_to)
-gpu_partial_copy_to = convert_shape_fn(cuda_base.gpu_partial_copy_to)
 matrix_add = convert_shape_fn(cuda_base.matrix_add)
 bigger_than_scalar = convert_shape_fn(cuda_base.bigger_than_scalar)
 eltwise_exp = convert_shape_fn(cuda_base.eltwise_exp)

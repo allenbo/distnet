@@ -3,6 +3,7 @@
 import pyximport
 pyximport.install()
 from distnet import data, trainer, net, parser
+from garray import ConvDataLayout
 from mpi4py import MPI
 
 test_id = 'cifar-test'
@@ -33,7 +34,7 @@ learning_rate = 1.0
 batch_size = 128
 image_color = 3
 image_size = 32
-image_shape = (image_color, image_size, image_size, batch_size)
+image_shape = ConvDataLayout.get_output_shape(image_size, image_size, image_color, batch_size)
 
 net = parser.load_model(net.FastNet(image_shape), init_model)
 

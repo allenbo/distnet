@@ -129,3 +129,15 @@ def convWeightActs(input, ingrad, weight_grad, bias_grad, image_y, output_y, out
     cuda_base.matrixmult(ingrad_buffer, cuda_base.transpose(col_buffer), dest = weight_grad, alpha = 1.0, beta = 1.0)
     # bias term
     cuda_base.matrixmult(ingrad_buffer, bias_multiplier, bias_grad, alpha = 1.0, beta = 1.0)
+
+def convert_to_fc(input):
+  batch_size = input.shape[ConvDataLayout.BATCH]
+  new_shape = (batch_size, int(np.prod(input.shape) / batch_size))
+  rst = cuda_base.transpose(input.reshape(new_shape))
+  return rst
+
+def convert_to_conv(input):
+  return cuda_base.transpose(input)
+
+def convert_from_data(input, output):
+  cuda_base.transpose(input, dst = output) 

@@ -14,6 +14,9 @@ sgemm = None
 MAX_BLOCK = 65535
 MAX_THREAD = 1024
 
+ELTWISE_X = 32
+ELTWISE_Y = 32
+
 def _initialize_cublas():
   global sgemm
   if sgemm:
@@ -158,9 +161,6 @@ def matrixmult(x, y, dest = None, alpha = 1.0, beta = 0.0):
     return result
   else:
     return np.dot(x, y)
-
-ELTWISE_X = 32
-ELTWISE_Y = 32
 
 INTERNAL_SIZE = 256
 _row_max_reduce_ = CompiledSource('''

@@ -74,7 +74,7 @@ class DataLayer(Layer):
     assert False, 'Must be first layer!'
 
   def fprop(self, input, output, train=TRAIN):
-    arr.copy_to(input, output)
+    arr.convert_from_data(input, output)
 
     if PFout:
       print_matrix(output, self.name)
@@ -253,10 +253,6 @@ class ConvLayer(WeightedLayer):
     arr.wconvolution(input, grad, self.weight.grad, self.bias.grad, self.img_size, self.outputSize,
         self.outputSize, self.filterSize, -self.padding, self.stride, self.numColor)
 
-    # bprop bias
-    #self.bias.set_grad(grad.sumto(shape = self.get_output_shape(), axis = ConvDataLayout.CHANNEL))
-
-
 class MaxPoolLayer(Layer):
   def __init__(self, name, poolSize=2, stride=2, start=0, disable_bprop=False):
     Layer.__init__(self, name, 'pool', disable_bprop)
@@ -421,7 +417,8 @@ class FCLayer(WeightedLayer):
       self.input = input
     
     arr.matrixmult(self.weight.wt, self.input,  dest = output)
-    output.add(self.bias.wt, dst = output, axis = 0)
+    arr.copy_to(output + self.bias.wt, output)
+    #output += self.bias.wt #output.add(self.bias.wt, dst = output, axis = 0)
     if train == TEST:
       if self.dropRate > 0.0:
         output *= (1.0 - self.dropRate)
@@ -448,7 +445,7 @@ class FCLayer(WeightedLayer):
       arr.copy_to(tmp, outGrad)
     
     arr.matrixmult(grad, arr.transpose(self.input), dest = self.weight.grad)
-    self.bias.set_grad(grad.sumto(axis = 0))
+    self.bias.set_grad(arr.sum(grad, axis = 1))
 
     if self.prev_conv:
       arr.copy_to(arr.convert_to_conv(grad), grad)
@@ -473,11 +470,10 @@ class SoftmaxLayer(Layer):
     return (self.outputSize, self.batch_size)
 
   def fprop(self, input, output, train=TRAIN):
-    #column max reduce
-    max = input.maxto(axis = 1)
+    max = garray.max(input, axis = 0)
     arr.copy_to(input - max, output)
     arr.iexp(output)
-    sum = output.sumto(axis = 1)
+    sum = arr.sum(output, axis = 0)
     arr.copy_to(output / sum, output)
 
     if PFout:
@@ -489,7 +485,7 @@ class SoftmaxLayer(Layer):
     self.create_cost(self.batch_size)
 
   def logreg_cost(self, label, output):
-    maxid = output.argmaxto(axis = 1)
+    maxid = garray.argmax(output, axis = 0)
     self.batchCorrect = arr.sum(label == maxid)
     assert np.isscalar(self.batchCorrect)
     arr.logreg_cost_col(output, label, self.cost)

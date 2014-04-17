@@ -1,6 +1,7 @@
 import varray
 import time
 from distbase import util
+from distbase.util import deprecated
 import numpy as np
 from varray.ndarray import VArray, DistMethod, zeros_like, WORLD, zeros, allocate_like, allocate, WORLD
 from varray.area import Area
@@ -73,6 +74,7 @@ def transpose(mat):
   c = garray.transpose(x)
   return VArray(c, unique = False)
 
+@deprecated
 def sumto(input, shape = None, axis = 0):
   return input.sumto(shape, axis)
 

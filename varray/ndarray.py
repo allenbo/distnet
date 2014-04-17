@@ -10,6 +10,7 @@ import garray
 import time
 from pycuda import driver
 from garray import ConvDataLayout, FCDataLayout, FilterLayout, WeightLayout
+from distbase.util import deprecated
 
 WORLD = MPI.COMM_WORLD
 MASTER = 0
@@ -658,7 +659,8 @@ class VArray(object):
     if u or d or l or r:
       data = data[old_area.offset(self.local_area._from).slice]
     return data
-
+  
+  @deprecated
   def add(self, other, dst = None, shape = None, axis = 0):
     if isinstance(other, VArray):
       data = other.local_data
@@ -680,7 +682,8 @@ class VArray(object):
       c = allocate_like(self)
     c.local_data = tmp.reshape(self.local_shape)
     return c
-
+  
+  @deprecated
   def sumto(self, shape = None, axis = 0):
     barrier()
     assert 0 <= axis < len(self.local_shape)
