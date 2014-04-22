@@ -1,7 +1,7 @@
 import pyximport
 pyximport.install()
 from mpi4py import MPI
-from varray.area import Area, Point
+from .area import Area, Point
 from distbase.util import issquare
 import numpy as np
 import math
@@ -52,7 +52,7 @@ class VArray(object):
 
       The given shape has to be the global shape.
 
-      When shape is given, the global shape is determined it, even if the array is given.
+      When shape is given, the global shape is determined, even if the array is given.
       '''
     start = time.time()
     self.rank = rank
@@ -65,7 +65,7 @@ class VArray(object):
     self.area_dict = {}
 
     if shape is not None:
-      self.global_shape = shape
+      self.global_shape = tuple(shape)
     elif hasattr(array, 'shape'):
       self.global_shape = array.shape
     else:
@@ -82,7 +82,7 @@ class VArray(object):
       self.slice_method = None
       self.slice_dim = None
       if array is None and shape is not None:
-        array = garray.GPUArray(shape, self.dtype)
+        array = garray.GPUArray(tuple(shape), self.dtype)
       if isinstance(array, garray.GPUArray):
         self.local_data = array
       else:
@@ -141,6 +141,7 @@ class VArray(object):
       self.area_dict[self.rank] = self.local_area
       self.infer_area_dict()
 
+    assert self.local_data.shape == self.local_area.shape
     self.fetch_recv_cache = {}
     self.fetch_sent_cache = {}
     self.write_recv_cache = {}
@@ -402,8 +403,8 @@ class VArray(object):
   def make_square_area(self, rank):
     first , second = self.slice_dim
     assert first < second < len(self.global_shape), 'Wrong slice_dim ' + str(len(self.global_shape))
-    local_nrow = self.global_shape[first] / self.nprow
-    local_ncol = local_nrow
+    local_nrow = 1.0 * self.global_shape[first] / self.nprow
+    local_ncol = 1.0 * self.global_shape[second] / self.nprow
 
     first_pos = int(rank / self.nprow)
     second_pos = int(rank % self.nprow)
@@ -425,10 +426,10 @@ class VArray(object):
 
   def make_stripe_area(self, rank, slice_dim):
     assert slice_dim < len(self.global_shape), 'Wrong slice dim'
-    nrow = self.global_shape[slice_dim] / self.world_size
+    nrow = 1.0 * self.global_shape[slice_dim] / self.world_size
 
-    pos_from = nrow * rank
-    pos_to = (rank+ 1)* nrow
+    pos_from = int(nrow * rank)
+    pos_to = int((rank+ 1)* nrow)
     if rank == self.world_size -1 :
       pos_to = self.global_shape[slice_dim]
 
@@ -774,49 +775,55 @@ class VArray(object):
 
 
 
-def array(a, dtype = np.float32,unique = True, slice_method = DistMethod.Square, slice_dim = (1, 2)):
-  return VArray(a, unique, slice_method, slice_dim)
+def array(a, slice_method, slice_dim, dtype = np.float32, unique = True):
+  return VArray(a, unique = unique, slice_method = slice_method, slice_dim = slice_dim)
 
 def square_array(a, slice_dim, unique = True):
   return VArray(a, unique, slice_method = DistMethod.Square, slice_dim = slice_dim)
 
-def zeros(shape, dtype = np.float32, unique = True, slice_method = DistMethod.Square, slice_dim = (1, 2)):
+def zeros(shape, slice_method, slice_dim, dtype = np.float32, unique = True):
   a = np.zeros(shape).astype(np.float32)
-  return VArray(a, unique, slice_method, slice_dim)
-
-
-def allocate(shape, dtype = np.float32, unique = True, slice_method = DistMethod.Square, slice_dim = (1, 2)):
-  if not issquare(size):
-    slice_method = DistMethod.Stripe
-    slice_dim = 1
-  return VArray(array = None, unique =  unique, slice_method = slice_method, slice_dim = slice_dim, shape = shape)
-
-def allocate_like(input):
-  return VArray(array = None, unique = input.unique, slice_method = input.slice_method, slice_dim = input.slice_dim, shape = input.shape)
+  return VArray(a, unique = unique, slice_method = slice_method, slice_dim = slice_dim)
 
 def zeros_like(like):
   assert isinstance(like, VArray)
   a = np.zeros(like.global_shape).astype(like.dtype)
   return array(a, unique = like.unique, slice_method = like.slice_method, slice_dim = like.slice_dim)
 
-def from_stripe(data, to = 's'):
-  assert isinstance(data, np.ndarray)
-  recv = WORLD.allgather(data.shape)
-  shape_list = [None] * size
-  for i in range(size):
-    shape_list[i] = recv[i]
-  shape_len = np.array([len(s) for s in shape_list], dtype = np.int32)
-  assert any(shape_len - shape_len[0]) == False, 'Shape must have same length'
-  shape_last = np.array([x[-1] for x in shape_list])
-  shape = tuple(shape_list[0][:-1]  +  (int(np.sum(shape_last)), ))
+def allocate(shape, slice_method, slice_dim, dtype = np.float32, unique = True):
+  return VArray(array = None, unique =  unique, slice_method = slice_method, slice_dim = slice_dim, shape = shape)
 
-  rst = VArray(data, slice_method = DistMethod.Stripe, slice_dim = len(shape_list[0]) -1, shape = shape, local = True)
+def allocate_like(input):
+  return VArray(array = None, unique = input.unique, slice_method = input.slice_method, slice_dim = input.slice_dim, shape = input.shape)
+
+
+def from_stripe_to_square(data, slice_dim, to = 's', axis = 1):
+  '''
+  Special function to transform arrays that read from disk to VArray
+  Since we have multiple processes ongoing, which will read different sets of images from disk and
+  split those arrays across batch, this will bring shards together and resplit across different axis
+  data parameter has to be 2D array
+  '''
+  assert isinstance(data, np.ndarray) and len(data.shape) == 2
+  shape_list = WORLD.allgather(data.shape)
+  shape_len = np.array([len(s) for s in shape_list], dtype = np.int32)
+
+  assert any(shape_len - shape_len[0]) == False, 'Shape must have same length'
+  assert axis == 0 or axis == 1
+
+  shape_sum = int(np.sum(np.array([x[axis] for x in shape_list])))
+  if axis == 0:
+    shape = (shape_sum, shape_list[0][1])
+  else:
+    shape = (shape_list[0][0], shape_sum)
+
+  rst = VArray(data, slice_method = DistMethod.Stripe, slice_dim = axis, shape = shape, local = True)
   rst.gather()
   if to == 's':
     if issquare(size):
-      rst = VArray(array = rst.local_data, slice_dim = (1, 2))
+      rst = VArray(array = rst.local_data, slice_dim = slice_dim)
     else:
-      rst = VArray(array = rst.local_data, slice_dim = 1, slice_method = DistMethod.Stripe)
+      rst = VArray(array = rst.local_data, slice_dim = slice_dim, slice_method = DistMethod.Stripe)
   elif to == 'u':
     rst = VArray(array = rst.local_data, unique = False)
   return rst

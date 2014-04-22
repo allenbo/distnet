@@ -280,14 +280,25 @@ def concatenate(arrays, axis = 0):
   return dest
 
 @sync_function
-def partial_copy(input, f, t):
+def partial_copy1(input, f, t):
   '''
   This function only supports 2D array and copy partial array by splitting the second dimension
   '''
   shape = list(input.shape)
   shape[-1] = t - f
-  data = empty(tuple(shape), dtype = np.float32)
+  data = empty(tuple(shape), dtype = input.dtype)
   gpu_partial_copy_to(input, data, 0, shape[0], f, t)
+  return data
+
+@sync_function
+def partial_copy0(input, f, t):
+  '''
+  This function only supports 2D array and copy partial array by splitting the first dimension
+  '''
+  shape = list(input.shape)
+  shape[0] = t - f
+  data = empty(tuple(shape), dtype = input.dtype)
+  gpu_partial_copy_to(input, data, f, t, 0, shape[-1])
   return data
 
 @deprecated

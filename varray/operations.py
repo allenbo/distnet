@@ -3,8 +3,8 @@ import time
 from distbase import util
 from distbase.util import deprecated
 import numpy as np
-from varray.ndarray import VArray, DistMethod, zeros_like, WORLD, zeros, allocate_like, allocate, WORLD
-from varray.area import Area
+from .ndarray import VArray, DistMethod, zeros_like, WORLD, zeros, allocate_like, allocate, WORLD
+from .area import Area
 import garray
 from pycuda import driver
 from distbase.state import *
@@ -23,7 +23,7 @@ def partial_copy(input, f, t):
   ''' partial copy last dimention '''
   shape = list(input.shape)
   shape[-1] = t-f
-  rst = allocate(tuple(shape), dtype = np.float32)
+  rst = allocate(tuple(shape), dtype = np.float32, slice_dim = input.slice_dim, slice_method = input.slice_method)
   old_shape = rst.local_shape
   rst.local_data = garray.partial_copy(garray.reshape_last(input.local_data), f, t)
   rst.local_data = rst.local_data.reshape(old_shape)

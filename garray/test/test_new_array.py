@@ -217,8 +217,18 @@ def test_partial_copy():
     t = random.randint(0, shape[1])
     if t != f:
       break
-  gb = garray.partial_copy(ga, min(f, t), max(f, t))
+  gb = garray.partial_copy1(ga, min(f, t), max(f, t))
   hb = ha[:, min(f, t):max(f, t)]
+
+  assert (hb == gb.get()).all()
+  
+  f = random.randint(0, shape[0])
+  while True:
+    t = random.randint(0, shape[0])
+    if t != f:
+      break
+  gb = garray.partial_copy0(ga, min(f, t), max(f, t))
+  hb = ha[min(f, t):max(f, t), :]
 
   assert (hb == gb.get()).all()
 

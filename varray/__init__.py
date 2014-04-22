@@ -1,7 +1,7 @@
-from ndarray import *
-from area import *
-from random import *
-from operations import *
+from .ndarray import *
+from .area import *
+from .random import *
+from .operations import *
 
 
 def distlog(_fn):

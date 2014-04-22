@@ -1,4 +1,4 @@
-from varray.ndarray import VArray, DistMethod, MASTER, rank, WORLD
+from .ndarray import VArray, DistMethod, MASTER, rank, WORLD
 import numpy as np
 
 def randn(shape, dtype = np.float32, unique = True, slice_method = DistMethod.Square, slice_dim = (1, 2)):

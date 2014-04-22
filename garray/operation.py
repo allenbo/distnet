@@ -56,5 +56,3 @@ def transpose(mat, dest = None):
     mat = reshape_last(mat)
   
   return aux_operation.transpose(mat, dest)
-
-

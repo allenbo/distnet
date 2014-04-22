@@ -399,8 +399,10 @@ class ParallelDataProvider(DataProvider):
         batch_data.data = uniformed_array(batch_data.data, dtype = np.float32, to2dim = True)
         batch_data.labels = uniformed_array(batch_data.labels, dtype = np.float32, slice_dim = None)
       else:
-        batch_data.data = arr.from_stripe(batch_data.data)
-        batch_data.labels = arr.from_stripe(batch_data.labels, to = 'u')
+        # assemble batched splitted arrays to imaged splitted array
+        # a better way to do this is move this instructions to fprop of data layer
+        batch_data.data = arr.from_stripe_to_square(batch_data.datam)
+        batch_data.labels = arr.from_stripe_to_square(batch_data.labels, to = 'u')
       self._gpu_batch = batch_data
     else:
       self._cpu_batch = batch_data
@@ -422,13 +424,13 @@ class ParallelDataProvider(DataProvider):
         width = width - self.index
         labels = gpu_labels[self.index:self.index + batch_size]
 
-        data = arr.partial_copy(gpu_data, self.index, self.index+ width)
+        data = arr.partial_copy1(gpu_data, self.index, self.index+ width)
 
         self.index = 0
         self._fill_reserved_data()
       else:
         labels = gpu_labels[self.index:self.index + batch_size]
-        data = arr.partial_copy(gpu_data,self.index, self.index + batch_size)
+        data = arr.partial_copy1(gpu_data,self.index, self.index + batch_size)
         self.index += batch_size
     else:
       channel, img_size, img_size, width = self._cpu_batch.data.shape

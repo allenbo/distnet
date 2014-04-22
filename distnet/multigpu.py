@@ -75,14 +75,14 @@ def allocate(shape, dtype = np.float32, slice_dim = None):
         unique = True
       else:
         unique = False
-      return arr.allocate(shape, dtype, unique = unique, slice_method = slice_method, slice_dim = slice_dim)
+      return arr.allocate(shape, dtype = dtype, unique = unique, slice_method = slice_method, slice_dim = slice_dim)
     else:
       if slice_dim is not None:
         assert np.isscalar(slice_dim)
         unique = True
       else:
         unique = False
-      return arr.allocate(shape, dtype, unique = unique, slice_method = DistMethod.Stripe, slice_dim = slice_dim)
+      return arr.allocate(shape, dtype = dtype, unique = unique, slice_method = DistMethod.Stripe, slice_dim = slice_dim)
 
 def convert_shape(shape):
   if not multi_gpu:
