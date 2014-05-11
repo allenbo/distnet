@@ -21,7 +21,7 @@ combination_fc = (sisw, sidw_f, disw_b)
 #combination_conv =(sisw, disw_b, disw_i)
 #combination_fc = (sisw, sidw_f, disw_b)
 
-def get_output_distribution(state, conv):
+def get_output_distribution(state, conv, ConvDataLayout, FCDataLayout):
   if state is None:
     return None
   if state == sisw:
@@ -47,7 +47,7 @@ def get_output_distribution(state, conv):
 
   assert False
 
-def get_weight_distribution(state, conv):
+def get_weight_distribution(state, conv, FilterLayout, WeightLayout):
   if state == None or state == sisw:
     return None
 
@@ -76,7 +76,7 @@ def get_bias_distribution(state, conv):
 
   return None
 
-def get_state_from_distribution(output_dist, conv):
+def get_state_from_distribution(output_dist, conv, ConvDataLayout, FCDataLayout):
   if conv:
       if output_dist == ConvDataLayout.BATCH:
         return disw_b

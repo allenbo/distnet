@@ -401,8 +401,8 @@ class ParallelDataProvider(DataProvider):
       else:
         # assemble batched splitted arrays to imaged splitted array
         # a better way to do this is move this instructions to fprop of data layer
-        batch_data.data = arr.from_stripe_to_square(batch_data.datam)
-        batch_data.labels = arr.from_stripe_to_square(batch_data.labels, to = 'u')
+        batch_data.data = arr.from_stripe(batch_data.data, slice_dim = (1, 2), axis = -1)
+        batch_data.labels = arr.from_stripe(batch_data.labels, slice_dim = None, axis = -1)
       self._gpu_batch = batch_data
     else:
       self._cpu_batch = batch_data

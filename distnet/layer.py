@@ -32,6 +32,7 @@ class Layer(object):
     self.output_grad = None
     self.neuron = None
     self.state = get_state(self.name)
+    print self.name, self.state
 
   def disable_bprop(self):
     self.disable_bprop = True
@@ -49,10 +50,11 @@ class Layer(object):
     pass
 
   def init_output(self, fc = False):
-    slice_dim = get_output_distribution(self.state, not fc)
+    slice_dim = get_output_distribution(self.state, not fc, ConvDataLayout, FCDataLayout)
     out_shape = self.get_output_shape()
     self.output = allocate(out_shape, slice_dim = slice_dim)
     self.output_grad = allocate(out_shape, slice_dim = slice_dim)
+    print self.name, type(self.output)
 
   def dump(self):
     attr = [att for att in dir(self) if not att.startswith('__')]
@@ -95,7 +97,8 @@ class WeightedLayer(Layer):
     self.initW = initW
     self.initB = initB
 
-    slice_dim = get_weight_distribution(self.state, conv = (self.type == 'conv'))
+    slice_dim = get_weight_distribution(self.state, (self.type == 'conv'), FilterLayout,
+        WeightLayout)
     self.weight = WEIGHTS.empty('weight.' + self.name, epsW, momW, wc, slice_dim = slice_dim)
     slice_dim = get_bias_distribution(self.state, conv = (self.type == 'conv'))
     self.bias = WEIGHTS.empty('bias.' + self.name, epsB, momB, 0.0, slice_dim = slice_dim)
@@ -328,7 +331,7 @@ class ResponseNormLayer(Layer):
     self.img_size  = image_shape[ConvDataLayout.HEIGHT]
     self.batch_size = image_shape[ConvDataLayout.BATCH]
 
-    slice_dim = get_output_distribution(self.state, True)
+    slice_dim = get_output_distribution(self.state, True, ConvDataLayout, FCDataLayout)
     self.denom = allocate(image_shape, slice_dim = slice_dim)
 
 
@@ -337,7 +340,7 @@ class ResponseNormLayer(Layer):
 
   def change_batch_size(self, batch_size):
     Layer.change_batch_size(self, batch_size)
-    slice_dim = get_output_distribution(self.state, True)
+    slice_dim = get_output_distribution(self.state, True, ConvDataLayout, FCDataLayout)
     self.denom = allocate(ConvDataLayout.get_output_shape(self.img_size , self.img_size, self.numColor, self.batch_size), slice_dim = slice_dim)
 
   def fprop(self, input, output, train=TRAIN):
@@ -417,6 +420,7 @@ class FCLayer(WeightedLayer):
       self.input = input
     
     arr.matrixmult(self.weight.wt, self.input,  dest = output)
+    # call garray.__add__ or varray.ndarray.__add__, output and self.bias.wt are both 2D array
     arr.copy_to(output + self.bias.wt, output)
     #output += self.bias.wt #output.add(self.bias.wt, dst = output, axis = 0)
     if train == TEST:
@@ -426,6 +430,7 @@ class FCLayer(WeightedLayer):
       if self.dropRate > 0.0:
         self.dropMask = uniformed_array(np.random.uniform(0, 1, output.size).astype(np.float32).reshape(output.shape), slice_dim = None)
         arr.bigger_than_scalar(self.dropMask, self.dropRate)
+        # call garray.__mul__ or varra.ndarray.__mul__, output and self.dropMask are both 2D array
         arr.copy_to(output * self.dropMask, output)
 
     if self.neuron == 'relu':
@@ -440,6 +445,7 @@ class FCLayer(WeightedLayer):
     if self.dropRate > 0.0:
       arr.copy_to(grad * self.dropMask, grad)
 
+    # when weight is split by first dimension, transpose has to be dealt speicially, but not support now
     tmp = arr.matrixmult(arr.transpose(self.weight.wt), grad, dest = outGrad)
     if tmp != outGrad:
       arr.copy_to(tmp, outGrad)
@@ -471,9 +477,11 @@ class SoftmaxLayer(Layer):
 
   def fprop(self, input, output, train=TRAIN):
     max = garray.max(input, axis = 0)
+    # call garray.__sub__ or varray.ndarray.__sub__, input and max are both 2D array
     arr.copy_to(input - max, output)
     arr.iexp(output)
     sum = arr.sum(output, axis = 0)
+    # call garray.__div__ or varray.ndarray.__div__, input and max are both 2D array
     arr.copy_to(output / sum, output)
 
     if PFout:

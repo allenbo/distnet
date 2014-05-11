@@ -28,7 +28,7 @@ else:
 def get_state(layer_name):
   if strategy is None:
     return None
-  return strategy.get('layer_name', None)
+  return strategy.get(layer_name, None)
 
 def issquare(x):
   a = int(math.sqrt(x))
@@ -51,7 +51,7 @@ def zeros(shape, dtype = np.float32, unique = False, slice_dim = None):
         unique = True
       else:
         unique = False
-      return arr.zeros(shape, dtype, unique = unique, slice_method = slice_method, slice_dim = slice_dim)
+      return arr.zeros(shape, dtype = dtype, unique = unique, slice_method = slice_method, slice_dim = slice_dim)
     else:
       if slice_dim is not None:
         assert np.isscalar(slice_dim)
@@ -104,11 +104,11 @@ def uniformed_array(array, dtype = np.float32, slice_dim = None, to2dim = False)
       unique = True
     else:
       unique = False
-    return arr.array(shape, dtype, unique = unique, slice_method = slice_method, slice_dim = slice_dim)
+    return arr.array(array, dtype = dtype, unique = unique, slice_method = slice_method, slice_dim = slice_dim)
   else:
     if slice_dim is not None:
       assert np.isscalar(slice_dim)
       unique = True
     else:
       unique = False
-    return arr.array(shape, dtype, unique = unique, slice_method = DistMethod.Stripe, slice_dim = slice_dim)
+    return arr.array(array, dtype = dtype, unique = unique, slice_method = DistMethod.Stripe, slice_dim = slice_dim)

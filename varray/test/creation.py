@@ -13,15 +13,10 @@ MASTER = 0
 size = WORLD.Get_size()
 rank = WORLD.Get_rank()
 
-
-'''
-from_stripe
-'''
-
 def make_shape(d):
   shape = []
   for i in range(d):
-    shape.append(random.randint(10, 300))
+    shape.append(random.randint(10, 100))
   return shape
 
 def check_square(va, array, shape):
@@ -83,13 +78,6 @@ def test_square():
   va = VArray(unique = True, slice_method = DistMethod.Square, slice_dim = (0, 1), shape = tuple(shape), local = False)
   check_square(va, None, shape)
   
-  # local instance with array
-  new_shape = [x * int(math.sqrt(size)) for x in shape] 
-  va = VArray(array, unique = True, slice_method = DistMethod.Square, slice_dim = (0, 1), shape = tuple(new_shape), local = True)
-
-  check_square(va, None, new_shape)
-  assert (array.get() == va.local_data.get()).all()
-
 def test_stripe():
   shape = make_shape(2)
   # regular instance
@@ -162,22 +150,32 @@ def test_zeros():
   check_stripe(va, None, shape)
   assert (va.local_data.get() == 0).all()
 
-def test_from_stripe_to_square():
-  shape = make_shape(2)
-  slice_dim = (0, 1)
-  axis = 1
+def test_from_stripe():
+  shape = make_shape(4)
+  slice_dim = (1, 2)
+  axis = -1
   
   array = np.random.randn(*shape).astype(np.float32)
-  va = ndarray.from_stripe_to_square(array, slice_dim = slice_dim, axis = axis)
+  va = ndarray.from_stripe(array, slice_dim = slice_dim, axis = axis)
   new_shape = shape[:]
   new_shape[axis] *= size
   check_square(va, None, new_shape)
 
   axis = 0
-  va = ndarray.from_stripe_to_square(array, slice_dim = slice_dim, axis = axis)
+  va = ndarray.from_stripe(array, slice_dim = slice_dim, axis = axis)
   new_shape = shape[:]
   new_shape[axis] *= size
   check_square(va, None, new_shape)
+
+  shape = make_shape(1)
+  slice_dim = None
+  axis = -1
+
+  array = np.random.randn(*tuple(shape)).astype(np.float32)
+  va = ndarray.from_stripe(array, slice_dim = slice_dim, axis = axis)
+  new_shape = shape[:]
+  new_shape[axis] *= size
+  check_share(va, None, new_shape)
 
 
 if __name__ == '__main__':
@@ -186,4 +184,4 @@ if __name__ == '__main__':
   test_share() 
   test_array()
   test_square_array()
-  test_from_stripe_to_square()
+  test_from_stripe()

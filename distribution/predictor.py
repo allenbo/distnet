@@ -313,6 +313,7 @@ if __name__ == '__main__':
   print 'Number of worker is \033[32m%d\033[0m' % n
   print_details(model, states)
   
+  states = [disw_i] * (len(model) - 6) + [sisw] * 6
   strategy = {}
   for i, layer in enumerate(model):
     strategy[layer['name']] = states[i]

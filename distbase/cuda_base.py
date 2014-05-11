@@ -1211,11 +1211,12 @@ def stride_copy_1(input, output, slices):
   assert len(slices) == 1
 
   start, stop, stride = slices[0].indices(input.shape[0])
-  if stride == 1:
-    pycuda.driver.memcpy_dtod(output.gpudata,
-        input.ptr + start * input.dtype.itemsize,
-        (stop - start) * input.dtype.itemsize)
-    return
+  print stop, start
+  #if stride == 1:
+  #  pycuda.driver.memcpy_dtod(output.gpudata,
+  #      input.ptr + start * input.dtype.itemsize,
+  #      (stop - start) * input.dtype.itemsize)
+  #  return
   block = (128, 1, 1)
   grid = (1, 1)
   _stride_copy_1_(input, output, I(start),I(stride), I(output.size), I(0), block = block, grid = grid)

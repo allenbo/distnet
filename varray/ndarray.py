@@ -48,7 +48,8 @@ class VArray(object):
     '''Have to provider array or shape.
 
       Array could be a numpy ndarray or GPUArray. The parameter local indicates the array is
-      global array or local array. When local is true, the array is local data.
+      global array or local array. When local is true, the array is local data. Local array only
+      suppor stripe distribution.
 
       The given shape has to be the global shape.
 
@@ -101,7 +102,11 @@ class VArray(object):
 
         self.nprow = int(math.sqrt(self.world_size))
 
-        self.local_area = self.make_square_area(self.rank)
+        if not local:
+          self.local_area = self.make_square_area(self.rank)
+        else:
+          self.local_area = self.sync_area_dict(array.shape)
+
         if array is not None:
           if isinstance(array, garray.GPUArray):
             if not local:
@@ -120,7 +125,10 @@ class VArray(object):
         else:
           assert np.isscalar(self.slice_dim), 'SLice dim has to the a scalar'
 
-        self.local_area = self.make_stripe_area(self.rank, self.slice_dim)
+        if not local:
+          self.local_area = self.make_stripe_area(self.rank, self.slice_dim)
+        else:
+          self.local_area = self.sync_area_dict(array.shape)
         if array is not None:
           if isinstance(array, garray.GPUArray):
             if not local:
@@ -139,7 +147,8 @@ class VArray(object):
         assert False, 'No implementation'
 
       self.area_dict[self.rank] = self.local_area
-      self.infer_area_dict()
+      if not local:
+        self.infer_area_dict()
 
     assert self.local_data.shape == self.local_area.shape
     self.fetch_recv_cache = {}
@@ -155,11 +164,20 @@ class VArray(object):
       elif self.slice_method == DistMethod.Stripe:
         self.area_dict[i] = self.make_stripe_area(i, self.slice_dim)
 
-  def sync_area_dict(self):
+  def sync_area_dict(self, shape):
     barrier()
-    rev = WORLD.allgather(self.area_dict[self.rank])
+    acc = 0
+    rev = WORLD.allgather(shape)
     for i in range(self.world_size):
-      self.area_dict[i] = rev[i]
+      _from = [0] * len(self.global_shape)
+      _to = list(self.global_shape)
+      _from[self.slice_dim] = acc
+      _to[self.slice_dim] = acc + rev[i][self.slice_dim]
+      _to = [x - 1 for x in _to]
+      acc += rev[i][self.slice_dim]
+      self.area_dict[i] = Area(Point(*_from), Point(*_to))
+      print self.area_dict[i]
+    return self.area_dict[self.rank]
 
   @property
   def shape(self):
@@ -444,9 +462,13 @@ class VArray(object):
     return self.slice_method == other.slice_method and self.slice_dim == other.slice_dim and self.unique == other.unique
 
   def __add__(self, other):
+    '''
+    Now this function is only called at FC layer, when adding bias up to output, and the bias could
+    be splitted, so we still need to check the parameters
+    '''
     c = allocate_like(self)
     if isinstance(other, VArray):
-      if self.check_param(other):
+      if self.check_param(other) and other.shape == self.shape:
         c.local_data = self.local_data + other.local_data
         return c
       elif self.unique == False and other.unique == False:
@@ -668,12 +690,6 @@ class VArray(object):
     else:
       data = other
 
-    #if axis == len(self.local_shape) - 1:
-    #  tmp = garray.reshape_last(self.local_data) + data
-    #elif axis == 0:
-    #  tmp = garray.reshape_first(self.local_data) + data
-    #else:
-    #  assert False, 'No implementation for axis = %s' % axis
     tmp = self.local_data.add(other, dst = dst , shape = shape, axis = axis)
 
     if dst is not None:
@@ -707,6 +723,7 @@ class VArray(object):
     else:
       assert False
 
+  @deprecated
   def maxto(self, shape = None, axis = 0):
     barrier()
     assert 0< axis < len(self.local_shape)
@@ -729,6 +746,7 @@ class VArray(object):
     else:
       assert False
 
+  @deprecated
   def argmaxto(self, shape = None, axis = 0):
     assert 0< axis < len(self.local_shape)
     assert self.unique == False, len(self.local_shape) == 2
@@ -797,33 +815,38 @@ def allocate_like(input):
   return VArray(array = None, unique = input.unique, slice_method = input.slice_method, slice_dim = input.slice_dim, shape = input.shape)
 
 
-def from_stripe_to_square(data, slice_dim, to = 's', axis = 1):
+def from_stripe(data, slice_dim, axis):
   '''
   Special function to transform arrays that read from disk to VArray
   Since we have multiple processes ongoing, which will read different sets of images from disk and
   split those arrays across batch, this will bring shards together and resplit across different axis
   data parameter has to be 2D array
   '''
-  assert isinstance(data, np.ndarray) and len(data.shape) == 2
+  if axis < 0:
+    axis = len(data.shape) + axis
+  assert isinstance(data, np.ndarray)
   shape_list = WORLD.allgather(data.shape)
   shape_len = np.array([len(s) for s in shape_list], dtype = np.int32)
 
   assert any(shape_len - shape_len[0]) == False, 'Shape must have same length'
-  assert axis == 0 or axis == 1
+  assert axis == 0 or axis == len(data.shape) - 1
 
   shape_sum = int(np.sum(np.array([x[axis] for x in shape_list])))
-  if axis == 0:
-    shape = (shape_sum, shape_list[0][1])
+  if len(data.shape) == 1:
+    shape = (shape_sum, )
   else:
-    shape = (shape_list[0][0], shape_sum)
-
-  rst = VArray(data, slice_method = DistMethod.Stripe, slice_dim = axis, shape = shape, local = True)
-  rst.gather()
-  if to == 's':
-    if issquare(size):
-      rst = VArray(array = rst.local_data, slice_dim = slice_dim)
+    if axis == 0:
+      shape = tuple([shape_sum] + list(shape_list[0][1:]))
     else:
-      rst = VArray(array = rst.local_data, slice_dim = slice_dim, slice_method = DistMethod.Stripe)
-  elif to == 'u':
+      shape = tuple(list(shape_list[0][:3]) + [shape_sum])
+  rst = VArray(data, slice_method = DistMethod.Stripe, slice_dim = axis, shape = shape, local = True)
+  if slice_dim == axis:
+    return rst
+  rst.gather()
+  if slice_dim is None:
     rst = VArray(array = rst.local_data, unique = False)
+  elif not np.isscalar(slice_dim):
+    rst = VArray(array = rst.local_data, slice_dim = slice_dim, slice_method = DistMethod.Square)
+  else:
+    rst = VArray(array = rst.local_data, slice_dim = slice_dim, slice_method = DistMethod.Stripe)
   return rst
