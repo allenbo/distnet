@@ -97,12 +97,14 @@ cdef class Area(object):
 #    return self._from == other._from and self._to == other._to
 #
   def offset(self, point):
+    ''' Key the shape of area, but move "point" offset, used with slice to find the slice tuple of two area, check ndarray '''
     _from = Point(*[a - b for a, b in zip(self._from.point, point.point)])
     _to = Point(*[ a - b for a, b in zip(self._to.point , point.point)])
 
     return Area(_from, _to)
 
   def move(self, point):
+    ''' Key the shape of area, but move to "point" '''
     _size = [ a -b for a, b in zip(self._to.point, self._from.point )]
     _from = Point(*point)
     _to = Point(*[a + b for a , b in zip(point, _size)])

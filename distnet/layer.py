@@ -32,7 +32,7 @@ class Layer(object):
     self.output_grad = None
     self.neuron = None
     self.state = get_state(self.name)
-    print self.name, self.state
+    #print self.name, self.state
 
   def disable_bprop(self):
     self.disable_bprop = True
@@ -54,7 +54,7 @@ class Layer(object):
     out_shape = self.get_output_shape()
     self.output = allocate(out_shape, slice_dim = slice_dim)
     self.output_grad = allocate(out_shape, slice_dim = slice_dim)
-    print self.name, type(self.output)
+    #print self.name, type(self.output)
 
   def dump(self):
     attr = [att for att in dir(self) if not att.startswith('__')]
