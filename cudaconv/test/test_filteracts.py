@@ -4,7 +4,7 @@ import numpy as np
 from distbase.util import divup
 cudaconv.init()
 
-BATCH = 128
+BATCH = 1024
 batch_size = BATCH
 
 

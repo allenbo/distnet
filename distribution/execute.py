@@ -72,6 +72,7 @@ class ConvExecuter(Executer):
 
       channel = filter_shape[filter_channel_idx]
       filter_size = filter_shape[filter_height_idx]
+      num_filter = filter_shape[filter_num_idx]
 
       if filter_shape[filter_num_idx] % 16 != 0 and backend == 'cudaconv':
         num_filter = (filter_shape[filter_num_idx] + 16 - 1) / 16 * 16
@@ -85,7 +86,7 @@ class ConvExecuter(Executer):
        
       ingrad = gpuarray.to_gpu(np.ndarray(output_shape).astype(np.float32))
       outgrad = gpuarray.to_gpu(np.ndarray(input_shape).astype(np.float32))
-      bias = gpuarray.to_gpu(np.ndarray(num_filter, 1).astype(np.float32))
+      bias = gpuarray.to_gpu(np.ndarray((num_filter, 1)).astype(np.float32))
     
       padding = param['padding']
       stride = param['stride']

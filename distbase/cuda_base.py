@@ -973,6 +973,8 @@ def add_vec_to_rows(mat, vec, dest=None, alpha=1.0, beta=1.0):
   block = (ELTWISE_X, ELTWISE_Y, 1)
   grid = (divup(mw, ELTWISE_X), divup(mh, ELTWISE_Y))
   leading = mat.strides[0] / 4
+  print mh, mw
+  print grid
   _add_vec_to_rows_(F(alpha), vec, F(beta), mat, dest, I(leading), I(mh), I(mw), block=block, grid=grid)
   
 

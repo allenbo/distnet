@@ -1,5 +1,5 @@
 # Get backend
-backend_name = 'cudaconv'
+backend_name = 'caffe'
 
 if backend_name == 'cudaconv':
   import cudaconv as cm_backend

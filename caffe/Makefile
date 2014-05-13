@@ -6,7 +6,7 @@ CUDA_LIBRARY = -L${CUDA_DIR}/lib
 
 LINK_FLAGS := -lcublas -lcudart -lcurand
 NVCC_OPTS := --pre-include undef.h
-CXX_FLAGS := --compiler-options='-fPIC -ggdb2' 
+CXX_FLAGS := --compiler-options='-fPIC -ggdb2 -Wcpp' 
 PYTHON_INCLUDE := $(shell python-config --includes)
 INCLUDES := ${PYTHON_INCLUDE} ${CUDA_INCLUDE} -I. -I../cudaconv/cutil/
 LIBRARYS := ${CUDA_LIBRARY}

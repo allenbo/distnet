@@ -73,18 +73,6 @@ def transpose(mat):
   c = garray.transpose(x)
   return VArray(c, unique = False)
 
-@deprecated
-def sumto(input, shape = None, axis = 0):
-  return input.sumto(shape, axis)
-
-@deprecated
-def maxto(input, shape = None, axis = 0):
-  return input.maxto(shape, axis)
-
-@deprecated
-def argmaxto(input, shape = None, axis = 0):
-  return input.argmaxto(shape, axis = axis)
-
 def sum(input, axis = None):
   return input.sum()
 
@@ -102,6 +90,60 @@ def iexp(input):
 def logreg_cost_col(output, label, cost):
   assert not any([output.unique, label.unique, cost.unique])
   garray.logreg_cost_col(output.local_data, label.local_data, cost.local_data)
+
+
+def convert_from_data(input, output):
+  ''' input has to be a GPUArray, and output has to be a VArray '''
+  assert isinstance(input, garray.GPUArray)
+  assert isinstance(output, VArray)
+
+  global_output = garray.empty(shape = output.shape, dtype = np.float32)
+  garray.convert_from_data(input, global_output)
+  output.copy_from_global(global_output)
+
+def fcforward(input, output, weight, bias, prev_conv):
+  state = get_state_from_distribution(output.slice_dim, False, ConvDataLayout, FCDataLayout)
+  if state == disw_b:
+    input.batch_communicate(input.rank, FCDataLayout.BATCH)
+  else:
+    input.global_communicate()
+
+  input_data = input.tmp_local_data
+  garray.matrixmult(input_data, weight.local_data, dest = output.local_data)
+  garray.copy_to(output.local_data + bias.local_data , output.local_data)
+
+def fcbackward(input, weight, grad, out_grad, weight_grad, prev_conv):
+  grad_propagate = False
+  weight_propagate = True
+  state = get_state_from_distribution(grad.slice_dim, False, ConvDataLayout, FCDataLayout)
+  
+  if state == disw_b:
+    if not hasattr(input, 'tmp_local_data'):
+      input.batch_communicate(input.rank, FCDataLayout.BATCH)
+   else:
+    if not hasattr(input, 'tmp_local_data'):
+      input.global_communicate()
+
+  if state == sidw_f:
+    grad_propagate = True
+ 
+  if not hasattr(out_grad, 'tmp_local_data'):
+    out_grad.tmp_local_data = garray.empty_like(input.tmp_local_data)
+  tmp_out_grad = out_grad.tmp_local_data
+
+  if state in [disw_b]:
+    if not hasattr(weight_grad, 'tmp_local_data'):
+      weight_grad.tmp_local_data = garray.empty_like(weight_grad.local_data)
+    tmp_weight_grad = weight_grad.tmp_local_data
+  else:
+    tmp_weight_grad = weight_grad.local_data
+    weight_propagate = False
+
+  garray.matrixmult(garray.tranpose(weight.local_data), grad.local_data, dest = tmp_out_grad)
+  garray.matrixmult(grad.local_data, garray.transpose(input.tmp_local_data), dest = tmp_weight_grad)
+
+  weight_grad.write(area = weight_grad.local_area, data = tmp_weight_grad, propagate = weight_propagate)
+  
 
 def softmax(input, output):
   state = get_state_from_distribution(output.slice_dim, False, ConvDataLayout, FCDataLayout)
@@ -235,7 +277,6 @@ def bconvolution(input, grad, filter, out_grad, image_y, image_x, output_size, p
   out_grad.write(area = input.tmp_local_area, data = tmp_out_grad, propagate = propagate)
 
 def wconvolution(input, grad, weight_grad, bias_grad, image_y, output_y, output_x, filter_size, padding, stride, channel):
-
   propagate = True
   filter_size_index = FilterLayout.HEIGHT
   r, c = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH

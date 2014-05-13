@@ -23,6 +23,11 @@ assert type(seed) == int
 random.seed(seed)
 np.random.seed(seed)
 
+# determine whether we should split the input before training
+INPUT_SEG = False
+# determine whether we should copy image data to gpu before training
+PREV_FILL_GPU = True
+
 class BatchData(object):
   def __init__(self, data, labels, epoch):
     self.data = data
@@ -154,7 +159,7 @@ class ImageNetDataProvider(DataProvider):
     self.batches = []
     index = 0
     while index < len(self.images):
-      if not multi_gpu:
+      if not multi_gpu or not INPUT_SEG:
         self.batches.append(image_index[index: index + self.batch_size])
       else:
         num_images = min(self.batch_size, len(image_index) - index)
@@ -243,7 +248,13 @@ class DummyDataProvider(DataProvider):
     self.batch_size = batch_size
 
   def get_next_batch(self):
-    batch_size = self.batch_size / num_gpu
+    if INPUT_SEG:
+      batch_size = self.batch_size / num_gpu
+      if rank == num_gpu - 1:
+        batch_size = self.batch_size - batch_size * (num_gpu -1)
+    else:
+      batch_size = self.batch_size
+
     data = np.ndarray((3, self.inner_size, self.inner_size, batch_size)).astype(np.float32) * 128
     label = [np.random.choice(self.output_size) for i in range(batch_size)]
     label = np.array(label).astype(np.float32)
@@ -264,7 +275,7 @@ class CifarDataProvider(DataProvider):
     img = data['data'] - self.batch_meta['data_mean']
     num_image = img.shape[-1]
     label = data['labels']
-    if multi_gpu:
+    if multi_gpu and INPUT_SEG:
       num_image = img.shape[-1] / num_gpu
       img = img[:, rank * num_image : (rank + 1) * num_image if rank != num_gpu - 1 else img.shape[-1]]
       label = label[rank * num_image : (rank + 1) * num_image if rank != num_gpu -1 else len(label)]
@@ -391,18 +402,17 @@ class ParallelDataProvider(DataProvider):
     batch_data = self._data_queue.get()
 
     self.curr_epoch = batch_data.epoch
-    if not self.multiview:
+    if not self.multiview and PREV_FILL_GPU:
       if self._gpu_batch is not None:
         self._gpu_batch.data.mem_free()
         del self._gpu_batch
-      if not multi_gpu:
-        batch_data.data = uniformed_array(batch_data.data, dtype = np.float32, to2dim = True)
-        batch_data.labels = uniformed_array(batch_data.labels, dtype = np.float32, slice_dim = None)
+      if not multi_gpu or not INPUT_SEG:
+        batch_data.data = garray.array(batch_data.data, dtype = np.float32, to2dim = True)
+        batch_data.labels = garray.array(batch_data.labels, dtype = np.float32)
       else:
-        # assemble batched splitted arrays to imaged splitted array
-        # a better way to do this is move this instructions to fprop of data layer
-        batch_data.data = arr.from_stripe(batch_data.data, slice_dim = (1, 2), axis = -1)
-        batch_data.labels = arr.from_stripe(batch_data.labels, slice_dim = None, axis = -1)
+        # batch_data.data has to gather everything up on each worker and copy to gpu
+        # TODO
+        pass
       self._gpu_batch = batch_data
     else:
       self._cpu_batch = batch_data
@@ -414,7 +424,8 @@ class ParallelDataProvider(DataProvider):
     if self._gpu_batch is None:
       self._fill_reserved_data()
 
-    if not self.multiview:
+    # the data has to be compete copy of image data on each worker
+    if not self.multiview and PREV_FILL_GPU:
       width = self._gpu_batch.data.shape[-1]
       gpu_data = self._gpu_batch.data
       gpu_labels = self._gpu_batch.labels
@@ -424,20 +435,19 @@ class ParallelDataProvider(DataProvider):
         width = width - self.index
         labels = gpu_labels[self.index:self.index + batch_size]
 
-        data = arr.partial_copy1(gpu_data, self.index, self.index+ width)
+        data = garray.partial_copy1(gpu_data, self.index, self.index+ width)
 
         self.index = 0
         self._fill_reserved_data()
       else:
         labels = gpu_labels[self.index:self.index + batch_size]
-        data = arr.partial_copy1(gpu_data,self.index, self.index + batch_size)
+        data = garray.partial_copy1(gpu_data, self.index, self.index + batch_size)
         self.index += batch_size
     else:
       channel, img_size, img_size, width = self._cpu_batch.data.shape
       cpu_data = self._cpu_batch.data
-      cpu_labels = slf._cpu_batch.labels
+      cpu_labels = self._cpu_batch.labels
       epoch = self._cpu_batch.epoch
-
 
       width /= self.num_view
       if self.index + batch_size >=  width:
@@ -450,7 +460,7 @@ class ParallelDataProvider(DataProvider):
 
       self.index = (self.index + batch_size) / width
       data = uniformed_array(np.require(data, requirements = 'C'), to2dim = True)
-      labels = uniformed_array(np.require(labels, requirements = 'C'), unique = False)
+      labels = uniformed_array(np.require(labels, requirements = 'C'), slice_dim = None)
 
     return BatchData(data, labels, epoch)
 

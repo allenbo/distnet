@@ -58,6 +58,28 @@ def transpose(mat, dest = None):
   
   return aux_operation.transpose(mat, dest)
 
+def fcforward(input, output, weight, bias, prev_conv):
+  if prev_conv:
+    real_input = convert_to_fc(input)
+  else:
+    real_input = input
+
+  matrixmult(weight, real_input, dest = output)
+  copy_to(output + bias, output)
+
+
+def fcbackward(input, weight, grad, out_grad, weight_grad, prev_conv):
+  matrixmult(transpose(weight), grad, dest = out_grad)
+  
+  if prev_conv:
+    copy_to(convert_to_conv(reshape_last(out_grad)), out_grad)
+    real_input = convert_to_fc(input)
+  else:
+    real_input = input
+
+  matrixmult(grad, transpose(real_input), dest = weight_grad)
+
+
 def softmax(input, output):
   max_rst = max(input, axis = 0)
   # call garray.__sub__ or varray.ndarray.__sub__, input and max are both 2D array

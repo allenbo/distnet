@@ -64,15 +64,17 @@ private:\
 
 
 // We will use 1024 threads per block, which requires cuda sm_2x or above.
-//#if __CUDA_ARCH__ >= 200
-//#warning __CUDA_ARCH__ is greater than 200
-//#define CAFFE_CUDA_NUM_THREADS (1024)
-//#else
-//#define CAFFE_CUDA_NUM_THREADS (512)
-//#endif
-
+#if __CUDA_ARCH__ >= 200
+#warning __CUDA_ARCH__ is greater than 200
 #define CAFFE_CUDA_NUM_THREADS (1024)
-#define MAX_BLOCK (1 << 31 - 1)
+#define MAX_BLOCK (1 << 16 - 1)
+#else
+#define CAFFE_CUDA_NUM_THREADS (512)
+#define MAX_BLOCK (1 << 16 - 1)
+#endif
+
+//#define CAFFE_CUDA_NUM_THREADS (1024)
+//#define MAX_BLOCK (1 << 16 - 1)
 
 
 

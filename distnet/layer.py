@@ -32,7 +32,6 @@ class Layer(object):
     self.output_grad = None
     self.neuron = None
     self.state = get_state(self.name)
-    #print self.name, self.state
 
   def disable_bprop(self):
     self.disable_bprop = True
@@ -50,13 +49,13 @@ class Layer(object):
     pass
 
   def init_output(self, fc = False):
-    if layer.type == 'data':
+    if self.type == 'data':
       self.state = self.next_layer.state
     slice_dim = get_output_distribution(self.state, not fc, ConvDataLayout, FCDataLayout)
     out_shape = self.get_output_shape()
     self.output = allocate(out_shape, slice_dim = slice_dim)
     self.output_grad = allocate(out_shape, slice_dim = slice_dim)
-    print self.name, type(self.output)
+    #print self.name, type(self.output), self.state#, self.output.local_data.shape
 
   def dump(self):
     attr = [att for att in dir(self) if not att.startswith('__')]
@@ -78,6 +77,9 @@ class DataLayer(Layer):
     assert False, 'Must be first layer!'
 
   def fprop(self, input, output, train=TRAIN):
+    # fprop on DataLayer will deal with the data convertion
+    # from garray to varray if multigpu is used
+    # transpose if caffe backend is used
     arr.convert_from_data(input, output)
 
     if PFout:
@@ -417,15 +419,7 @@ class FCLayer(WeightedLayer):
     return FCDataLayout.get_output_shape(self.outputSize, self.batch_size)
 
   def fprop(self, input, output, train=TRAIN):
-    if self.prev_conv:
-      self.input = arr.convert_to_fc(input)
-    else:
-      self.input = input
-    
-    arr.matrixmult(self.weight.wt, self.input,  dest = output)
-    # call garray.__add__ or varray.ndarray.__add__, output and self.bias.wt are both 2D array
-    arr.copy_to(output + self.bias.wt, output)
-    #output += self.bias.wt #output.add(self.bias.wt, dst = output, axis = 0)
+    arr.fcforward(input, output, self.weight.wt, self.bias.wt, self.prev_conv)
     if train == TEST:
       if self.dropRate > 0.0:
         output *= (1.0 - self.dropRate)
@@ -447,18 +441,9 @@ class FCLayer(WeightedLayer):
       arr.relu_compute_grad(grad, output, grad, 0)
     if self.dropRate > 0.0:
       arr.copy_to(grad * self.dropMask, grad)
-
-    # when weight is split by first dimension, transpose has to be dealt speicially, but not support now
-    tmp = arr.matrixmult(arr.transpose(self.weight.wt), grad, dest = outGrad)
-    if tmp is not outGrad:
-      arr.copy_to(tmp, outGrad)
     
-    arr.matrixmult(grad, arr.transpose(self.input), dest = self.weight.grad)
+    arr.fcbackward(input, self.weight.wt, grad, outGrad, self.weight.grad, self.prev_conv)
     self.bias.set_grad(arr.sum(grad, axis = 1))
-
-    if self.prev_conv:
-      arr.copy_to(arr.convert_to_conv(grad), grad)
-
 
 class SoftmaxLayer(Layer):
   def __init__(self, name, disable_bprop=False):
@@ -479,13 +464,6 @@ class SoftmaxLayer(Layer):
     return (self.outputSize, self.batch_size)
 
   def fprop(self, input, output, train=TRAIN):
-    #max = arr.max(input, axis = 0)
-    ## call garray.__sub__ or varray.ndarray.__sub__, input and max are both 2D array
-    #arr.copy_to(input - max, output)
-    #arr.iexp(output)
-    #sum = arr.sum(output, axis = 0)
-    ## call garray.__div__ or varray.ndarray.__div__, input and max are both 2D array
-    #arr.copy_to(output / sum, output)
     arr.softmax(input, output)
 
     if PFout:

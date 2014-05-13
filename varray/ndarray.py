@@ -804,7 +804,7 @@ def allocate_like(input):
   return VArray(array = None, unique = input.unique, slice_method = input.slice_method, slice_dim = input.slice_dim, shape = input.shape)
 
 
-def from_stripe(data, slice_dim, axis):
+def from_stripe(data, slice_dim, axis = None):
   '''
   Special function to transform arrays that read from disk to VArray
   Since we have multiple processes ongoing, which will read different sets of images from disk and
@@ -818,7 +818,8 @@ def from_stripe(data, slice_dim, axis):
   shape_len = np.array([len(s) for s in shape_list], dtype = np.int32)
 
   assert any(shape_len - shape_len[0]) == False, 'Shape must have same length'
-  assert axis == 0 or axis == len(data.shape) - 1
+  if axis is not None:
+    assert axis == 0 or axis == len(data.shape) - 1
 
   shape_sum = int(np.sum(np.array([x[axis] for x in shape_list])))
   if len(data.shape) == 1:
