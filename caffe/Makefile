@@ -20,7 +20,7 @@ caffe_wrap.cu: caffe.i Makefile
 	swig -python -threads -c++ -o $@ ${INCLUDES} $<
 
 %.o : %.cu Makefile
-	nvcc -arch=sm_20 -O3 -g -c -o $@ $<  ${NVCC_OPTS} ${CXX_FLAGS} ${INCLUDES} ${LIBRARYS} ${LINK_FLAGS}
+	nvcc -gencode=arch=compute_30,code=\"sm_30,compute_30\" -O3 -g -c -o $@ $<  ${NVCC_OPTS} ${CXX_FLAGS} ${INCLUDES} ${LIBRARYS} ${LINK_FLAGS}
 
 clean:
 	rm -f *.o *.so caffe_wrap.cu

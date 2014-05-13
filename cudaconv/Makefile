@@ -15,7 +15,7 @@ cudaconv2_wrap.cu: cudaconv2.i Makefile
 	swig -python -threads -c++ -o $@ ${INCLUDES} $<
 
 %.o : %.cu Makefile
-	nvcc -arch=sm_20 -O3 -g -c -o $@ $<  ${NVCC_OPTS} ${CXX_FLAGS} ${INCLUDES}
+	nvcc -arch=sm_30 -O3 -g -c -o $@ $<  ${NVCC_OPTS} ${CXX_FLAGS} ${INCLUDES}
 
 clean:
 	rm -f *.o *.so

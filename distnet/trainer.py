@@ -162,7 +162,7 @@ class Trainer:
           self.should_continue_training()):
       #if min_time < 1.55:
       #  util.dump_profile()
-      util.dump_profile()
+      #util.dump_profile()
       batch_start = time.time()
       st = time.time()
       train_data = self.train_dp.get_next_batch(self.batch_size)

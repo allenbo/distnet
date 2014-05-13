@@ -280,18 +280,18 @@ PROFILER = None
 
 import cProfile
 import yappi
-from mpi4py import MPI
-def enable_profile():
-  global PROFILER
-  if PROFILER is None:
-    yappi.start()
-    PROFILER = 1
-    #PROFILER = cProfile.Profile()
-    #PROFILER.enable()
-
-def dump_profile():
-  if PROFILER is None:
-    return
-
-  yappi.get_func_stats().save('./profile.%d' % MPI.COMM_WORLD.Get_rank(), 'pstat')
-  #PROFILER.dump_stats('./profile.%d' % MPI.COMM_WORLD.Get_rank())
+#from mpi4py import MPI
+#def enable_profile():
+#  global PROFILER
+#  if PROFILER is None:
+#    yappi.start()
+#    PROFILER = 1
+#    #PROFILER = cProfile.Profile()
+#    #PROFILER.enable()
+#
+#def dump_profile():
+#  if PROFILER is None:
+#    return
+#
+#  yappi.get_func_stats().save('./profile.%d' % MPI.COMM_WORLD.Get_rank(), 'pstat')
+#  #PROFILER.dump_stats('./profile.%d' % MPI.COMM_WORLD.Get_rank())

@@ -7,7 +7,7 @@ from distbase.cuda_base import stride_copy, stride_write, stride_write_sum, gpu_
 for i in range(3):
   shape = []
   for d in range(4):
-    shape.append(random.randint(10, 200))
+    shape.append(random.randint(10, 100))
     ha = np.random.randn(*shape).astype(np.float32)
 
     ga = gpuarray.to_gpu(ha)
