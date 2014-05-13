@@ -316,6 +316,7 @@ class VArray(object):
       else:
         #if req.id not in self.write_recv_cache:
         #  self.write_recv_cache[req.id] = garray.GPUArray(req.shape, dtype = np.float32)
+        #  print 'new gpuarray with', req, req.id
         #recv_data.append(self.write_recv_cache[req.id])
         recv_data.append(garray.GPUArray(req.shape, dtype = np.float32))
     self.communicate_remote(sub_data, recv_data)
@@ -462,7 +463,7 @@ class VArray(object):
     '''
     c = allocate_like(self)
     if isinstance(other, VArray):
-      if self.check_param(other) and other.shape == self.shape:
+      if self.check_param(other):
         c.local_data = self.local_data + other.local_data
         return c
       elif self.unique == False and other.unique == False:
@@ -513,31 +514,25 @@ class VArray(object):
       return c
 
   def __eq__(self, other):
-    assert self.check_param(other)
+    assert self.check_param(other) and self.shape == other.shape
     c = allocate_like(self)
     c.local_data = self.local_data == other.local_data
 
     return c
 
 
-  def sum(self):
+  def sum(self, axis = None):
     barrier()
-    local_sum = garray.sum(self.local_data)
+    local_sum = garray.sum(self.local_data, axis = axis)
     if not self.unique:
       return local_sum
     else:
-      global_sum = WORLD.allreduce(local_sum)
-      return global_sum
-
-  def max(self):
-    barrier()
-    local_max = garray.max(self.local_data)
-    if not self.unique:
-      return local_max
-    else:
-      global_max = WORLD.allreduce(local_max, op = max)
-      return global_max
-
+      if axis is None:
+        global_sum = WORLD.allreduce(local_sum)
+        return global_sum
+      elif axis == self.slice_dim:
+        pass
+        
   def global_communicate(self):
     self.tmp_local_area = Area.make_area(self.global_shape)
     if self.unique:

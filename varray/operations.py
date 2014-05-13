@@ -55,7 +55,6 @@ def matrixmult(x, y, dest = None):
     garray.matrixmult(x, y, dest.local_data)
     return dest
 
-
 def matrix_add(incr, grad ,alpha = 1.0, beta = 1.0):
   if len(incr.shape) == 2:
     garray.matrix_add(incr.local_data, grad.local_data, alpha = alpha, beta = beta)
@@ -78,16 +77,19 @@ def transpose(mat):
 def sumto(input, shape = None, axis = 0):
   return input.sumto(shape, axis)
 
+@deprecated
 def maxto(input, shape = None, axis = 0):
   return input.maxto(shape, axis)
 
-
+@deprecated
 def argmaxto(input, shape = None, axis = 0):
   return input.argmaxto(shape, axis = axis)
-  
 
-def sum(input):
+def sum(input, axis = None):
   return input.sum()
+
+def argmax(input, axis):
+  return input.max
 
 def exp(input):
   c = allocate_like(input)
@@ -101,11 +103,32 @@ def logreg_cost_col(output, label, cost):
   assert not any([output.unique, label.unique, cost.unique])
   garray.logreg_cost_col(output.local_data, label.local_data, cost.local_data)
 
-def max(input):
-  return input.max()
+def softmax(input, output):
+  state = get_state_from_distribution(output.slice_dim, False, ConvDataLayout, FCDataLayout)
+  if state == sisw:
+    input.global_communicate()
+    local_input = input.tmp_local_data
+  else:
+    local_input = input.local_data
+  local_output = output.local_data
+  max_rst = garray.max(local_input, axis = 0)
+  garray.copy_to(local_input - max_rst, local_output)
+  garray.iexp(local_output)
+  sum_rst = garray.sum(local_output, axis = 0)
+  garray.copy_to(output / sum_rst, output)
 
 def softmax_bprop(output, label, out_grad):
-  garray.softmax_bprop(output.local_data, label.local_data, out_grad.local_data)
+  state = get_state_from_distribution(output.slice_dim, False, ConvDataLayout, FCDataLayout)
+  if state == sisw:
+    if not has_attr(out_grad, 'tmp_local_data'):
+      out_grad.tmp_local_data = garray.empty_like(output.local_data)
+    tmp_out_grad = out_grad.tmp_local_data
+    garray.softmax_bprop(output.local_data, label.local_data, tmp_out_grad)
+    out_grad.write(area = out_grad.local_area, data = tmp_out_grad, propagate = False)
+  else:
+    # if softmax is disw_b, so is fc
+    local_input = input.local_data
+    garray.softmax_bprop(output.local_data, label.local_data, out_grad.local_data)
 
 def relu_activate(input, output, e):
   if len(input.local_shape) != 2:

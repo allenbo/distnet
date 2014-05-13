@@ -447,7 +447,7 @@ class FCLayer(WeightedLayer):
 
     # when weight is split by first dimension, transpose has to be dealt speicially, but not support now
     tmp = arr.matrixmult(arr.transpose(self.weight.wt), grad, dest = outGrad)
-    if tmp != outGrad:
+    if tmp is not outGrad:
       arr.copy_to(tmp, outGrad)
     
     arr.matrixmult(grad, arr.transpose(self.input), dest = self.weight.grad)
@@ -476,13 +476,14 @@ class SoftmaxLayer(Layer):
     return (self.outputSize, self.batch_size)
 
   def fprop(self, input, output, train=TRAIN):
-    max = garray.max(input, axis = 0)
-    # call garray.__sub__ or varray.ndarray.__sub__, input and max are both 2D array
-    arr.copy_to(input - max, output)
-    arr.iexp(output)
-    sum = arr.sum(output, axis = 0)
-    # call garray.__div__ or varray.ndarray.__div__, input and max are both 2D array
-    arr.copy_to(output / sum, output)
+    #max = arr.max(input, axis = 0)
+    ## call garray.__sub__ or varray.ndarray.__sub__, input and max are both 2D array
+    #arr.copy_to(input - max, output)
+    #arr.iexp(output)
+    #sum = arr.sum(output, axis = 0)
+    ## call garray.__div__ or varray.ndarray.__div__, input and max are both 2D array
+    #arr.copy_to(output / sum, output)
+    arr.softmax(input, output)
 
     if PFout:
       print_matrix(output, self.name)
@@ -493,7 +494,7 @@ class SoftmaxLayer(Layer):
     self.create_cost(self.batch_size)
 
   def logreg_cost(self, label, output):
-    maxid = garray.argmax(output, axis = 0)
+    maxid = arr.argmax(output, axis = 0)
     self.batchCorrect = arr.sum(label == maxid)
     assert np.isscalar(self.batchCorrect)
     arr.logreg_cost_col(output, label, self.cost)

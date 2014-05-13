@@ -2,6 +2,7 @@ from backend import cm_backend
 import aux_operation
 from aux_operation import sync_function, reshape_first, reshape_last
 import numpy as np
+from new_gpuarray import sum, max, iexp, copy_to
 
 
 convert_from_data = cm_backend.convert_from_data
@@ -56,3 +57,12 @@ def transpose(mat, dest = None):
     mat = reshape_last(mat)
   
   return aux_operation.transpose(mat, dest)
+
+def softmax(input, output):
+  max_rst = max(input, axis = 0)
+  # call garray.__sub__ or varray.ndarray.__sub__, input and max are both 2D array
+  copy_to(input - max_rst, output)
+  iexp(output)
+  sum_rst = sum(output, axis = 0)
+  # call garray.__div__ or varray.ndarray.__div__, input and max are both 2D array
+  copy_to(output / sum_rst, output)
