@@ -36,7 +36,10 @@ class FastNet(object):
       util.log_info('Attach %s to %s', layer.neuron.type, self.layers[-1].name)
     else:
       if self.layers:
+        prev_layer = self.layers[-1]
         layer.attach(self.layers[-1])
+        if prev_layer.type == 'data':
+          prev_layer.next_layer = layer
       self.layers.append(layer)
       util.log_info('Append: %s  [%s] : %s', layer.name, layer.type, layer.get_output_shape())
     return layer

@@ -50,11 +50,13 @@ class Layer(object):
     pass
 
   def init_output(self, fc = False):
+    if layer.type == 'data':
+      self.state = self.next_layer.state
     slice_dim = get_output_distribution(self.state, not fc, ConvDataLayout, FCDataLayout)
     out_shape = self.get_output_shape()
     self.output = allocate(out_shape, slice_dim = slice_dim)
     self.output_grad = allocate(out_shape, slice_dim = slice_dim)
-    #print self.name, type(self.output)
+    print self.name, type(self.output)
 
   def dump(self):
     attr = [att for att in dir(self) if not att.startswith('__')]
@@ -209,6 +211,7 @@ class ConvLayer(WeightedLayer):
     self.merge_neuron = True
 
   def attach(self, prev_layer):
+    self.prev_layer = prev_layer
     image_shape = prev_layer.get_output_shape()
     self.numColor = image_shape[ConvDataLayout.CHANNEL]
     self.img_size = image_shape[ConvDataLayout.HEIGHT]
