@@ -12,7 +12,6 @@ garray.device_init()
 '''
 fetch_local, fetch_remote, fetch, gather, merge
 '''
-random.seed(0)
 WORLD = MPI.COMM_WORLD
 MASTER = 0
 size = WORLD.Get_size()
@@ -44,39 +43,39 @@ def make_area_in(area):
 def make_local_area(va):
   return make_area_in(va.local_area)
 
-def make_corner_area(va, d, slice_dim):
+def make_corner_area(va, d, slice_dim, padding):
   assert 0 <= d <= 3
   row, col = slice_dim
   if d == 0:
     _from = va.area_dict[0]._from[:]
     _to = va.area_dict[0]._to[:]
 
-    _to[row] += 1
-    _to[col] += 1
+    _to[row] += padding
+    _to[col] += pading
     return Area(Point(*_from), Point(*_to))
   
   if d == 1:
     _from = va.area_dict[int(math.sqrt(size)) - 1]._from[:]
     _to = va.area_dict[int(math.sqrt(size)) - 1]._to[:]
 
-    _from[col] -= 1
-    _to[row] += 1
+    _from[col] -= padding
+    _to[row] += padding
     return Area(Point(*_from), Point(*_to))
 
   if d == 2:
     _from = va.area_dict[size - 1]._from[:]
     _to = va.area_dict[size - 1]._to[:]
 
-    _from[col] -= 1
-    _to[row] -= 1
+    _from[col] -= padding
+    _to[row] -= padding
     return Area(Point(*_from), Point(*_to))
 
   if d == 3:
     _from = va.area_dict[size - int(math.sqrt(size))]._from[:]
     _to = va.area_dict[size - int(math.sqrt(size))]._to[:]
 
-    _from[row] -= 1
-    _to[col] += 1
+    _from[row] -= padding
+    _to[col] += padding
     return Area(Point(*_from), Point(*_to))
 
 

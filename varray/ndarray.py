@@ -293,11 +293,8 @@ class VArray(object):
 
 
   def communicate_remote(self, sub_data, recv_data):
-    global send_data_size
-    global recv_data_size
     send_req = []
     recv_req = []
-    send_data_size += sum([int(np.prod(x.shape)) * 4 for x in sub_data if x is not None])
     for i,data in enumerate(sub_data):
       if i == self.rank or data is None:continue
       send_req.append(WORLD.Isend(tobuffer(data), dest = i))
@@ -308,23 +305,19 @@ class VArray(object):
 
     for req in send_req: req.wait()
     for req in recv_req: req.wait()
-    recv_data_size += sum([int(np.prod(x.shape)) * 4 for x in recv_data if x is not None])
-
-
 
   def write_remote(self, reqs, sub_data):
     recv_data = []
     req_list = reqs[:]
     req_list = WORLD.alltoall(req_list)
-    size = 0
     for req in req_list:
       if req is None:
         recv_data.append(None)
       else:
-        if req.id not in self.write_recv_cache:
-          self.write_recv_cache[req.id] = garray.GPUArray(req.shape, dtype = np.float32)
-        recv_data.append(self.write_recv_cache[req.id])
-        size += req.size
+        #if req.id not in self.write_recv_cache:
+        #  self.write_recv_cache[req.id] = garray.GPUArray(req.shape, dtype = np.float32)
+        #recv_data.append(self.write_recv_cache[req.id])
+        recv_data.append(garray.GPUArray(req.shape, dtype = np.float32))
     self.communicate_remote(sub_data, recv_data)
 
     for rank in range(self.world_size):
@@ -337,6 +330,7 @@ class VArray(object):
     start = time.time()
     if not propagate:
       sub_area = self.local_area & area
+      if sub_area is None: return
       sub_data = data.__getitem__(sub_area.offset(area._from).slice)
       self.write_local(sub_area, sub_data)
       return
