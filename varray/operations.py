@@ -209,6 +209,7 @@ def convolution(input, filter ,output, bias, image_y, output_y, output_x, paddin
   if state == disw_i:
     assert filter.unique == False
     input.image_communicate(slice_dim = (r, c), padding = padding, stride = stride, filter_size = filter.local_shape[filter_size_index], output_area = output.local_area)
+    padding = 0
   elif state == disw_b:
     input.batch_communicate(input.rank, ConvDataLayout.BATCH)
   elif state == sidw or state == sisw:
@@ -224,11 +225,12 @@ def convolution(input, filter ,output, bias, image_y, output_y, output_x, paddin
       filter.local_data,
       output.local_data,
       bias.local_data, 
-      image_y, output_y, output_x, 0, stride, channel, group)
+      image_y, output_y, output_x, padding, stride, channel, group)
 
 def bconvolution(input, grad, filter, out_grad, image_y, image_x, output_size, padding, stride, channel):
   assert isinstance(grad, VArray) and isinstance(filter, VArray) and isinstance(out_grad, VArray)
 
+  real_padding = padding
   propagate = True
   filter_size_index = FilterLayout.HEIGHT 
   r, c = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH
@@ -238,6 +240,7 @@ def bconvolution(input, grad, filter, out_grad, image_y, image_x, output_size, p
     assert filter.unique == False
     if not hasattr(input, 'tmp_local_data'):
       input.image_communicate(slice_dim = (r, c), padding = padding, stride = stride, filter_size = filter.local_shape[filter_size_index], output_area = output.local_area)
+    padding = 0
   elif state == disw_b:
     if not hasattr(input, 'tmp_local_data'):
       input.batch_communicate(input.rank, ConvDataLayout.BATCH)
@@ -262,9 +265,10 @@ def bconvolution(input, grad, filter, out_grad, image_y, image_x, output_size, p
       grad.local_data,
       filter.local_data,
       tmp_out_grad,
-      image_y, image_x, output_size, 0, stride, channel)
+      image_y, image_x, output_size, padding, stride, channel)
 
-  tmp_out_grad = input.unpad(tmp_out_grad, padding)
+  if state == disw_i:
+    tmp_out_grad = input.unpad(tmp_out_grad, real_padding)
   out_grad.write(area = input.tmp_local_area, data = tmp_out_grad, propagate = propagate)
 
 def wconvolution(input, grad, weight_grad, bias_grad, image_y, output_y, output_x, filter_size, padding, stride, channel):
@@ -277,6 +281,7 @@ def wconvolution(input, grad, weight_grad, bias_grad, image_y, output_y, output_
     assert weight_grad.unique == False
     if not hasattr(input, 'tmp_local_data'):
       input.image_communicate(slice_dim = (r, c), padding = padding, stride = stride, filter_size = filter.local_shape[filter_size_index], output_area = output.local_area)
+    padding = 0
   elif state == disw_b:
     if not hasattr(input, 'tmp_local_data'):
       input.batch_communicate(input.rank, ConvDataLayout.BATCH)
@@ -307,7 +312,7 @@ def wconvolution(input, grad, weight_grad, bias_grad, image_y, output_y, output_
       grad.local_data,
       tmp_weight_grad,
       tmp_bias_grad,
-      image_y, output_y, output_x, filter_size, 0, stride, channel)
+      image_y, output_y, output_x, filter_size, padding, stride, channel)
 
   weight_grad.write(area = weight_grad.global_area, data = tmp_weight_grad, propagate = propagate)
   bias_grad.write(area = bias_grad.global_area, data = tmp_bias_grad, propagate = propagate)
