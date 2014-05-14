@@ -47,5 +47,5 @@ net = parser.load_model(net.FastNet(image_shape), model)
 
 param_dict = globals()
 t = trainer.Trainer(**param_dict)
-util.enable_profile()
+#util.enable_profile()
 t.train(num_epoch)

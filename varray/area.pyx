@@ -89,6 +89,9 @@ cdef class Area(object):
   def __str__(self):
     return str(self._from) + ' to ' + str(self._to)
 
+  def cmp(self, other):
+    return self._from == other._from and self._to == other._to
+
   @property
   def id(self):
     return (tuple(self._from), tuple(self._to))

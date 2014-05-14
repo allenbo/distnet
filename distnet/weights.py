@@ -39,10 +39,10 @@ class Weight(object):
     self.unique = False if slice_dim is None else True
   
   def to_gpu(self, obj):
-    if isinstance(obj, garray.GPUArray):
-      return obj
-    if isinstance(obj, varray.VArray):
-      return obj
+    ##if isinstance(obj, garray.GPUArray):
+    ##  return obj
+    ##if isinstance(obj, varray.VArray):
+    ##  return obj
 
     assert obj.dtype == np.float32
     result = uniformed_array(obj, slice_dim = self.slice_dim)

@@ -687,6 +687,21 @@ _stride_copy_2_ = CompiledSource ('''
         input[i * stride2 + start2 + ( j * stride1 + start1) * ileading] = output[i + j * oleading];
     }''', 'stride_copy_2')
 
+_stride_copy_sum_2_ = CompiledSource ('''
+    __global__
+    void stride_copy_sum_2(float* input, float* output,
+      int start1, int stride1, int start2, int stride2,
+      int col, int row, int ileading, int oleading) {
+    
+      int i = blockIdx.x * blockDim.x + threadIdx.x;
+      int j = blockIdx.y * blockDim.y + threadIdx.y;
+
+      if (i >= col || j >= row ) return;
+
+      //output[i + j * oleading] += input[i * stride2 + start2 + ( j * stride1 + start1) * ileading];
+      input[i * stride2 + start2 + ( j * stride1 + start1) * ileading] += output[i + j * oleading];
+    }''', 'stride_copy_sum_2')
+
 
 _stride_copy_3_image_block_ = CompiledSource('''
     __global__
@@ -764,7 +779,7 @@ _stride_copy_4 = ElementwiseKernel(
     ''',
     name='stride_copy_4')
 
-_stride_copy_sum = ElementwiseKernel(
+_stride_copy_sum_4_ = ElementwiseKernel(
     '''float* input, float* data,
     int start1, int start2, int start3, int start4,
     int step1, int step2, int step3, int step4,
@@ -792,7 +807,7 @@ _stride_copy_sum = ElementwiseKernel(
 
     input[in_idx] += data[i];
     ''',
-    name='stride_copy_sum')
+    name='stride_copy_sum_4')
 
 _transpose_ = CompiledSource('''
   __global__
@@ -973,8 +988,6 @@ def add_vec_to_rows(mat, vec, dest=None, alpha=1.0, beta=1.0):
   block = (ELTWISE_X, ELTWISE_Y, 1)
   grid = (divup(mw, ELTWISE_X), divup(mh, ELTWISE_Y))
   leading = mat.strides[0] / 4
-  print mh, mw
-  print grid
   _add_vec_to_rows_(F(alpha), vec, F(beta), mat, dest, I(leading), I(mh), I(mw), block=block, grid=grid)
   
 
@@ -1456,7 +1469,23 @@ def stride_write(data, container, slices):
   else:
     assert False
 
-def stride_write_sum(data, container, slices):
+def stride_write_sum_2(data, container, slices):
+  assert len(data.strides) == 2 and len(container.strides) == 2
+  assert len(slices) == 2
+
+  start1, stop1, stride1 = slices[0].indices(container.shape[0])
+  start2, stop2, stride2 = slices[1].indices(container.shape[1])
+
+  h, w = data.shape
+  block = (ELTWISE_X, ELTWISE_Y, 1)
+  grid = (divup(w, ELTWISE_X), divup(h, ELTWISE_Y))
+  ileading, oleading = container.strides[0] / 4, data.strides[0] / 4
+  _stride_copy_sum_2_(container, data,
+      I(start1), I(stride1), I(start2), I(stride2),
+      I(w), I(h), I(ileading), I(oleading),
+      block = block, grid = grid)
+
+def stride_write_sum_4(data, container, slices):
   assert len(container.strides) == 4 and len(data.strides) == 4
   assert len(slices) == 4
 
@@ -1471,7 +1500,7 @@ def stride_write_sum(data, container, slices):
   ifleading, isleading, itleading = [x / 4 for x in container.strides[:3]]
   ofleading, osleading, otleading = [x / 4 for x in data.strides[:3]]
 
-  _stride_copy_sum(container, data,
+  _stride_copy_sum_4_(container, data,
       I(start1), I(start2), I(start3), I(start4),
       I(stride1), I(stride2), I(stride3), I(stride4),
       I(sz1), I(sz2), I(sz3), I(sz4),
@@ -1479,6 +1508,15 @@ def stride_write_sum(data, container, slices):
       I(ofleading), I(osleading), I(otleading),
       range=slice(0, np.prod(data.shape), 1))
 
+
+def stride_write_sum(data, container, slices):
+  if len(container.strides) == 4:
+    stride_write_sum_4(data, container, slices)
+  elif len(container.strides) == 2:
+    stride_write_sum_2(data, container, slices)
+  else:
+    assert False
+  
 @util.timed_fn
 def gpu_copy_to(x, y):
   if x is y:

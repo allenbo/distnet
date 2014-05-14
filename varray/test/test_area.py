@@ -4,6 +4,7 @@ pyximport.install()
 from varray.area import Area, Point
 import numpy as np
 import random
+import copy
 
 def make_shape(d):
   shape = []
@@ -88,6 +89,12 @@ def test_area():
     for j in range(i):
       assert a2._from[j] == p[j]
       assert a2._to[j] == a._to[j] - a._from[j] + p[j]
+
+    #cmp
+    b = copy.deepcopy(a)
+    print 'a:', a
+    print 'b:', b
+    assert a.cmp(b)
 
 
 if __name__ == '__main__':

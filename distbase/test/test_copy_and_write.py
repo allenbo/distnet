@@ -43,7 +43,7 @@ for i in range(3):
       assert (ha == ga.get()).all()
 
       # write_sum, only when the number of dimension is 4
-      if len(shape) == 4:
+      if len(shape) == 4 or len(shape) == 2:
         ha[slices] += hb
         stride_write_sum(gb, ga, slices)
         assert(ha == ga.get()).all()

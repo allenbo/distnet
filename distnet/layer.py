@@ -52,10 +52,11 @@ class Layer(object):
     if self.type == 'data':
       self.state = self.next_layer.state
     slice_dim = get_output_distribution(self.state, not fc, ConvDataLayout, FCDataLayout)
+    self.slice_dim = slice_dim
     out_shape = self.get_output_shape()
     self.output = allocate(out_shape, slice_dim = slice_dim)
     self.output_grad = allocate(out_shape, slice_dim = slice_dim)
-    #print self.name, type(self.output), self.state#, self.output.local_data.shape
+    #print self.name, type(self.output), self.state, self.output.local_data.shape
 
   def dump(self):
     attr = [att for att in dir(self) if not att.startswith('__')]
@@ -425,9 +426,9 @@ class FCLayer(WeightedLayer):
         output *= (1.0 - self.dropRate)
     else:
       if self.dropRate > 0.0:
-        self.dropMask = uniformed_array(np.random.uniform(0, 1, output.size).astype(np.float32).reshape(output.shape), slice_dim = None)
+        self.dropMask = uniformed_array(np.random.uniform(0, 1,
+          output.size).astype(np.float32).reshape(output.shape), slice_dim = self.slice_dim)
         arr.bigger_than_scalar(self.dropMask, self.dropRate)
-        # call garray.__mul__ or varra.ndarray.__mul__, output and self.dropMask are both 2D array
         arr.copy_to(output * self.dropMask, output)
 
     if self.neuron == 'relu':
@@ -442,8 +443,7 @@ class FCLayer(WeightedLayer):
     if self.dropRate > 0.0:
       arr.copy_to(grad * self.dropMask, grad)
     
-    arr.fcbackward(input, self.weight.wt, grad, outGrad, self.weight.grad, self.prev_conv)
-    self.bias.set_grad(arr.sum(grad, axis = 1))
+    arr.fcbackward(input, self.weight.wt, grad, outGrad, self.weight.grad, self.bias.grad, self.prev_conv)
 
 class SoftmaxLayer(Layer):
   def __init__(self, name, disable_bprop=False):
@@ -455,10 +455,14 @@ class SoftmaxLayer(Layer):
     self.inputSize, self.batch_size = int(np.prod(input_shape[:-1])), input_shape[-1]
     self.outputSize = self.inputSize
     self.inputShape = input_shape
+    self.slice_dim = get_output_distribution(self.state, False, ConvDataLayout, FCDataLayout)
     self.create_cost(self.batch_size)
 
+
   def create_cost(self, size):
-    self.cost = allocate((size, 1), slice_dim = None)
+    if size < 0:
+      return
+    self.cost = allocate((size, 1), slice_dim = self.slice_dim)
 
   def get_output_shape(self):
     return (self.outputSize, self.batch_size)
@@ -469,14 +473,13 @@ class SoftmaxLayer(Layer):
     if PFout:
       print_matrix(output, self.name)
 
-
   def change_batch_size(self, batch_size):
     Layer.change_batch_size(self, batch_size)
     self.create_cost(self.batch_size)
 
   def logreg_cost(self, label, output):
     maxid = arr.argmax(output, axis = 0)
-    self.batchCorrect = arr.sum(label == maxid)
+    self.batchCorrect = arr.sum(maxid == label)
     assert np.isscalar(self.batchCorrect)
     arr.logreg_cost_col(output, label, self.cost)
 

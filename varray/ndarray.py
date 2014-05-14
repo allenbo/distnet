@@ -330,6 +330,7 @@ class VArray(object):
     barrier()
     start = time.time()
     if not propagate:
+      if data is self.local_data: return
       sub_area = self.local_area & area
       if sub_area is None: return
       sub_data = data.__getitem__(sub_area.offset(area._from).slice)
@@ -514,24 +515,27 @@ class VArray(object):
       return c
 
   def __eq__(self, other):
-    assert self.check_param(other) and self.shape == other.shape
     c = allocate_like(self)
-    c.local_data = self.local_data == other.local_data
+    if isinstance(other, garray.GPUArray):
+      if self.unique == False:  
+        assert other.shape == self.local_shape
+        c.local_data = self.local_data == other
+        return c
+      else:
+        c.local_data = self.local_shape == other[self.local_area.slice]
+      return c
+    else:
+      assert False
 
-    return c
 
-
-  def sum(self, axis = None):
-    barrier()
-    local_sum = garray.sum(self.local_data, axis = axis)
+  def sum(self):
+    local_sum = garray.sum(self.local_data)
     if not self.unique:
       return local_sum
     else:
-      if axis is None:
-        global_sum = WORLD.allreduce(local_sum)
-        return global_sum
-      elif axis == self.slice_dim:
-        pass
+      global_sum = WORLD.allreduce(local_sum)
+      return global_sum
+
         
   def global_communicate(self):
     self.tmp_local_area = Area.make_area(self.global_shape)
@@ -559,30 +563,33 @@ class VArray(object):
   def image_communicate(self, slice_dim, stride, filter_size, padding = 0, output_area = None):
     assert padding <= 0, str(padding)
     r, c = slice_dim
-    half_filter_size = (filter_size - 1) /2
-  
-    from_point = output_area._from
-    to_point = output_area._to
-
-    row_begin_centroid = from_point[r] * stride + padding + half_filter_size
-    row_end_centroid = to_point[r] * stride + padding + half_filter_size
-    col_begin_centroid = from_point[c] * stride + padding + half_filter_size
-    col_end_centroid = to_point[c] * stride + padding + half_filter_size
-
-    row_begin = max(row_begin_centroid - half_filter_size, 0)
-    row_end = min(row_end_centroid + half_filter_size, self.global_shape[r] - 1)
-    col_begin = max(col_begin_centroid - half_filter_size, 0)
-    col_end = min(col_end_centroid + half_filter_size, self.global_shape[c] - 1)
+    if filter_size != 0:
+      half_filter_size = (filter_size - 1) /2
     
-    _from = [0] * len(self.global_shape)
-    _to = [x - 1 for x in self.global_shape]
+      from_point = output_area._from
+      to_point = output_area._to
 
-    _from[r] = row_begin
-    _to[r] = row_end
-    _from[c] = col_begin
-    _to[c] = col_end
+      row_begin_centroid = from_point[r] * stride + padding + half_filter_size
+      row_end_centroid = to_point[r] * stride + padding + half_filter_size
+      col_begin_centroid = from_point[c] * stride + padding + half_filter_size
+      col_end_centroid = to_point[c] * stride + padding + half_filter_size
 
-    self.tmp_local_area = Area(Point(*_from), Point(*_to))
+      row_begin = max(row_begin_centroid - half_filter_size, 0)
+      row_end = min(row_end_centroid + half_filter_size, self.global_shape[r] - 1)
+      col_begin = max(col_begin_centroid - half_filter_size, 0)
+      col_end = min(col_end_centroid + half_filter_size, self.global_shape[c] - 1)
+      
+      _from = [0] * len(self.global_shape)
+      _to = [x - 1 for x in self.global_shape]
+
+      _from[r] = row_begin
+      _to[r] = row_end
+      _from[c] = col_begin
+      _to[c] = col_end
+      self.tmp_local_area = Area(Point(*_from), Point(*_to))
+    else:
+      self.tmp_local_area = copy.deepcopy(output_area)
+
     self.tmp_local_data = self.fetch(self.tmp_local_area, padding = padding, slice_dim = slice_dim)
 
   def local_patch(self, data):
@@ -749,7 +756,8 @@ class VArray(object):
   def get(self):
     if not self.unique:
       return self.local_data.get()
-    assert False
+    else:
+      return self.fetch(self.global_area).get()
 
   def __getitem__(self, key):
     if not self.unique:
