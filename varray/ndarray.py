@@ -327,7 +327,7 @@ class VArray(object):
       else:
         self.write_local(req_list[rank], recv_data[rank], acc = True)
 
-  def write(self, area, data, propagate = True):
+  def write(self, area, data, propagate = True, debug = False):
     barrier()
     start = time.time()
     if not propagate:
@@ -362,6 +362,9 @@ class VArray(object):
         else:
           reqs[rank] = sub_area
           local_subs[rank] = sub_data
+    if debug:
+      for i in range(self.world_size):
+        print i, reqs[i]
     self.write_remote(reqs, local_subs)
 
   def merge(self, subs, area, padding = 0, slice_dim = None):
@@ -675,11 +678,11 @@ class VArray(object):
     else:
       new_shape[col] -= padding
 
-    if debug:
-      print u, d, l, r
-      print new_shape
-      print new_area
-      print new_area.offset(old_area._from).slice
+    #if debug:
+    #  print u, d, l, r
+    #  print new_shape
+    #  print new_area
+    #  print new_area.offset(old_area._from).slice
 
 
     if u or d or l or r:

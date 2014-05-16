@@ -130,7 +130,16 @@ def test_write():
         va.write(chunk_area, chunk_data, propagate = False)
         array[chunk_area.slice] = chunk_data.get()
         assert (array[va.local_area.slice] == va.local_data.get()).all()
-        
+  # create two different varray    
+  shape = tuple(make_shape(4))
+  array = np.ones(shape).astype(np.float32)
+
+  va = VArray(array * 2, unique = True, slice_method = DistMethod.Square, slice_dim = (1, 2), local = False)
+  vb = VArray(array, unique = True, slice_method = DistMethod.Stripe, slice_dim = 3, local = False)
+  vb.fill(0)
+  vb.write(area = va.local_area, data = va.local_data, propagate = True, debug = True)
+  assert (vb.local_data.get() == (array[vb.local_area.slice] * 2)).all()
+
 if __name__ == '__main__':
   test_write_local()
   test_write_remote()

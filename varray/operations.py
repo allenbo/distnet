@@ -37,14 +37,7 @@ def bigger_than_scalar(input, scalar):
 
 
 def matrix_add(incr, grad ,alpha = 1.0, beta = 1.0):
-  if len(incr.shape) == 2:
     garray.matrix_add(incr.local_data, grad.local_data, alpha = alpha, beta = beta)
-  else:
-    old_shape = incr.local_data.shape
-    incr.local_data = garray.reshape_last(incr.local_data)
-    garray.matrix_add(incr.local_data, garray.reshape_last(grad.local_data),
-        alpha = alpha, beta = beta)
-    incr.local_data = incr.local_data.reshape(old_shape)
 
 def sum(input, axis = None):
   ''' This function is used when getting the batch correctness '''
@@ -213,8 +206,6 @@ def tanh_compute_grad(grad, output, out_grad, a, b):
   garray.tanh_compute_grad(grad.local_data, output.local_data, out_grad.local_data, a, b)
 
 def convolution(input, filter ,output, bias, image_y, output_y, output_x, padding, stride, channel, group):
-  assert isinstance(input, VArray) and isinstance(filter, VArray) and isinstance(output, VArray)
-
   filter_size_index = FilterLayout.HEIGHT 
   r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
   state = get_state_from_distribution(output.slice_dim, True, ConvDataLayout, FCDataLayout)
@@ -249,8 +240,6 @@ def convolution(input, filter ,output, bias, image_y, output_y, output_x, paddin
       image_y, output_y, output_x, padding, stride, channel, group)
 
 def bconvolution(input, grad, filter, out_grad, image_y, image_x, output_size, padding, stride, channel):
-  assert isinstance(grad, VArray) and isinstance(filter, VArray) and isinstance(out_grad, VArray)
-
   real_padding = padding
   propagate = True
   r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
@@ -299,7 +288,8 @@ def bconvolution(input, grad, filter, out_grad, image_y, image_x, output_size, p
   if state == disw_i:
     tmp_out_grad = input.unpad(tmp_out_grad, real_padding, tmp_out_grad.shape, input.tmp_local_area,
         slice_dim = (r, c), debug = DEBUG)
-  out_grad.write(area = input.tmp_local_area, data = tmp_out_grad, propagate = propagate)
+  out_grad.fill(0)
+  out_grad.write(area = input.tmp_local_area, data = tmp_out_grad, propagate = propagate, debug = DEBUG)
 
 def wconvolution(input, grad, weight_grad, bias_grad, image_y, output_y, output_x, filter_size, padding, stride, channel):
   propagate = True
@@ -356,6 +346,7 @@ def wconvolution(input, grad, weight_grad, bias_grad, image_y, output_y, output_
   if DEBUG:
     print 'area.shape', weight_grad.global_area.shape
     print 'data.shape', tmp_weight_grad.shape
+    print 'propagate:', propagate
   weight_grad.write(area = weight_grad.global_area, data = tmp_weight_grad, propagate = propagate)
   bias_grad.write(area = bias_grad.global_area, data = tmp_bias_grad, propagate = propagate)
 
@@ -434,6 +425,7 @@ def maxundo(input, grad, output, out_grad, pool_size, start, stride, output_y, o
       tmp_out_grad,
       pool_size, start, stride, output_y, output_x, input_y)
 
+  out_grad.fill(0)
   out_grad.write(data = tmp_out_grad, area = input.tmp_local_area, propagate = propagate)
 
 def avgpool(input, output, channel, pool_size, start, stride, input_y, output_y, output_x):
@@ -510,6 +502,7 @@ def avgundo(input, grad, out_grad, pool_size, start, stride, output_y, output_x,
       tmp_out_grad,
       pool_size, start, stride, output_y, output_x, image_y, image_x)
 
+  out_grad.fill(0)
   out_grad.write(data = tmp_out_grad, area = input.tmp_local_area, propagate = propagate)
 
 def rnorm(input, denom, output, channel, size, image_y, scalar, pow):
@@ -620,6 +613,7 @@ def rnormundo(grad, denom, input, output, out_grad, channel, size, image_y, scal
   
   if state == disw_i and propagate:
     tmp_out_grad = output.local_patch(tmp_out_grad)
+  out_grad.fill(0)
   out_grad.write(data = tmp_out_grad, area = output.local_area, propagate = propagate)
 
 def rnormcrossmap(input, denom, output, channel, size,image_y, scalar, pow, blocked):
@@ -728,4 +722,5 @@ def rnormcrossmapundo(grad, denom, input, output, out_grad, channel, size, image
 
   if state == sidw and propagate:
     tmp_out_grad = output.local_path(tmp_out_grad)
+  out_grad.fill(0)
   out_grad.write(data = tmp_out_grad, area = input.tmp_local_area, propagate = propagate)

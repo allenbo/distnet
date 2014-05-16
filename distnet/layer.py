@@ -14,7 +14,7 @@ PFout = False
 PBout = False
 TEST = 0
 TRAIN = 1
-OUTINDEX = 1
+OUTINDEX = 3
 
 def col_rand(shape, dtype):
   return np.require(np.random.rand(*shape), dtype=dtype, requirements='C')
@@ -252,8 +252,8 @@ class ConvLayer(WeightedLayer):
     if self.neuron == 'relu':
       arr.relu_activate(output, output, 0)
 
-    #self._printout_forward(output)
-    self._printout_forward(self.weight.wt)
+    self._printout_forward(output)
+    #self._printout_forward(self.weight.wt)
     #self._printout_forward(self.bias.wt)
 
   def bprop(self, grad, input, output, outGrad):
@@ -270,7 +270,8 @@ class ConvLayer(WeightedLayer):
     arr.wconvolution(input, grad, self.weight.grad, self.bias.grad, self.img_size, self.outputSize,
         self.outputSize, self.filterSize, -self.padding, self.stride, self.numColor)
     
-    self._printout_backward((self.weight.grad, outGrad))
+    #self._printout_backward((self.bias.grad, self.weight.grad, outGrad))
+    self._printout_backward([])
 
 class MaxPoolLayer(Layer):
   def __init__(self, name, poolSize=2, stride=2, start=0, disable_bprop=False):

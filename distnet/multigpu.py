@@ -16,7 +16,7 @@ if os.environ.get('MULTIGPU', 'no') == 'yes':
   import socket
   print arr.rank, socket.gethostname()
   garray.device_init(arr.rank)
-  dist_file = 'distribution/strategy'
+  dist_file = 'distribution/cifar_mix_strategy'
   strategy = util.load(dist_file)
 else:
   import garray as arr
