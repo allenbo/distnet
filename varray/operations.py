@@ -262,7 +262,8 @@ def bconvolution(input, grad, filter, out_grad, image_y, image_x, output_size, p
     
   input_data = input.tmp_local_data
 
-  out_grad.tmp_local_data = garray.empty_like(input_data)
+  if not hasattr(out_grad, 'tmp_local_data') or out_grad.tmp_local_data.shape != input_data.shape:
+    out_grad.tmp_local_data = garray.empty_like(input_data)
   tmp_out_grad = out_grad.tmp_local_data
 
   image_y = input_data.shape[r]
