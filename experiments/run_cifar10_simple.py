@@ -10,7 +10,7 @@ test_id = 'cifar-test'
 
 data_dir = '/ssd/nn-data/cifar-10.old/'
 checkpoint_dir = 'checkpoint/'
-param_file = 'config/cifar-13pct.cfg'
+param_file = 'config/cifar-18pct.cfg'
 
 train_range = range(1, 41) #1,2,3,....,40
 test_range = range(41, 49) #41, 42, ..., 48

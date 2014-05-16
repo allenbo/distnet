@@ -267,7 +267,7 @@ class CudaconvNetBuilder(FastNetBuilder):
     pow = Builder.set_val(ld,'pow')
     size = Builder.set_val(ld, 'size')
     scale = Builder.set_val(ld, 'scale')
-    scale = scale * size ** 2
+    #scale = scale * size ** 2
     return ResponseNormLayer(name, pow, size, scale)
 
   def crm_layer(self, ld):
@@ -275,7 +275,7 @@ class CudaconvNetBuilder(FastNetBuilder):
     pow = Builder.set_val(ld, 'pow')
     size = Builder.set_val(ld, 'size')
     scale = Builder.set_val(ld, 'scale')
-    scale = scale * size
+    #scale = scale * size
     blocked = bool(Builder.set_val(ld, 'blocked', default = 0))
     return CrossMapResponseNormLayer(name, pow, size, scale, blocked)
   

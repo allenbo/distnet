@@ -262,8 +262,7 @@ def bconvolution(input, grad, filter, out_grad, image_y, image_x, output_size, p
     
   input_data = input.tmp_local_data
 
-  if not hasattr(out_grad, 'tmp_local_data'):
-    out_grad.tmp_local_data = garray.empty_like(input_data)
+  out_grad.tmp_local_data = garray.empty_like(input_data)
   tmp_out_grad = out_grad.tmp_local_data
 
   image_y = input_data.shape[r]
@@ -433,7 +432,6 @@ def avgpool(input, output, channel, pool_size, start, stride, input_y, output_y,
   state = get_state_from_distribution(output.slice_dim, True, ConvDataLayout, FCDataLayout)
   
   if state == disw_i:
-    assert filter.unique == False
     input.image_communicate(slice_dim = (r, c), stride = stride, filter_size = pool_size, output_area = output.local_area)
   elif state == disw_b:
     input.batch_communicate(input.rank, ConvDataLayout.BATCH)
@@ -463,7 +461,7 @@ def avgpool(input, output, channel, pool_size, start, stride, input_y, output_y,
 def avgundo(input, grad, out_grad, pool_size, start, stride, output_y, output_x, image_y, image_x):
   propagate = True
   r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
-  state = get_state_from_distribution(output.slice_dim, True, ConvDataLayout, FCDataLayout)
+  state = get_state_from_distribution(grad.slice_dim, True, ConvDataLayout, FCDataLayout)
 
   if state == disw_i:
     if not hasattr(input, 'tmp_local_data'):
@@ -489,11 +487,12 @@ def avgundo(input, grad, out_grad, pool_size, start, stride, output_y, output_x,
   output_x = grad.local_data.shape[c]
   image_y = input_data.shape[r]
   image_x = input_data.shape[c]
+  channel = input_data.shape[ch]
 
   if DEBUG:
     print '------ in avgundo ------'
     print 'input.shape', input_data.shape
-    print 'grad.shape', grad.local_data
+    print 'grad.shape', grad.local_data.shape
     print 'out_grad.shape', tmp_out_grad.shape
     print 'channel:', channel
   garray.avgundo(
@@ -510,7 +509,7 @@ def rnorm(input, denom, output, channel, size, image_y, scalar, pow):
   state = get_state_from_distribution(output.slice_dim, True, ConvDataLayout, FCDataLayout)
 
   if state == disw_i:
-    input.image_communicate(slice_dim = (r, c), stride = stride, filter_size = pool_size, output_area = output.local_area)
+    input.image_communicate(slice_dim = (r, c), stride = 1, filter_size = size, output_area = output.local_area)
   elif state == disw_b:
     input.batch_communicate(input.rank, ConvDataLayout.BATCH)
   elif state == sisw:
@@ -520,7 +519,7 @@ def rnorm(input, denom, output, channel, size, image_y, scalar, pow):
 
   input_data = input.tmp_local_data
 
-  if input.tmp_local_are.cmp(denom.local_area):
+  if input.tmp_local_area.cmp(denom.local_area):
     denom.tmp_local_data = denom.local_data
     output.tmp_local_data = output.local_data
   else:

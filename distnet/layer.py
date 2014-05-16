@@ -56,7 +56,7 @@ class Layer(object):
   def _printout_forward(self, obj):
     if PFout and self.index == OUTINDEX:
       obj.printout(self.name)
-      #sys.exit(-1)
+      sys.exit(-1)
 
   def _printout_backward(self, obj_list):
     if PBout and self.index == OUTINDEX:
@@ -314,14 +314,13 @@ class AvgPoolLayer(Layer):
 
   def attach(self, prev):
     image_shape = prev.get_output_shape()
-    self.numColor = image_shpae[ConvDataLayout.CHANNEL]
+    self.numColor = image_shape[ConvDataLayout.CHANNEL]
     self.img_size = image_shape[ConvDataLayout.HEIGHT]
     self.batch_size = image_shape[ConvDataLayout.BATCH]
     self.outputSize = divup(self.img_size - self.poolSize - self.start, self.stride) + 1
 
   def get_output_shape(self):
     return ConvDataLayout.get_output_shape(self.outputSize, self.outputSize, self.numColor, self.batch_size)
-
 
   def fprop(self, input, output, train=TRAIN):
     arr.avgpool(input, output, self.numColor, self.poolSize, self.start, self.stride,

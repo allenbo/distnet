@@ -321,8 +321,15 @@ if __name__ == '__main__':
   #states = [sidw] * (len(model) - 6) + [sisw] * 6
   # batch for imagenet
   #states = [disw_b] * (len(model) - 6) + [sisw] * 6
-  # mix for cifar
-  states = [disw_b] * 3 + [disw_i] * 3 + [sisw] * 2
+  # mix for cifar, batch-image
+  #states = [disw_b] * 3 + [disw_i] * 3 + [sisw] * 2
+  # mix for cifar, image-batch
+  #states = [disw_i] * 3 + [disw_b] * 3 + [sisw] * 2
+  # mix for cifar, 18 batch-image-batch
+  #states = [disw_b] * 4 + [disw_i] * 4 + [disw_b] * 3 + [sisw] * 2
+  # mix for cifar, 18 image-batch-image
+  states = [disw_i] * 4 + [disw_b] * 4 + [disw_i] * 3 + [sisw] * 2
+
   strategy = {}
   for i, layer in enumerate(model):
     strategy[layer['name']] = states[i]
