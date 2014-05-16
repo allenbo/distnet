@@ -10,6 +10,8 @@ from pycuda import driver
 from distbase.state import *
 from garray import ConvDataLayout, FCDataLayout, FilterLayout, WeightLayout
 
+DEBUG = False
+
 def copy_to(input, output):
   if output.unique:
     if not input.unique:
@@ -114,7 +116,13 @@ def fcbackward(input, weight, grad, out_grad, weight_grad, bias_grad, prev_conv)
       out_grad.tmp_local_data = garray.empty_like(input.tmp_local_data)
     tmp_out_grad = out_grad.tmp_local_data
   else:
-    tmp_out_grad = out_grad.local_data
+    if input.tmp_local_area.cmp(out_grad.local_area):
+      tmp_out_grad = out_grad.local_data
+    else:
+      if not hasattr(out_grad, 'tmp_local_data'):
+        out_grad.tmp_local_data = garray.empty_like(input.tmp_local_data)
+      tmp_out_grad = out_grad.tmp_local_data
+      
 
   if state in [disw_b]:
     if not hasattr(weight_grad, 'tmp_local_data'):
@@ -124,11 +132,16 @@ def fcbackward(input, weight, grad, out_grad, weight_grad, bias_grad, prev_conv)
     tmp_weight_grad = weight_grad.local_data
     weight_propagate = False
 
+  if DEBUG:
+    print '------ in fcbackward ------'
+    print 'weight.shape', weight.local_data.shape
+    print 'grad.shape', grad.local_data.shape
+    print 'out_grad.shape', tmp_out_grad.shape
   garray.matrixmult(garray.transpose(weight.local_data), grad.local_data, dest = tmp_out_grad)
   garray.matrixmult(grad.local_data, garray.transpose(input.tmp_local_data), dest = tmp_weight_grad)
 
   weight_grad.write(area = weight_grad.local_area, data = tmp_weight_grad, propagate = weight_propagate)
-  out_grad.write(area = out_grad.global_area, data = tmp_out_grad, propagate = grad_propagate)
+  out_grad.write(area = input.tmp_local_area, data = tmp_out_grad, propagate = grad_propagate)
 
   garray.copy_to(garray.sum(grad.local_data, axis = 1), bias_grad.local_data)
   
@@ -203,7 +216,7 @@ def convolution(input, filter ,output, bias, image_y, output_y, output_x, paddin
   assert isinstance(input, VArray) and isinstance(filter, VArray) and isinstance(output, VArray)
 
   filter_size_index = FilterLayout.HEIGHT 
-  r, c = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH
+  r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
   state = get_state_from_distribution(output.slice_dim, True, ConvDataLayout, FCDataLayout)
 
   if state == disw_i:
@@ -219,6 +232,14 @@ def convolution(input, filter ,output, bias, image_y, output_y, output_x, paddin
   image_y = input_data.shape[r]
   output_y = output.local_shape[r]
   output_x = output.local_shape[c]
+  channel = input_data.shape[ch]
+
+  if DEBUG:
+    print '------ in convolution ------'
+    print 'input.shape', input_data.shape
+    print 'filter.shape', filter.local_data.shape
+    print 'output.shape', output.local_data.shape
+    print 'padding:',padding, 'stride:', stride, 'channel:', channel
 
   garray.convolution(
       input_data,
@@ -232,8 +253,8 @@ def bconvolution(input, grad, filter, out_grad, image_y, image_x, output_size, p
 
   real_padding = padding
   propagate = True
+  r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
   filter_size_index = FilterLayout.HEIGHT 
-  r, c = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH
   state = get_state_from_distribution(grad.slice_dim, True, ConvDataLayout, FCDataLayout)
 
   if state == disw_i:
@@ -259,22 +280,31 @@ def bconvolution(input, grad, filter, out_grad, image_y, image_x, output_size, p
   image_y = input_data.shape[r]
   image_x = input_data.shape[c]
   output_size = grad.local_shape[r]
+  channel = input_data.shape[ch]
 
+  if DEBUG:
+    print '------ in bconvolution ------'
+    print 'input.shape', input_data.shape
+    print 'grad.shape', grad.local_data.shape
+    print 'filter.shape', filter.local_data.shape
+    print 'out_grad.shape', tmp_out_grad.shape
+    print 'padding:', padding, 'channel:', channel
   garray.bconvolution(
       input_data,
       grad.local_data,
       filter.local_data,
       tmp_out_grad,
       image_y, image_x, output_size, padding, stride, channel)
-
+  
   if state == disw_i:
-    tmp_out_grad = input.unpad(tmp_out_grad, real_padding)
+    tmp_out_grad = input.unpad(tmp_out_grad, real_padding, tmp_out_grad.shape, input.tmp_local_area,
+        slice_dim = (r, c), debug = DEBUG)
   out_grad.write(area = input.tmp_local_area, data = tmp_out_grad, propagate = propagate)
 
 def wconvolution(input, grad, weight_grad, bias_grad, image_y, output_y, output_x, filter_size, padding, stride, channel):
   propagate = True
   filter_size_index = FilterLayout.HEIGHT
-  r, c = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH
+  r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
   state = get_state_from_distribution(grad.slice_dim, True, ConvDataLayout, FCDataLayout)
 
   if state == disw_i:
@@ -292,9 +322,10 @@ def wconvolution(input, grad, weight_grad, bias_grad, image_y, output_y, output_
   input_data = input.tmp_local_data
 
   if state in [disw_i, disw_b]:
-    if not hasattr(weight_grad, 'tmp_local_data'):
-      weight_grad.tmp_local_data = garray.GPUArray(weight_grad.shape, dtype = weight_grad.dtype)
-    tmp_weight_grad = weight_grad.tmp_local_data
+    #if not hasattr(weight_grad, 'tmp_local_data'):
+    #  weight_grad.tmp_local_data = garray.GPUArray(weight_grad.shape, dtype = weight_grad.dtype)
+    #tmp_weight_grad = weight_grad.tmp_local_data
+    tmp_weight_grad = weight_grad.local_data
     if not hasattr(bias_grad, 'tmp_local_data'):
       bias_grad.tmp_local_data = garray.GPUArray(bias_grad.shape, dtype = bias_grad.dtype)
     tmp_bias_grad = bias_grad.tmp_local_data
@@ -306,19 +337,30 @@ def wconvolution(input, grad, weight_grad, bias_grad, image_y, output_y, output_
   image_y = input_data.shape[r]
   output_y = grad.local_shape[r]
   output_x = grad.local_shape[c]
+  channel = input_data.shape[ch]
 
+  if DEBUG:
+    print '------ in wconvolution ------'
+    print 'input.shape', input_data.shape
+    print 'grad.shape', grad.local_data.shape
+    print 'weight_grad.shape', tmp_weight_grad.shape
+    print 'bias_grad.shape', tmp_bias_grad.shape
+    print 'padding:', padding, 'channel:', channel
   garray.wconvolution(
       input_data,
       grad.local_data,
       tmp_weight_grad,
       tmp_bias_grad,
       image_y, output_y, output_x, filter_size, padding, stride, channel)
-
+  
+  if DEBUG:
+    print 'area.shape', weight_grad.global_area.shape
+    print 'data.shape', tmp_weight_grad.shape
   weight_grad.write(area = weight_grad.global_area, data = tmp_weight_grad, propagate = propagate)
   bias_grad.write(area = bias_grad.global_area, data = tmp_bias_grad, propagate = propagate)
 
 def maxpool(input, output, channel, pool_size, start, stride, input_y, output_y, output_x):
-  r, c = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH
+  r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
   state = get_state_from_distribution(output.slice_dim, True, ConvDataLayout, FCDataLayout)
 
   if state == disw_i:
@@ -335,7 +377,14 @@ def maxpool(input, output, channel, pool_size, start, stride, input_y, output_y,
   output_y = output.local_shape[r]
   output_x = output.local_shape[c]
   input_y = input_data.shape[r]
+  channel = output.local_shape[ch]
 
+  if DEBUG:
+    print '------ in maxpool ------'
+    print 'input.shape', input_data.shape
+    print 'output.shape', output.local_data.shape
+    print 'channel:', channel
+  
   garray.maxpool(
       input_data,
       output.local_data,
@@ -343,7 +392,7 @@ def maxpool(input, output, channel, pool_size, start, stride, input_y, output_y,
 
 def maxundo(input, grad, output, out_grad, pool_size, start, stride, output_y, output_x, input_y):
   propagate = True
-  r, c = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH
+  r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
   state = get_state_from_distribution(output.slice_dim, True, ConvDataLayout, FCDataLayout)
 
   if state == disw_i:
@@ -368,9 +417,16 @@ def maxundo(input, grad, output, out_grad, pool_size, start, stride, output_y, o
 
   output_y = output.local_data.shape[r]
   output_x = output.local_data.shape[c]
-
   input_y = input_data.shape[r]
-
+  channel = input_data.shape[ch]
+  
+  if DEBUG:
+    print '------ in maxundo ------'
+    print 'input.shape', input_data.shape
+    print 'grad.shpae', grad.local_data.shape
+    print 'output.shape', output.local_data.shape
+    print 'out_grad.shape', tmp_out_grad.shape
+    print 'channel:', channel
   garray.maxundo(
       input_data,
       grad.local_data,
@@ -381,7 +437,7 @@ def maxundo(input, grad, output, out_grad, pool_size, start, stride, output_y, o
   out_grad.write(data = tmp_out_grad, area = input.tmp_local_area, propagate = propagate)
 
 def avgpool(input, output, channel, pool_size, start, stride, input_y, output_y, output_x):
-  r, c = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH
+  r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
   state = get_state_from_distribution(output.slice_dim, True, ConvDataLayout, FCDataLayout)
   
   if state == disw_i:
@@ -399,6 +455,13 @@ def avgpool(input, output, channel, pool_size, start, stride, input_y, output_y,
   output_y = output.local_shape[r]
   output_x = output.local_shape[c]
   input_y = input_data.shape[r]
+  channel = input_data.shape[ch]
+
+  if DEBUG:
+    print '------ in avgpool ------'
+    print 'input.shape', input_data.shape
+    print 'output.shape', output.local_data.shape
+    print 'channel:', channel
 
   garray.avgpool(
       input_data,
@@ -407,7 +470,7 @@ def avgpool(input, output, channel, pool_size, start, stride, input_y, output_y,
 
 def avgundo(input, grad, out_grad, pool_size, start, stride, output_y, output_x, image_y, image_x):
   propagate = True
-  r, c = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH
+  r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
   state = get_state_from_distribution(output.slice_dim, True, ConvDataLayout, FCDataLayout)
 
   if state == disw_i:
@@ -432,10 +495,15 @@ def avgundo(input, grad, out_grad, pool_size, start, stride, output_y, output_x,
 
   output_y = grad.local_data.shape[r]
   output_x = grad.local_data.shape[c]
-
   image_y = input_data.shape[r]
   image_x = input_data.shape[c]
 
+  if DEBUG:
+    print '------ in avgundo ------'
+    print 'input.shape', input_data.shape
+    print 'grad.shape', grad.local_data
+    print 'out_grad.shape', tmp_out_grad.shape
+    print 'channel:', channel
   garray.avgundo(
       input_data,
       grad.local_data,
@@ -445,7 +513,7 @@ def avgundo(input, grad, out_grad, pool_size, start, stride, output_y, output_x,
   out_grad.write(data = tmp_out_grad, area = input.tmp_local_area, propagate = propagate)
 
 def rnorm(input, denom, output, channel, size, image_y, scalar, pow):
-  r, c = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH
+  r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
   state = get_state_from_distribution(output.slice_dim, True, ConvDataLayout, FCDataLayout)
 
   if state == disw_i:
@@ -470,7 +538,14 @@ def rnorm(input, denom, output, channel, size, image_y, scalar, pow):
   tmp_output_data = output.tmp_local_data
 
   image_y = input_data.shape[r]
-
+  channel = input_data.shape[ch]
+  
+  if DEBUG:
+    print '------ in rnorm ------'
+    print 'input.shape', input_data.shape
+    print 'denom.shape', tmp_denom_data.shape
+    print 'output.shape', tmp_output_data.shape
+    print 'channel:', channel
   garray.rnorm(
       input_data,
       tmp_denom_data,
@@ -483,7 +558,7 @@ def rnorm(input, denom, output, channel, size, image_y, scalar, pow):
 
 def rnormundo(grad, denom, input, output, out_grad, channel, size, image_y, scalar, pow):
   propagate = True
-  r, c = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH
+  r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
   state = get_state_from_distribution(grad.slice_dim, True, ConvDataLayout, FCDataLayout)
   if state == disw_i:
     if not hasattr(input, 'tmp_local_data'):
@@ -524,6 +599,16 @@ def rnormundo(grad, denom, input, output, out_grad, channel, size, image_y, scal
   tmp_out_grad = out_grad.tmp_local_data
 
   image_y = input.tmp_local_data.shape[r]
+  channel = input.tmp_local_data.shape[ch] 
+  
+  if DEBUG:
+    print '------ in rnormundo ------'
+    print 'grad.shape', grad_data.shape
+    print 'denom.shape', denom_data.shape
+    print 'input.shape', input_data.shape
+    print 'output.shape', output_data.shape
+    print 'out_grad.shape', tmp_out_grad.shape
+    print 'channel:', channel
 
   garray.rnormundo(
       grad_data,
@@ -538,7 +623,7 @@ def rnormundo(grad, denom, input, output, out_grad, channel, size, image_y, scal
   out_grad.write(data = tmp_out_grad, area = output.local_area, propagate = propagate)
 
 def rnormcrossmap(input, denom, output, channel, size,image_y, scalar, pow, blocked):
-  r, c = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH
+  r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
   state = get_state_from_distribution(output.slice_dim, True, ConvDataLayout, FCDataLayout)
   if state == disw_i:
     input.image_communicate(slice_dim = (r, c), stride = 1, padding = 0, filter_size = 0, output_area = output.local_area)
@@ -560,19 +645,28 @@ def rnormcrossmap(input, denom, output, channel, size,image_y, scalar, pow, bloc
   tmp_output_data = output.tmp_local_data
 
   image_y = input.local_data.shape[r]
+  channel = input_data.shape[ch]
+  
+  if DEBUG:
+    print '------ in rnormcrossmap ------'
+    print 'input.shape', input_data.shape
+    print 'denom.shape', tmp_denom_data.shape
+    print 'output.shape', tmp_output_data.shape
+    print 'channel:', channel
+
   garray.rnormcrossmap(
-      input.local_data,
-      denom.local_data,
-      output.local_data,
+      input_data,
+      tmp_denom_data,
+      tmp_output_data,
       channel, size, image_y, scalar, pow, blocked)
 
-  if input.tmp_local_data != denom.local_data:
+  if input.tmp_local_area.cmp(denom.local_area):
     output.write(area = denom.local_area, data = tmp_output_data, propagate = False)
     denom.write(area = denom.local_area, data = tmp_denom_data, propagate = False)
 
 def rnormcrossmapundo(grad, denom, input, output, out_grad, channel, size, image_y, scalar, pow, blocked):
   propagate = True
-  r, c = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH
+  r, c,ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
   state = get_state_from_distribution(grad.slice_dim, True, ConvDataLayout, FCDataLayout)
   if state == disw_i:
     if not hasattr(input, 'tmp_local_data'):
@@ -613,6 +707,17 @@ def rnormcrossmapundo(grad, denom, input, output, out_grad, channel, size, image
   tmp_out_grad = out_grad.tmp_local_data
 
   image_y = input.local_data.shape[r]
+  channel = input_data.shape[ch]
+  
+  if DEBUG:
+    print '------ in rnormcrossmapundo ------'
+    print 'grad.shape', grad_data.shape
+    print 'denom.shape', denom_data.shape
+    print 'input.shape', input_data.shape
+    print 'output.shape', output_data.shape
+    print 'out_grad.shape', tmp_out_grad.shape
+    print 'channel:', channel
+
   garray.rnormcrossmapundo(
       grad_data,
       denom_data,

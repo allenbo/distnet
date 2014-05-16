@@ -288,6 +288,7 @@ class VArray(object):
     if acc:
       garray.setitem_sum(gpu_data, area.slice, data)
     else:
+      if data is gpu_data: return
       gpu_data.__setitem__(area.slice, data)
 
 
@@ -337,6 +338,7 @@ class VArray(object):
       self.write_local(sub_area, sub_data)
       return
 
+    assert area.shape == data.shape
     reqs = [None] * self.world_size
     local_subs = [None] * self.world_size
     if self.unique and area in self.local_area:
@@ -551,8 +553,8 @@ class VArray(object):
       tmp_area = self.make_stripe_area(rank, slice_dim)
       if tmp_area._from[slice_dim] != 0:
         tmp_area._from[slice_dim] -= padding
-      if tmp_area._to[slice_dim] != self.global_area[slice_dim]:
-        tmp_area._to[slice_dim] -= padding
+      if tmp_area._to[slice_dim] != self.global_area._to[slice_dim]:
+        tmp_area._to[slice_dim] += padding
       self.tmp_local_area = tmp_area
     self.tmp_local_data = self.fetch(self.tmp_local_area)
 
@@ -637,46 +639,51 @@ class VArray(object):
       tmp[slices] = self.tmp_local_data
       self.tmp_local_data = tmp
 
-  def unpad(self, data, padding):
+  def unpad(self, data, padding, old_shape, old_area, slice_dim, debug = False):
     if padding == 0:
       return data
     assert padding <= 0
     padding = -padding
     #row, col = self.slice_dim
-    row, col = 1, 2
+    row, col = slice_dim
     u, d, l, r = [padding] * 4
-    old_shape = list(data.shape)
-    old_area = Area.make_area(data.shape)
-    old_area = old_area.move(self.local_area._from)
+    new_shape = list(old_shape)
+    new_area = copy.deepcopy(old_area)
 
     #not most top
-    if self.local_area._from[row] != 0:
+    if old_area._from[row] != 0:
       u = 0
     else:
-      old_shape[row] -= padding
-      old_area._from[row] += padding
+      new_shape[row] -= padding
+      new_area._from[row] += padding
+      new_area._to[row] += padding
     #not most left
-    if self.local_area._from[col] != 0:
+    if old_area._from[col] != 0:
       l = 0
     else:
-      old_shape[col] -= padding
-      old_area._from[col] += padding
+      new_shape[col] -= padding
+      new_area._from[col] += padding
+      new_area._to[col] += padding
     #not most down
-    if self.local_area._to[row] != self.global_area._to[row]:
+    if old_area._to[row] != self.global_area._to[row]:
       d = 0
     else:
-      old_shape[row] -= padding
-      old_area._to[row] -= padding
+      new_shape[row] -= padding
     #not most right
-    if self.local_area._to[col] != self.global_area._to[col]:
+    if old_area._to[col] != self.global_area._to[col]:
       r = 0
     else:
-      old_shape[col] -= padding
-      old_area._to[col] -= padding
+      new_shape[col] -= padding
+
+    if debug:
+      print u, d, l, r
+      print new_shape
+      print new_area
+      print new_area.offset(old_area._from).slice
 
 
     if u or d or l or r:
-      data = data[old_area.offset(self.local_area._from).slice]
+      data = data[new_area.offset(old_area._from).slice]
     return data
   
   @deprecated
@@ -788,6 +795,14 @@ class VArray(object):
     for key, value in self.write_sent_cache.iteritems():
       value.free()
 
+  def printout(self, name, row_from = 0, row_to = 0, col_from = 0, col_to = 0):
+    if not self.unique:
+      x = self.local_data
+    else:
+      x = self.fetch(self.global_area)
+    
+    if self.rank == 0:
+      x.printout(name, row_from = row_from, row_to = row_to, col_from =  col_from, col_to = col_to)
 
 
 def array(a, slice_method, slice_dim, dtype = np.float32, unique = True):

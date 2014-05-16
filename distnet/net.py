@@ -41,7 +41,9 @@ class FastNet(object):
         if prev_layer.type == 'data':
           prev_layer.next_layer = layer
       self.layers.append(layer)
-      util.log_info('Append: %s  [%s] : %s', layer.name, layer.type, layer.get_output_shape())
+      index = len(self.layers) - 1
+      layer.set_index(index)
+      util.log_info('Append: %s [%s] at index %d: %s', layer.name, layer.type, index, layer.get_output_shape())
     return layer
 
   def drop_layer_from(self, name):

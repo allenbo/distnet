@@ -78,7 +78,7 @@ def fcbackward(input, weight, grad, out_grad, weight_grad, bias_grad, prev_conv)
     real_input = input
 
   matrixmult(grad, transpose(real_input), dest = weight_grad)
-  copy_to(arr.sum(grad, axis = 1), bias_grad)
+  copy_to(sum(grad, axis = 1), bias_grad)
 
 
 def softmax(input, output):

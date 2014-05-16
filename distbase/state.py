@@ -21,6 +21,23 @@ combination_fc = (sisw, sidw_f, disw_b)
 #combination_conv =(sisw, disw_b, disw_i)
 #combination_fc = (sisw, sidw_f, disw_b)
 
+def get_input_distribution(state, conv, ConvDataLayout, FCDataLayout):
+  if state is None:
+    return None
+
+  if state[0] == State.shared:
+    return None
+
+  if state == disw_b:
+    if conv:
+      return ConvDataLayout.BATCH
+    else:
+      return FCDataLayout.BATCH
+
+  if state == disw_i:
+    assert conv
+    return (ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH)
+
 def get_output_distribution(state, conv, ConvDataLayout, FCDataLayout):
   if state is None:
     return None
@@ -82,7 +99,7 @@ def get_state_from_distribution(output_dist, conv, ConvDataLayout, FCDataLayout)
         return disw_b
       elif output_dist == (ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH):
         return disw_i
-      elif outptu_dist is None:
+      elif output_dist is None:
         return sisw
       elif output_dist == ConvDataLayout.CHANNEL:
         return sidw
