@@ -87,7 +87,7 @@ def fcforward(input, output, weight, bias, prev_conv):
   if state == disw_b:
     input.batch_communicate(input.rank, FCDataLayout.BATCH)
   else:
-    input.global_communicate()
+    input.global_global_communicate()
 
   input_data = input.tmp_local_data
   garray.matrixmult(weight.local_data, input_data, dest = output.local_data)

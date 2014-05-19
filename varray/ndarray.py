@@ -559,7 +559,7 @@ class VArray(object):
     barrier(self.group_comm)
 
   def write(self, area, data, propagate = True, debug = False):
-    if self.global_unique and self.group_unique:
+    if self.global_unique:
       self.group_write(area, data, propagate)
     elif not self.global_unique and not self.group_unique:
       self._partial_write(area, data)
@@ -652,12 +652,19 @@ class VArray(object):
       global_sum = WORLD.allreduce(local_sum)
       return global_sum
 
-  def global_communicate(self):
-    self.tmp_local_area = Area.make_area(self.global_shape)
-    if self.unique:
-      self.tmp_local_data = self.fetch(self.tmp_local_area, padding = 0)
+  def group_global_commmunicate(self):
+    self.tmp_local_area = Area.make_area(self.group_shape)
+    if self.group_unique:
+      self.tmp_local_data = self.group_fetch(self.group_area)
     else:
       self.tmp_local_data = self.local_data
+
+  def global_global_communicate(self):
+    self.tmp_local_area = Area.make_area(self.global_shape)
+    if self.global_unique:
+      self.tmp_local_data = self.fetch(self.tmp_local_area)
+    else:
+      self.group_global_communicate()
 
   def channel_communicate(self, rank, slice_dim, padding = 0):
     if padding == 0:
