@@ -1,4 +1,5 @@
 import numpy as np
+import math
 
 cdef class Point(object):
   cdef public list point
@@ -28,8 +29,6 @@ cdef class Point(object):
       for i in xrange(len(self.point)):
         if self.point[i] < other.point[i]: return False
     return True
-
-
 
   def __getitem__(self, i):
     return self.point[i]
