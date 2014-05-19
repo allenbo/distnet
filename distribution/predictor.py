@@ -292,44 +292,27 @@ if __name__ == '__main__':
       sys.exit(0)
 
   # when the number of worker is not 1 
-  #if not os.path.exists(filename):
-  #  req_filename = filename + '-req'
-  #  with open(req_filename, 'w') as fout:
-  #    req =  request.RequestProxy(fout, backend)
-  #    computation_cost(model, image_shape, None, req)
-  #    req.finish()
-  #  executer = RequestExecuter(req_filename, filename, config['ideal'])
-  #  executer.execute()
+  if not os.path.exists(filename):
+    req_filename = filename + '-req'
+    with open(req_filename, 'w') as fout:
+      req =  request.RequestProxy(fout, backend)
+      computation_cost(model, image_shape, None, req)
+      req.finish()
+    executer = RequestExecuter(req_filename, filename, config['ideal'])
+    executer.execute()
 
-  #with open(filename) as f:
-  #  comp_cost = pickle.load(f)
-  #computation_cost(model, image_shape, comp_cost)
-  #if config['single']:
-  #  states = [sisw] * len(model)
-  #  cost = 10000
-  #else:
-  #  cost, states = find_best(model, state0, ConvFC.conv, -1)
-  #print '%s: Total cost is \033[44m%f\033[0m' % (model_basename.upper(), cost)
-  #print 'Number of worker is \033[32m%d\033[0m' % n
-  #print_details(model, states)
+  with open(filename) as f:
+    comp_cost = pickle.load(f)
+  computation_cost(model, image_shape, comp_cost)
+  if config['single']:
+    states = [sisw] * len(model)
+    cost = 10000
+  else:
+    cost, states = find_best(model, state0, ConvFC.conv, -1)
+  print '%s: Total cost is \033[44m%f\033[0m' % (model_basename.upper(), cost)
+  print 'Number of worker is \033[32m%d\033[0m' % n
+  print_details(model, states)
   
-  # mix for imagenet
-  #states = [disw_i] * 4 + [disw_b] * 4 + [disw_i] * (len(model) - 6 - 8) + [sisw] * 6
-  # image for imagenet
-  #states = [disw_i] * (len(model) - 6) + [sisw] * 6
-  # filter for imagenet
-  #states = [sidw] * (len(model) - 6) + [sisw] * 6
-  # batch for imagenet
-  #states = [disw_b] * (len(model) - 6) + [sisw] * 6
-  # mix for cifar, batch-image
-  #states = [disw_b] * 3 + [disw_i] * 3 + [sisw] * 2
-  # mix for cifar, image-batch
-  #states = [disw_i] * 3 + [disw_b] * 3 + [sisw] * 2
-  # mix for cifar, 18 batch-image-batch
-  #states = [disw_b] * 4 + [disw_i] * 4 + [disw_b] * 3 + [sisw] * 2
-  # mix for cifar, 18 image-batch-image
-  states = [disw_i] * 4 + [disw_b] * 4 + [disw_i] * 3 + [sisw] * 2
-
   strategy = {}
   for i, layer in enumerate(model):
     strategy[layer['name']] = states[i]
