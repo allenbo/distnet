@@ -6,12 +6,9 @@ import numpy as np
 
 import os
 
-from multigpu import uniformed_array, arr, allocate, zeros
+from multigpu import uniformed_array, arr, allocate, zeros, default_context
 
 def update(wts, grad, incr, epsilon, momentum, decay, batch_size):
-  #assert weight.incr.get().mean() < 1
-  #a, b, c, = weight.incr.get().mean(), weight.wt.get().mean(), (grad.get() * weight.epsilon / batch_size).mean()
-  #util.log_info('%s %s %s %s %s', weight.name, a, b, c, grad.get().mean())
   Assert.eq(grad.shape, wts.shape)
 
   assert(grad.dtype == np.float32)
@@ -34,18 +31,13 @@ def update(wts, grad, incr, epsilon, momentum, decay, batch_size):
                beta=np.float32(epsilon / batch_size))
 
 class Weight(object):
-  def __init__(self, slice_dim = None):
-    self.slice_dim = slice_dim
-    self.unique = False if slice_dim is None else True
+  def __init__(self, group_slice_dim, context):
+    self.group_slice_dim = group_slice_dim
+    self.context = context
   
   def to_gpu(self, obj):
-    ##if isinstance(obj, garray.GPUArray):
-    ##  return obj
-    ##if isinstance(obj, varray.VArray):
-    ##  return obj
-
     assert obj.dtype == np.float32
-    result = uniformed_array(obj, slice_dim = self.slice_dim)
+    result = uniformed_array(obj, global_slice_dim = None, group_slice_dim = self.group_slice_dim, context = self.context)
     assert result.dtype == np.float32
     return result
 
@@ -69,15 +61,13 @@ class Weight(object):
   @property
   def grad(self):
     if self._grad is None or self._grad.shape != self.shape:
-      #self._grad = to_gpu(np.ndarray(shape = self.shape).astype(np.float32), self.unique)
-      self._grad = allocate(shape = self.shape, slice_dim = self.slice_dim)
+      self._grad = allocate(shape = self.shape, global_slice_dim = None, group_slice_dim = self.group_slice_dim, context = self.context)
     return self._grad
 
   @property
   def incr(self):
     if (self._incr is None or self._incr.shape != self.shape) and self.momentum > 0:
-      #self._incr = to_gpu(np.zeros(self.shape).astype(np.float32), self.unique)
-      self._incr = zeros(shape = self.shape, slice_dim = self.slice_dim)
+      self._incr = zeros(shape = self.shape, global_slice_dim = None, group_slice_dim = self.group_slice_dim, context = self.context)
     return self._incr
 
   @property
@@ -108,8 +98,8 @@ class WeightManager(object):
   def clone(self):
     return copy.deepcopy(self)
 
-  def empty(self, name, epsilon, momentum, decay, slice_dim = None):
-    w = Weight(slice_dim = slice_dim)
+  def empty(self, name, epsilon, momentum, decay, group_slice_dim = None, context = default_context):
+    w = Weight(group_slice_dim = group_slice_dim, context = context)
     w.name = name
     w.shape = None
     w.decay = np.float32(decay)

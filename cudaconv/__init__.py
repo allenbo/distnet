@@ -63,7 +63,7 @@ def init(device=-1):
     device = driver.Device(device % driver.Device.count())
     CONTEXT = device.make_context()
   
-  print 'Starting up using device: %s:%s' % (device.name(), device.pci_bus_id()) 
+  #print 'Starting up using device: %s:%s' % (device.name(), device.pci_bus_id()) 
   import atexit
   atexit.register(CONTEXT.detach)
   return CONTEXT

@@ -176,7 +176,7 @@ class Trainer:
       cost, correct, numCase = self.net.get_batch_information()
       self.train_outputs += [({'logprob': [cost, 1 - correct]}, numCase, self.elapsed())]
 
-      if time.time() - last_print_time > 0:
+      if time.time() - last_print_time > 1:
         log('%d.%d: error: %f logreg: %f time: %f', self.curr_epoch, self.curr_batch, 1 - correct, cost, time.time() - batch_start)
         min_time = time.time() - batch_start
         last_print_time = time.time()

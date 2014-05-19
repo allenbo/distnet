@@ -48,8 +48,6 @@ class VArray(object):
   '''
 
   def __init__(self, array = None,
-                     global_unique = True,
-                     group_unique = True,
                      global_slice_dim = None,
                      group_slice_dim = None,
                      shape = None,
@@ -80,49 +78,37 @@ class VArray(object):
     self.group_size = self.context.group_size
 
     # can't decide the source of the parameters
-    self.global_unique = global_unique
-    self.group_unique = group_unique
-    self.global_slice_method = None
     self.global_slice_dim = global_slice_dim
-    self.group_slice_method = None
     self.group_slice_dim = group_slice_dim
 
     self.global_area_dict = {}
     self.group_area_dict = {}
-    
     self.all_area_dict = {}
     
     # attributes for array
     self.dtype = np.float32
     if shape is not None:
-      self.global_shape = tuple(shape)
+      shape = tuple(shape)
     else:
-      self.global_shape = array.shape
+      shape = array.shape
 
-    self.global_area = Area.make_area(self.global_shape)
+    self.global_area = Area.make_area(global_shape)
 
     # global attributes
     if self.num_group == 1:
-      self.group_shape = self.global_shape
       self.group_area = self.global_area
       group_array = to_gpu(array)
       self.global_area_dict[0] = self.group_area
-      self.global_unique = False
-      self.global_slice_method = None
       self.global_slice_dim = None
     else:
       if not self.global_unique:
-        self.global_slice_method = None
-        self.global_slice_dim = None
-
         # group data
         if array is None:
           group_array = garray.GPUArray(tuple(shape), self.dtype)
         else:
           group_array = array
         # group shape and area
-        self.group_shape = group_array.shape
-        self.group_area = Area.make_area(self.group_shape)
+        self.group_area = Area.make_area(group_array.shape)
         # group area dict
         for i in range(self.num_group):
           self.global_area_dict[i] = self.group_area
@@ -135,24 +121,17 @@ class VArray(object):
                              area_dict = self.global_area_dict)
 
         self.group_area = self.global_area_dict[self.group_id]
-        self.group_shape = self.group_area.shape
 
         # load up group_data
         if array is not None:
           group_array = to_gpu(array[self.group_area.slice])
         else:
-          group_array = garray.GPUArray(self.group_area.shape, dtype = self.dtype)
-
-        self.global_area_dict[self.group_id] = self.group_area
+          group_array = garray.GPUArray(self.group_shape, dtype = self.dtype)
 
     assert group_array.shape == self.group_area.shape
 
     #  group attributes
     if not self.group_unique:
-      self.group_slice_method = None
-      self.group_slice_dim = None
-
-      self.local_shape = group_array.shape
       self.local_area = self.group_area
       self.local_data = to_gpu(group_array)
 
@@ -171,7 +150,6 @@ class VArray(object):
 
       self.local_area = self.group_area_dict[self.group_rank]
       self.local_data = to_gpu(group_array[self.local_area.offset(self.group_area._from).slice])
-      self.local_shape = self.local_data.shape
       
       if self.num_group == 1:
         self.all_area_dict = self.group_area_dict
@@ -195,9 +173,6 @@ class VArray(object):
     self.write_recv_cache = {}
     self.write_sent_cache = {}
 
-    for i in self.all_area_dict:
-      print i, self.all_area_dict[i]
-  
   def infer_area_dict(self, num_worker, slice_dim, global_area, area_dict = None):
     if area_dict is None:
       area_dict = {}
@@ -268,6 +243,26 @@ class VArray(object):
     assert not self.unique
     return self.local_data.size
 
+  @property
+  def global_unique(self):
+    return self.global_slice_dim is not None
+
+  @property
+  def group_unique(self):
+    return self.group_slice_dim is not None
+
+  @property
+  def global_shape(self):
+    return self.global_area.shape
+
+  @property
+  def group_shape(self):
+    return self.group_area.shape
+
+  @property
+  def local_shape(self):
+    return self.local_area.shape
+
   def copy_from_global(self, input):
     tmp = input.__getitem__(self.local_area.slice)
     assert tmp.shape == self.local_shape, str(tmp.shape) + ' ' + str(self.local_shape)
@@ -276,9 +271,7 @@ class VArray(object):
   def group_gather(self):
     if not self.group_unique:
       return
-    self.group_unique = False
     self.group_slice_dim = None
-    self.group_slice_method = None
     self.local_data = self.group_fetch(self.group_area)
     for i in range(self.group_size):
       self.group_area_dict[i] = self.group_area
@@ -292,12 +285,8 @@ class VArray(object):
       else:
         self.group_gather()
     else:
-      self.global_unique = False
       self.global_slice_dim = None
-      self.global_slice_method = None
-      self.group_unique = False
       self.group_slice_dim = None
-      self.group_slice_method = None
 
       self.group_area = self.global_area
       self.local_area = self.group_area
@@ -585,21 +574,7 @@ class VArray(object):
       assert False, 'Not Implementation'
     
   def check_param(self, other):
-    if self.global_unique == other.global_unique:
-      if self.global_unique:
-        if self.global_dim != other.global_dim:
-          return False
-      if self.group_unique == other.group_unique:
-        if self.group_unique:
-          return self.group_dim == other.group_unique
-        else:
-          return True
-      else:
-        return False
-    else:
-      return False
-
-        
+    return self.global_slice_dim == other.global_slice_dim and self.group_slice_dim == other.group_slice_dim
 
   def __add__(self, other):
     '''
@@ -858,32 +833,29 @@ class VArray(object):
     if self.rank == 0:
       x.printout(name, row_from = row_from, row_to = row_to, col_from =  col_from, col_to = col_to)
 
-def array(obj, global_slice_dim, group_slice_dim, context = default_context, global_unique = True, group_unique = True):
+def array(obj, global_slice_dim, group_slice_dim, context = default_context):
   return VArray(array = obj,
                 global_slice_dim = global_slice_dim,
                 group_slice_dim = group_slice_dim,
-                global_unique = global_unique,
-                group_unique = group_unique,
                 context = context)
 
-def allocate(shape, global_slice_dim, group_slice_dim, context = default_context, global_unique = True, group_unique = True):
+def allocate(shape, global_slice_dim, group_slice_dim, context = default_context):
   return VArray(array = None,
                 global_slice_dim = global_slice_dim,
                 group_slice_dim = group_slice_dim,
-                global_unique = global_unique,
-                group_unique = group_unique,
                 shape = shape,
                 context = context)
 
-def zeros(shape, global_slice_dim, group_slice_dim, context = default_context, global_unique = True, group_unique = True):
-  va = allocate(shape, global_slice_dim, group_slice_dim, context, global_unique, group_unique)
+def zeros(shape, global_slice_dim, group_slice_dim, context = default_context):
+  va = allocate(shape = shape,
+                global_slice_dim = global_slice_dim,
+                group_slice_dim = group_slice_dim,
+                context = context)
   va.fill(0)
   return va
 
 def allocate_like(input):
   return VArray(array = None,
-                global_unique = input.global_unique,
-                group_unique = input.group_unique,
                 global_slice_dim = input.global_slice_dim,
                 group_slice_dim = input.group_slice_dim,
                 shape = input.shape,

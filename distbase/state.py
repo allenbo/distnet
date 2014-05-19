@@ -1,3 +1,4 @@
+from .util import issquare
 class State(object):
   dist   = 'dist'
   dist_b = 'dist-by-batch'
@@ -21,7 +22,7 @@ combination_fc = (sisw, sidw_f, disw_b)
 #combination_conv =(sisw, disw_b, disw_i)
 #combination_fc = (sisw, sidw_f, disw_b)
 
-def get_input_distribution(state, conv, ConvDataLayout, FCDataLayout):
+def get_input_slice_dim(state, conv, ConvDataLayout, FCDataLayout, num_worker):
   if state is None:
     return None
 
@@ -36,11 +37,15 @@ def get_input_distribution(state, conv, ConvDataLayout, FCDataLayout):
 
   if state == disw_i:
     assert conv
-    return (ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH)
+    if issquare(num_worker):
+      return (ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH)
+    else:
+      return ConvDataLayout.HEIGHT
 
-def get_output_distribution(state, conv, ConvDataLayout, FCDataLayout):
+def get_output_slice_dim(state, conv, ConvDataLayout, FCDataLayout, num_worker):
   if state is None:
     return None
+
   if state == sisw:
     return None
 
@@ -50,7 +55,10 @@ def get_output_distribution(state, conv, ConvDataLayout, FCDataLayout):
 
   if state == disw_i:
     assert conv
-    return (ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH)
+    if issquare(num_worker):
+      return (ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH)
+    else:
+      return ConvDataLayout.HEIGHT
 
   if state == disw_b:
     if conv:
@@ -64,7 +72,7 @@ def get_output_distribution(state, conv, ConvDataLayout, FCDataLayout):
 
   assert False
 
-def get_weight_distribution(state, conv, FilterLayout, WeightLayout):
+def get_weight_slice_dim(state, conv, FilterLayout, WeightLayout):
   if state == None or state == sisw:
     return None
 
@@ -83,7 +91,7 @@ def get_weight_distribution(state, conv, FilterLayout, WeightLayout):
     assert not conv
     return WeightLayout.OUTPUT
 
-def get_bias_distribution(state, conv):
+def get_bias_slice_dim(state, conv):
   if state == sidw:
     assert conv
     return 0 # bias has to be distributed
@@ -93,24 +101,24 @@ def get_bias_distribution(state, conv):
 
   return None
 
-def get_state_from_distribution(output_dist, conv, ConvDataLayout, FCDataLayout):
+def get_state_from_slice_dim(output_dist, conv, ConvDataLayout, FCDataLayout):
   if conv:
-      if output_dist == ConvDataLayout.BATCH:
-        return disw_b
-      elif output_dist == (ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH):
-        return disw_i
-      elif output_dist is None:
-        return sisw
-      elif output_dist == ConvDataLayout.CHANNEL:
-        return sidw
-      else:
-        assert False
+    if output_dist == ConvDataLayout.BATCH:
+      return disw_b
+    elif output_dist == (ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH) or output_dist == ConvDataLayout.HEIGHT:
+      return disw_i
+    elif output_dist is None:
+      return sisw
+    elif output_dist == ConvDataLayout.CHANNEL:
+      return sidw
+    else:
+      assert False
   else:
-      if output_dist is None:
-        return sisw
-      elif outptu_dist == FCDataLayout.BATCH:
-        return disw_b
-      elif output_dist == FCDataLayout.NEURON:
-        return sidw_f
-      else:
-        assert False
+    if output_dist is None:
+      return sisw
+    elif outptu_dist == FCDataLayout.BATCH:
+      return disw_b
+    elif output_dist == FCDataLayout.NEURON:
+      return sidw_f
+    else:
+      assert False

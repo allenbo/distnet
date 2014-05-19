@@ -7,8 +7,8 @@ import numpy as np
 import garray
 from garray import ConvDataLayout, FilterLayout, FCDataLayout, WeightLayout
 
-from multigpu import convert_shape, allocate, arr, uniformed_array, rank, multi_gpu
-from multigpu import get_state, get_weight_distribution, get_output_distribution, get_bias_distribution, get_input_distribution
+from multigpu import allocate, arr, uniformed_array, multi_gpu, get_layerdist, build_context
+from distbase import state
 
 PFout = False
 PBout = False
@@ -22,7 +22,6 @@ def col_rand(shape, dtype):
 def col_randn(shape, dtype):
   return np.require(np.random.randn(*shape), dtype=dtype, requirements='C')
 
-
 class Layer(object):
   def __init__(self, name, type, disable_bprop=False):
     self.merge_neuron = False
@@ -33,7 +32,7 @@ class Layer(object):
     self.output = None
     self.output_grad = None
     self.neuron = None
-    self.state = get_state(self.name)
+    self.layerdist = get_layerdist(self.name)
 
   def set_index(self, index):
     self.index = index
@@ -66,14 +65,24 @@ class Layer(object):
 
   def init_output(self, fc = False):
     if self.type == 'data':
-      self.state = self.next_layer.state
-      slice_dim = get_input_distribution(self.state, not fc, ConvDataLayout, FCDataLayout)
+      self.layerdist = self.next_layer.layerdist
+      group_slice_dim = state.get_input_slice_dim(self.layerdist.group_state, not fc, ConvDataLayout, FCDataLayout, self.layerdist.group_size)
     else:
-      slice_dim = get_output_distribution(self.state, not fc, ConvDataLayout, FCDataLayout)
-    self.slice_dim = slice_dim
+      group_slice_dim = state.get_output_slice_dim(self.layerdist.group_state, not fc, ConvDataLayout, FCDataLayout, self.layerdist.group_size)
+    self.group_slice_dim = group_slice_dim
+
+    self.global_slice_dim = ConvDataLayout.BATCH if not fc and self.layerdist.global_dist else None
+
     out_shape = self.get_output_shape()
-    self.output = allocate(out_shape, slice_dim = slice_dim)
-    self.output_grad = allocate(out_shape, slice_dim = slice_dim)
+    self.output = allocate(out_shape,
+                           global_slice_dim = self.global_slice_dim,
+                           group_slice_dim = self.group_slice_dim,
+                           context = build_context(self.layerdist.workers_group))
+
+    self.output_grad = allocate(out_shape,
+                                global_slice_dim = self.global_slice_dim,
+                                group_slice_dim = self.group_slice_dim,
+                                context = build_context(self.layerdist.workers_group))
     #print self.name, type(self.output), self.state, self.output.local_data.shape
 
   def dump(self):
@@ -107,19 +116,22 @@ class DataLayer(Layer):
     image_shape[ConvDataLayout.BATCH] = self.batch_size
     return tuple(image_shape)
 
-
 class WeightedLayer(Layer):
   def __init__(self, name, type, epsW, epsB, initW, initB, momW, momB, wc, weight, bias,
       weightIncr , biasIncr, disable_bprop=False):
     Layer.__init__(self, name, type, disable_bprop)
     self.initW = initW
     self.initB = initB
+    context = build_context(self.layerdist.workers_group)
+    group_slice_dim = state.get_weight_slice_dim(self.layerdist.group_state, (self.type == 'conv'), FilterLayout, WeightLayout)
+    self.weight = WEIGHTS.empty('weight.' + self.name, epsW, momW, wc,
+      group_slice_dim = group_slice_dim,
+      context = context)
 
-    slice_dim = get_weight_distribution(self.state, (self.type == 'conv'), FilterLayout,
-        WeightLayout)
-    self.weight = WEIGHTS.empty('weight.' + self.name, epsW, momW, wc, slice_dim = slice_dim)
-    slice_dim = get_bias_distribution(self.state, conv = (self.type == 'conv'))
-    self.bias = WEIGHTS.empty('bias.' + self.name, epsB, momB, 0.0, slice_dim = slice_dim)
+    group_slice_dim = state.get_bias_slice_dim(self.layerdist.group_state, conv = (self.type == 'conv'))
+    self.bias = WEIGHTS.empty('bias.' + self.name, epsB, momB, 0.0,
+      group_slice_dim = group_slice_dim,
+      context = context)
 
     if weight is not None:
       self.weight.set_weight(weight)
@@ -208,14 +220,6 @@ class ConvLayer(WeightedLayer):
 
     self.partialSum = partialSum
     self.sharedBiases = sharedBiases
-
-    if weight is not None:
-      if len(weight.shape) == 2:
-        num_filter = weight.shape[FilterLayout.NUM]
-        num_color = weight.shape[FilterLayout.CHANNEL]
-        new_shape = convert_shape(FilterLayout.get_filter_shape(self.filterSize, num_color, num_filter))
-        weight = weight.reshape(new_shape)
-        weightIncr = weightIncr.reshape(new_shape)
 
     WeightedLayer.__init__(self, name, 'conv',
                            epsW, epsB, initW, initB, momW, momB, wc, weight,
@@ -347,18 +351,22 @@ class ResponseNormLayer(Layer):
     self.numColor = image_shape[ConvDataLayout.CHANNEL]
     self.img_size  = image_shape[ConvDataLayout.HEIGHT]
     self.batch_size = image_shape[ConvDataLayout.BATCH]
+    group_slice_dim = state.get_output_slice_dim(self.layerdist.group_state, True, ConvDataLayout, FCDataLayout, self.layerdist.group_size)
+    self.group_slice_dim = group_slice_dim
+    self.global_slice_dim = ConvDataLayout.BATCH if self.layerdist.global_dist else None
 
-    slice_dim = get_output_distribution(self.state, True, ConvDataLayout, FCDataLayout)
-    self.denom = allocate(image_shape, slice_dim = slice_dim)
-
+    #slice_dim = state.get_output_slice_dim(self.state, True, ConvDataLayout, FCDataLayout)
+    #self.denom = allocate(image_shape, slice_dim = slice_dim)
 
   def get_output_shape(self):
     return ConvDataLayout.get_output_shape(self.img_size, self.img_size, self.numColor, self.batch_size)
 
   def change_batch_size(self, batch_size):
     Layer.change_batch_size(self, batch_size)
-    slice_dim = get_output_distribution(self.state, True, ConvDataLayout, FCDataLayout)
-    self.denom = allocate(ConvDataLayout.get_output_shape(self.img_size , self.img_size, self.numColor, self.batch_size), slice_dim = slice_dim)
+    self.denom = allocate(self.get_output_shape(),
+                          global_slice_dim = self.global_slice_dim,
+                          group_slice_dim = self.group_slice_dim,
+                          context = build_context(self.layerdist.workers_group))
 
   def fprop(self, input, output, train=TRAIN):
     arr.rnorm(input, self.denom, output, self.numColor, self.size, self.img_size, self.scalar,
@@ -437,8 +445,11 @@ class FCLayer(WeightedLayer):
         output *= (1.0 - self.dropRate)
     else:
       if self.dropRate > 0.0:
-        self.dropMask = uniformed_array(np.random.uniform(0, 1,
-          output.size).astype(np.float32).reshape(output.shape), slice_dim = self.slice_dim)
+        obj = np.random.uniform(0, 1, output.size).astype(np.float32).reshape(output.shape)
+        self.dropMask = uniformed_array(obj,
+                                        global_slice_dim = None,
+                                        group_slice_dim = self.group_slice_dim,
+                                        context = build_context(self.layerdist.workers_group))
         arr.bigger_than_scalar(self.dropMask, self.dropRate)
         arr.copy_to(output * self.dropMask, output)
 
@@ -466,14 +477,18 @@ class SoftmaxLayer(Layer):
     self.inputSize, self.batch_size = int(np.prod(input_shape[:-1])), input_shape[-1]
     self.outputSize = self.inputSize
     self.inputShape = input_shape
-    self.slice_dim = get_output_distribution(self.state, False, ConvDataLayout, FCDataLayout)
+    self.group_slice_dim = state.get_output_slice_dim(self.layerdist.group_state, False, ConvDataLayout, FCDataLayout, self.layerdist.group_size)
+    self.global_slice_dim = None
     self.create_cost(self.batch_size)
 
 
   def create_cost(self, size):
     if size < 0:
       return
-    self.cost = allocate((size, 1), slice_dim = self.slice_dim)
+    self.cost = allocate((size, 1),
+                         global_slice_dim = self.global_slice_dim,
+                         group_slice_dim = self.group_slice_dim,
+                         context = build_context(self.layerdist.workers_group))
 
   def get_output_shape(self):
     return (self.outputSize, self.batch_size)
@@ -498,10 +513,10 @@ class SoftmaxLayer(Layer):
     # only try multiview with test on single gpu
     unit = self.batch_size / num_view
     if self.cost.shape[0] != unit:
-      self.cost = allocate((unit, 1), dtype = np.float32, slice_dim = None)
+      self.cost = allocate((unit, 1))
     maxid = garray.argmax(output, axis = 0)
     self.batchCorrect = garray.same_reduce_multiview(label, maxid, num_view)
-    tmp = allocate((output.shape[0], unit), dtype = np.float32, slice_dim = None)
+    tmp = allocate((output.shape[0], unit))
     garray.partial_copy_to(output, tmp, 0, output.shape[0], 0, unit)
     garray.logreg_cost_col(tmp, label, self.cost)
 

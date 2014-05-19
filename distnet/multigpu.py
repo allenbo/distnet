@@ -2,19 +2,19 @@ import numpy as np
 import os
 import garray
 import math
-from garray import ConvDataLayout, FCDataLayout, FilterLayout, WeightLayout
 
+from garray import ConvDataLayout, FCDataLayout, FilterLayout, WeightLayout
 from distbase import util
-from distbase.state import *
+from distbase.util import issquare
 
 multi_gpu = False
 
 if os.environ.get('MULTIGPU', 'no') == 'yes':
   import varray as arr
   from varray import DistMethod, rank, size as num_gpu
+  from varray.context import default_context, Context
   multi_gpu = True
   import socket
-  print arr.rank, socket.gethostname()
   garray.device_init(arr.rank)
   dist_file = 'distribution/cifar18_mix_strategy'
   strategy = util.load(dist_file)
@@ -24,91 +24,50 @@ else:
   rank = 0
   num_gpu = 1
   strategy = None
+  default_context = None
+  class _(object):
+    pass
+  fake_layerdist = _()
+  fake_layerdist.global_dist = False
+  fake_layerdist.group_state = None
+  fake_layerdist.group_size = None
+  fake_layerdist.workers_group = []
 
-def get_state(layer_name):
+
+def build_context(workers_group):
+  if default_context is None or len(workers_group) == 1:
+    return default_context
+  return Context(workers_group)
+
+def get_layerdist(layer_name):
   if strategy is None:
-    return None
-  return strategy.get(layer_name, None)
+    return fake_layerdist
+  assert layer_name in strategy
+  return strategy[layer_name]
 
-def issquare(x):
-  a = int(math.sqrt(x))
-  if a ** 2 == x:
-    return True
-  else:
-    return False
-
-def zeros(shape, dtype = np.float32, unique = False, slice_dim = None):
+def zeros(shape, global_slice_dim = None, group_slice_dim = None, context = default_context):
   if not multi_gpu:
-    return garray.zeros(shape, dtype = dtype)
+    return garray.zeros(shape, dtype = np.float32)
   else:
-    if issquare(num_gpu):
-      slice_method = DistMethod.Square
-      if slice_dim is not None:
-        if np.isscalar(slice_dim):
-          slice_method = DistMethod.Stripe
-        else:
-          slice_method = DistMethod.Square
-        unique = True
-      else:
-        unique = False
-      return arr.zeros(shape, dtype = dtype, unique = unique, slice_method = slice_method, slice_dim = slice_dim)
-    else:
-      if slice_dim is not None:
-        assert np.isscalar(slice_dim)
-        unique = True
-      else:
-        unique = False
-      return arr.zeros(shape, dtype = dtype, unique = unique, slice_dim = slice_dim, slice_method = DistMethod.Stripe)
+    return arr.zeros(shape = shape,
+                     global_slice_dim = global_slice_dim,
+                     group_slice_dim = group_slice_dim,
+                     context = context)
 
-
-def allocate(shape, dtype = np.float32, slice_dim = None):
+def allocate(shape, global_slice_dim = None, group_slice_dim = None, context = default_context):
   if not multi_gpu:
-    return garray.GPUArray(shape, dtype = dtype)
+    return garray.GPUArray(shape, dtype = np.float32)
   else:
-    if issquare(num_gpu):
-      slice_method = DistMethod.Square
-      if slice_dim is not None:
-        if np.isscalar(slice_dim):
-          slice_method = DistMethod.Stripe
-        else:
-          slice_method = DistMethod.Square
-        unique = True
-      else:
-        unique = False
-      return arr.allocate(shape, dtype = dtype, unique = unique, slice_method = slice_method, slice_dim = slice_dim)
-    else:
-      if slice_dim is not None:
-        assert np.isscalar(slice_dim)
-        unique = True
-      else:
-        unique = False
-      return arr.allocate(shape, dtype = dtype, unique = unique, slice_method = DistMethod.Stripe, slice_dim = slice_dim)
+    return arr.allocate(shape = shape,
+                        global_slice_dim = global_slice_dim,
+                        group_slice_dim = group_slice_dim,
+                        context = context)
 
-def convert_shape(shape):
+def uniformed_array(array, global_slice_dim = None, group_slice_dim = None, context = default_context, to2dim = False):
   if not multi_gpu:
-    col = shape[-1]
-    row = int(np.prod(shape[:-1]))
-    return (row, col)
-  return shape
-
-def uniformed_array(array, dtype = np.float32, slice_dim = None, to2dim = False):
-  if not multi_gpu:
-    return arr.array(array, dtype = dtype, to2dim = to2dim)
-  if issquare(num_gpu):
-    slice_method = DistMethod.Square
-    if slice_dim is not None:
-      if np.isscalar(slice_dim):
-        slice_method = DistMethod.Stripe
-      else:
-        slice_method = DistMethod.Square
-      unique = True
-    else:
-      unique = False
-    return arr.array(array, dtype = dtype, unique = unique, slice_method = slice_method, slice_dim = slice_dim)
+    return arr.array(array, dtype = np.float32, to2dim = to2dim)
   else:
-    if slice_dim is not None:
-      assert np.isscalar(slice_dim)
-      unique = True
-    else:
-      unique = False
-    return arr.array(array, dtype = dtype, unique = unique, slice_method = DistMethod.Stripe, slice_dim = slice_dim)
+    return arr.array(array,
+                     global_slice_dim = global_slice_dim,
+                     group_slice_dim = group_slice_dim,
+                     context = context)
