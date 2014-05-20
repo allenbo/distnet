@@ -56,10 +56,7 @@ class Context(object):
         self._master_comm = None
     else:
       self._master_comm = None
-
-
-    print 'GlobalRank:%d, GroupId:%d, GroupRank:%d, GroupSize:%d, GroupMasters:%s' % (self._global_rank,
-        self._group_id, self._group_rank, self._group_size, self._group_master)
+    #print 'GlobalRank:%d, GroupId:%d, GroupRank:%d, GroupSize:%d, GroupMasters:%s' % (self._global_rank, self._group_id, self._group_rank, self._group_size, self._group_master)
   
   @property
   def num_group(self): return self._num_group

@@ -1,4 +1,7 @@
 import reader
+from distbase.state import State, combination_conv, combination_fc, state0, disw_i, sisw, sidw, sidw_f, disw_b
+
+import pickle
 # mix for imagenet
 #states = [disw_i] * 4 + [disw_b] * 4 + [disw_i] * (len(model) - 6 - 8) + [sisw] * 6
 # image for imagenet

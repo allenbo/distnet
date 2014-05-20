@@ -13,10 +13,13 @@ from garray import ConvDataLayout, FCDataLayout, FilterLayout, WeightLayout
 DEBUG = False
 
 def copy_to(input, output):
-  if output.unique:
-    if not input.unique:
-      output.copy_from_global(input.local_data.reshape(output.shape))
-      return
+  ''' used only by fc layer. When fprop, copy output to output, so the distributions of input and
+  output are the same. When bprop, copy grad to grad. The input and output should share the same
+  distribution. However, there is one exception. When copy to conv-related grad, the input is
+  shared, while the output is distributed.'''
+  if output.global_unique or output.group_unique:
+    output.copy_from_global(input.local_data.reshape(output.shape))
+    return
 
   garray.copy_to(input.local_data, output.local_data)
 
@@ -48,14 +51,13 @@ def sum(input, axis = None):
 def argmax(input, axis):
   ''' This function is only used in logreg_cost function, in which the output is a synchronized
   varray or splitted across batch '''
-  if input.unique == False:
-    return VArray(garray.argmax(input.local_data, axis = axis), unique = False)
+  if input.group_unique == False and input.global_unique == False:
+    return VArray(garray.argmax(input.local_data, axis = axis), context = input.context)
 
-  assert input.slice_dim == FCDataLayout.BATCH
+  assert input.group_slice_dim == FCDataLayout.BATCH and input.global_unique == False
   rst = VArray(shape = (1, input.shape[1]),
-               dtype = np.float32,
-               slice_method = DistMethod.Stripe,
-               slice_dim = FCDataLayout.BATCH)
+               group_slice_dim = FCDataLayout.BATCH,
+               context = input.context)
   rst.local_data = garray.argmax(input.local_data, axis = axis) 
   return rst
 
@@ -68,7 +70,8 @@ def iexp(input):
   garray.iexp(input.local_data)
 
 def logreg_cost_col(output, label, cost):
-  if output.unique == False:
+  assert output.global_unique == False
+  if output.group_unique == False:
     garray.logreg_cost_col(output.local_data, label, cost.local_data)
   else:
     garray.logreg_cost_col(output.local_data, label[cost.local_area.slice], cost.local_data)
@@ -83,7 +86,7 @@ def convert_from_data(input, output):
   output.copy_from_global(global_output)
 
 def fcforward(input, output, weight, bias, prev_conv):
-  state = get_state_from_slice_dim(output.slice_dim, False, ConvDataLayout, FCDataLayout)
+  state = get_state_from_slice_dim(output.group_slice_dim, False, ConvDataLayout, FCDataLayout)
   if state == disw_b:
     input.batch_communicate(input.rank, FCDataLayout.BATCH)
   else:
@@ -96,14 +99,14 @@ def fcforward(input, output, weight, bias, prev_conv):
 def fcbackward(input, weight, grad, out_grad, weight_grad, bias_grad, prev_conv):
   grad_propagate = False
   weight_propagate = True
-  state = get_state_from_slice_dim(grad.slice_dim, False, ConvDataLayout, FCDataLayout)
+  state = get_state_from_slice_dim(grad.group_slice_dim, False, ConvDataLayout, FCDataLayout)
   
   if state == disw_b:
     if not hasattr(input, 'tmp_local_data'):
       input.batch_communicate(input.rank, FCDataLayout.BATCH)
   else:
     if not hasattr(input, 'tmp_local_data'):
-      input.global_communicate()
+      input.global_global_communicate()
 
   if state == sidw_f:
     grad_propagate = True
@@ -141,9 +144,9 @@ def fcbackward(input, weight, grad, out_grad, weight_grad, bias_grad, prev_conv)
   garray.copy_to(garray.sum(grad.local_data, axis = 1), bias_grad.local_data)
   
 def softmax(input, output):
-  state = get_state_from_slice_dim(output.slice_dim, False, ConvDataLayout, FCDataLayout)
+  state = get_state_from_slice_dim(output.group_slice_dim, False, ConvDataLayout, FCDataLayout)
   if state == sisw:
-    input.global_communicate()
+    input.global_global_communicate()
     local_input = input.tmp_local_data
   else:
     local_input = input.local_data
@@ -155,7 +158,7 @@ def softmax(input, output):
   garray.copy_to(local_output / sum_rst, local_output)
 
 def softmax_bprop(output, label, out_grad):
-  state = get_state_from_slice_dim(output.slice_dim, False, ConvDataLayout, FCDataLayout)
+  state = get_state_from_slice_dim(output.group_slice_dim, False, ConvDataLayout, FCDataLayout)
   if state == sisw:
     if not hasattr(out_grad, 'tmp_local_data'):
       out_grad.tmp_local_data = garray.empty_like(output.local_data)
@@ -165,7 +168,7 @@ def softmax_bprop(output, label, out_grad):
   else:
     # if softmax is disw_b, so is fc
     local_input = input.local_data
-    idx = output.slice_dim
+    idx = output.group_slice_dim
     f = output.local_area._from[idx]
     t = output.local_area._to[idx]
     garray.softmax_bprop(output.local_data, label[0, f:t], output, out_grad.local_data)
@@ -185,10 +188,9 @@ def tanh_compute_grad(grad, output, out_grad, a, b):
 def convolution(input, filter ,output, bias, image_y, output_y, output_x, padding, stride, channel, group):
   filter_size_index = FilterLayout.HEIGHT 
   r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
-  state = get_state_from_slice_dim(output.slice_dim, True, ConvDataLayout, FCDataLayout)
+  state = get_state_from_slice_dim(output.group_slice_dim, True, ConvDataLayout, FCDataLayout)
 
   if state == disw_i:
-    assert filter.unique == False
     input.image_communicate(slice_dim = (r, c),
                             padding = padding,
                             stride = stride,
@@ -225,10 +227,9 @@ def bconvolution(input, grad, filter, out_grad, image_y, image_x, output_size, p
   propagate = True
   r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
   filter_size_index = FilterLayout.HEIGHT 
-  state = get_state_from_slice_dim(grad.slice_dim, True, ConvDataLayout, FCDataLayout)
+  state = get_state_from_slice_dim(grad.group_slice_dim, True, ConvDataLayout, FCDataLayout)
 
   if state == disw_i:
-    assert filter.unique == False
     if not hasattr(input, 'tmp_local_data'):
       input.image_communicate(slice_dim = (r, c),
                               padding = padding,
@@ -273,8 +274,8 @@ def bconvolution(input, grad, filter, out_grad, image_y, image_x, output_size, p
   if state == disw_i:
     tmp_out_grad = input.unpad(data = tmp_out_grad, 
                                padding = real_padding, 
-                               shape = tmp_out_grad.shape,
-                               area = input.tmp_local_area,
+                               old_shape = tmp_out_grad.shape,
+                               old_area = input.tmp_local_area,
                                slice_dim = (r, c),
                                debug = DEBUG)
   out_grad.fill(0)
@@ -284,10 +285,9 @@ def wconvolution(input, grad, weight_grad, bias_grad, image_y, output_y, output_
   propagate = True
   filter_size_index = FilterLayout.HEIGHT
   r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
-  state = get_state_from_slice_dim(grad.slice_dim, True, ConvDataLayout, FCDataLayout)
+  state = get_state_from_slice_dim(grad.group_slice_dim, True, ConvDataLayout, FCDataLayout)
 
   if state == disw_i:
-    assert weight_grad.unique == False
     if not hasattr(input, 'tmp_local_data'):
       input.image_communicate(slice_dim = (r, c),
                               padding = padding,
@@ -345,7 +345,7 @@ def wconvolution(input, grad, weight_grad, bias_grad, image_y, output_y, output_
 
 def maxpool(input, output, channel, pool_size, start, stride, input_y, output_y, output_x):
   r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
-  state = get_state_from_slice_dim(output.slice_dim, True, ConvDataLayout, FCDataLayout)
+  state = get_state_from_slice_dim(output.group_slice_dim, True, ConvDataLayout, FCDataLayout)
 
   if state == disw_i:
     input.image_communicate(slice_dim = (r, c),
@@ -380,7 +380,7 @@ def maxpool(input, output, channel, pool_size, start, stride, input_y, output_y,
 def maxundo(input, grad, output, out_grad, pool_size, start, stride, output_y, output_x, input_y):
   propagate = True
   r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
-  state = get_state_from_slice_dim(output.slice_dim, True, ConvDataLayout, FCDataLayout)
+  state = get_state_from_slice_dim(output.group_slice_dim, True, ConvDataLayout, FCDataLayout)
 
   if state == disw_i:
     if not hasattr(input, 'tmp_local_data'):
@@ -429,7 +429,7 @@ def maxundo(input, grad, output, out_grad, pool_size, start, stride, output_y, o
 
 def avgpool(input, output, channel, pool_size, start, stride, input_y, output_y, output_x):
   r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
-  state = get_state_from_slice_dim(output.slice_dim, True, ConvDataLayout, FCDataLayout)
+  state = get_state_from_slice_dim(output.group_slice_dim, True, ConvDataLayout, FCDataLayout)
   
   if state == disw_i:
     input.image_communicate(slice_dim = (r, c),
@@ -464,7 +464,7 @@ def avgpool(input, output, channel, pool_size, start, stride, input_y, output_y,
 def avgundo(input, grad, out_grad, pool_size, start, stride, output_y, output_x, image_y, image_x):
   propagate = True
   r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
-  state = get_state_from_slice_dim(grad.slice_dim, True, ConvDataLayout, FCDataLayout)
+  state = get_state_from_slice_dim(grad.group_slice_dim, True, ConvDataLayout, FCDataLayout)
 
   if state == disw_i:
     if not hasattr(input, 'tmp_local_data'):
@@ -512,7 +512,7 @@ def avgundo(input, grad, out_grad, pool_size, start, stride, output_y, output_x,
 
 def rnorm(input, denom, output, channel, size, image_y, scalar, pow):
   r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
-  state = get_state_from_slice_dim(output.slice_dim, True, ConvDataLayout, FCDataLayout)
+  state = get_state_from_slice_dim(output.group_slice_dim, True, ConvDataLayout, FCDataLayout)
 
   if state == disw_i:
     input.image_communicate(slice_dim = (r, c),
@@ -560,7 +560,7 @@ def rnorm(input, denom, output, channel, size, image_y, scalar, pow):
 def rnormundo(grad, denom, input, output, out_grad, channel, size, image_y, scalar, pow):
   propagate = True
   r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
-  state = get_state_from_slice_dim(grad.slice_dim, True, ConvDataLayout, FCDataLayout)
+  state = get_state_from_slice_dim(grad.group_slice_dim, True, ConvDataLayout, FCDataLayout)
   if state == disw_i:
     if not hasattr(input, 'tmp_local_data'):
       input.image_communicate(slice_dim = (r, c),
@@ -580,7 +580,7 @@ def rnormundo(grad, denom, input, output, out_grad, channel, size, image_y, scal
                            stride = 1,
                            filter_size = size,
                            output_area = grad.local_area)
-    if output.slice_dim == input.slice_dim: # previous layer has the same distribution disw_i
+    if output.group_slice_dim == input.group_slice_dim: # previous layer has the same distribution disw_i
       propagate = False
 
   elif state == disw_b:
@@ -638,7 +638,7 @@ def rnormundo(grad, denom, input, output, out_grad, channel, size, image_y, scal
 
 def rnormcrossmap(input, denom, output, channel, size,image_y, scalar, pow, blocked):
   r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
-  state = get_state_from_slice_dim(output.slice_dim, True, ConvDataLayout, FCDataLayout)
+  state = get_state_from_slice_dim(output.group_slice_dim, True, ConvDataLayout, FCDataLayout)
   if state == disw_i:
     input.image_communicate(slice_dim = (r, c),
                             stride = 1,
@@ -685,7 +685,7 @@ def rnormcrossmap(input, denom, output, channel, size,image_y, scalar, pow, bloc
 def rnormcrossmapundo(grad, denom, input, output, out_grad, channel, size, image_y, scalar, pow, blocked):
   propagate = True
   r, c,ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
-  state = get_state_from_slice_dim(grad.slice_dim, True, ConvDataLayout, FCDataLayout)
+  state = get_state_from_slice_dim(grad.group_slice_dim, True, ConvDataLayout, FCDataLayout)
   if state == disw_i:
     if not hasattr(input, 'tmp_local_data'):
       input.image_communicate(slice_dim = (r, c),
@@ -709,7 +709,7 @@ def rnormcrossmapundo(grad, denom, input, output, out_grad, channel, size, image
     denom.channel_communicate(denom.rank, ConvDataLayout.CHANNEL, padding = size / 2)
     output.channel_communicate(output.rank, ConvDataLayout.CHANNEL, padding = size / 2)
     grad.channel_communicate(grad.rank, ConvDataLayout.CHANNEL, padding = size / 2)
-    if output.slice_dim == input.slice_dim: # prievious layer has the some distribution sidw
+    if output.group_slice_dim == input.group_slice_dim: # prievious layer has the some distribution sidw
       propagate = False
     
   input_data = input.tmp_local_data

@@ -32,7 +32,8 @@ class Layer(object):
     self.output = None
     self.output_grad = None
     self.neuron = None
-    self.layerdist = get_layerdist(self.name)
+    if self.type != 'data':
+      self.layerdist = get_layerdist(self.name)
 
   def set_index(self, index):
     self.index = index
@@ -83,7 +84,7 @@ class Layer(object):
                                 global_slice_dim = self.global_slice_dim,
                                 group_slice_dim = self.group_slice_dim,
                                 context = build_context(self.layerdist.workers_group))
-    #print self.name, type(self.output), self.state, self.output.local_data.shape
+    print self.name, self.layerdist.global_dist, self.layerdist.group_state, self.output.local_data.shape
 
   def dump(self):
     attr = [att for att in dir(self) if not att.startswith('__')]
@@ -480,7 +481,6 @@ class SoftmaxLayer(Layer):
     self.group_slice_dim = state.get_output_slice_dim(self.layerdist.group_state, False, ConvDataLayout, FCDataLayout, self.layerdist.group_size)
     self.global_slice_dim = None
     self.create_cost(self.batch_size)
-
 
   def create_cost(self, size):
     if size < 0:

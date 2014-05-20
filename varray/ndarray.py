@@ -92,12 +92,15 @@ class VArray(object):
     else:
       shape = array.shape
 
-    self.global_area = Area.make_area(global_shape)
+    self.global_area = Area.make_area(shape)
 
     # global attributes
     if self.num_group == 1:
       self.group_area = self.global_area
-      group_array = to_gpu(array)
+      if array is None:
+        group_array = garray.GPUArray(tuple(shape), self.dtype)
+      else:
+        group_array = array
       self.global_area_dict[0] = self.group_area
       self.global_slice_dim = None
     else:
@@ -240,8 +243,7 @@ class VArray(object):
 
   @property
   def size(self):
-    assert not self.unique
-    return self.local_data.size
+    return np.prod(self.global_shape)
 
   @property
   def global_unique(self):
@@ -618,7 +620,7 @@ class VArray(object):
       return c
     else:
       c = allocate_like(self)
-      c.local_data   = self.local_data * other.local_data
+      c.local_data  = self.local_data * other.local_data
       return c
 
   def __div__(self, other):
@@ -652,7 +654,7 @@ class VArray(object):
       global_sum = WORLD.allreduce(local_sum)
       return global_sum
 
-  def group_global_commmunicate(self):
+  def group_global_communicate(self):
     self.tmp_local_area = Area.make_area(self.group_shape)
     if self.group_unique:
       self.tmp_local_data = self.group_fetch(self.group_area)
@@ -701,8 +703,8 @@ class VArray(object):
       col_begin = max(col_begin_centroid - half_filter_size, 0)
       col_end = min(col_end_centroid + half_filter_size, self.global_shape[c] - 1)
       
-      _from = [0] * len(self.global_shape)
-      _to = [x - 1 for x in self.global_shape]
+      _from = self.group_area._from[:]
+      _to = self.group_area._to[:]
 
       _from[r] = row_begin
       _to[r] = row_end
@@ -711,7 +713,6 @@ class VArray(object):
       self.tmp_local_area = Area(Point(*_from), Point(*_to))
     else:
       self.tmp_local_area = copy.deepcopy(output_area)
-
     self.tmp_local_data = self.group_fetch(self.tmp_local_area, padding = padding, slice_dim = slice_dim)
 
   def local_patch(self, data):
@@ -803,7 +804,7 @@ class VArray(object):
     self.local_data.fill(scalar)
 
   def get(self):
-    if not self.unique:
+    if not self.global_unique and not self.group_unique:
       return self.local_data.get()
     else:
       return self.fetch(self.global_area).get()
