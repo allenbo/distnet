@@ -314,6 +314,7 @@ class VArray(object):
     return data
 
   def _communicate(self, send_data, recv_data, communicator):
+    barrier(communicator)
     send_req = []
     recv_req = []
     for i, data in enumerate(send_data):
@@ -356,9 +357,6 @@ class VArray(object):
     reqs = [None] * num_worker
     if area in self.local_area:
       subs[area] = self.fetch_local(area)
-      for i in range(num_worker):
-        if i != self_id:
-          reqs[i] = None
     else:
       for rank, a in area_dict.iteritems():
         sub_area = a & area
@@ -401,7 +399,6 @@ class VArray(object):
         self.fetch_sent_cache[area.id] = rst
       else:
         rst = self.fetch_sent_cache[area.id]
-      stride_func = garray.stride_write
       for sub_area, sub_array in subs.iteritems():
         garray.stride_write(sub_array, rst, sub_area.offset(min_from).slice)
       return rst
@@ -470,11 +467,15 @@ class VArray(object):
     sub_area = self.local_area & area
     if sub_area is None: return
 
-    sub_data = data.__getitem__(sub_area.offset(area._from).slice)
+    if sub_area.shape == data.shape:
+      sub_data = data
+    else:
+      sub_data = data.__getitem__(sub_area.offset(area._from).slice)
+
     self.write_local(sub_area, sub_data)
   
   def _write(self, area, data, propagate, unique, self_id, num_worker, area_dict, communicator):
-    #barrier(communicator)
+    barrier(communicator)
     if not propagate:
       self._partial_write(area, data)
       return
@@ -518,6 +519,7 @@ class VArray(object):
                 communicator = self.group_comm)
 
   def master_write(self):
+    if self.num_group == 1: return
     assert self.global_unique == False and self.group_unique == False
     barrier(WORLD)
     if self.group_rank == 0:
@@ -563,17 +565,18 @@ class VArray(object):
   def write(self, area, data, propagate = True, debug = False):
     if self.global_unique:
       self.group_write(area, data, propagate)
-    elif not self.global_unique and not self.group_unique:
-      self._partial_write(area, data)
-      if propagate:
-        self.group_reduce()
-        if self.num_group == 1:
-          return
-        else:
+    else:
+      if not self.group_unique:
+        #if self.num_group == 1:
+        #  self.group_write(area, data, propagate)
+        #else:
+        self._partial_write(area, data)
+        if propagate:
+          self.group_reduce()
           self.master_write()
           self.group_bcast()
-    else:
-      assert False, 'Not Implementation'
+      else:
+        self.group_write(area, data, propagate)
     
   def check_param(self, other):
     return self.global_slice_dim == other.global_slice_dim and self.group_slice_dim == other.group_slice_dim
@@ -833,13 +836,15 @@ class VArray(object):
       value.free()
 
   def printout(self, name, row_from = 0, row_to = 0, col_from = 0, col_to = 0):
-    if not self.unique:
+    barrier(self.global_comm)
+    if not self.group_unique and not self.global_unique:
       x = self.local_data
     else:
       x = self.fetch(self.global_area)
     
-    if self.rank == 0:
+    if self.global_rank == 0:
       x.printout(name, row_from = row_from, row_to = row_to, col_from =  col_from, col_to = col_to)
+    barrier(self.global_comm)
 
 def array(obj, global_slice_dim, group_slice_dim, context = default_context):
   return VArray(array = obj,

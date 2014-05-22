@@ -10,6 +10,8 @@ from pycuda import driver
 from distbase.state import *
 from garray import ConvDataLayout, FCDataLayout, FilterLayout, WeightLayout
 
+import sys
+
 DEBUG = False
 
 def copy_to(input, output):
@@ -99,6 +101,8 @@ def fcforward(input, output, weight, bias, prev_conv):
 def fcbackward(input, weight, grad, out_grad, weight_grad, bias_grad, prev_conv):
   grad_propagate = False
   weight_propagate = True
+  weight_grad.fill(0)
+  out_grad.fill(0)
   state = get_state_from_slice_dim(grad.group_slice_dim, False, ConvDataLayout, FCDataLayout)
   
   if state == disw_b:
@@ -137,7 +141,7 @@ def fcbackward(input, weight, grad, out_grad, weight_grad, bias_grad, prev_conv)
     print 'out_grad.shape', tmp_out_grad.shape
   garray.matrixmult(garray.transpose(weight.local_data), grad.local_data, dest = tmp_out_grad)
   garray.matrixmult(grad.local_data, garray.transpose(input.tmp_local_data), dest = tmp_weight_grad)
-
+  
   weight_grad.write(area = weight_grad.local_area, data = tmp_weight_grad, propagate = weight_propagate)
   out_grad.write(area = input.tmp_local_area, data = tmp_out_grad, propagate = grad_propagate)
 
@@ -158,6 +162,7 @@ def softmax(input, output):
   garray.copy_to(local_output / sum_rst, local_output)
 
 def softmax_bprop(output, label, out_grad):
+  out_grad.fill(0)
   state = get_state_from_slice_dim(output.group_slice_dim, False, ConvDataLayout, FCDataLayout)
   if state == sisw:
     if not hasattr(out_grad, 'tmp_local_data'):
@@ -227,6 +232,7 @@ def bconvolution(input, grad, filter, out_grad, image_y, image_x, output_size, p
   propagate = True
   r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
   filter_size_index = FilterLayout.HEIGHT 
+  out_grad.fill(0)
   state = get_state_from_slice_dim(grad.group_slice_dim, True, ConvDataLayout, FCDataLayout)
 
   if state == disw_i:
@@ -278,13 +284,14 @@ def bconvolution(input, grad, filter, out_grad, image_y, image_x, output_size, p
                                old_area = input.tmp_local_area,
                                slice_dim = (r, c),
                                debug = DEBUG)
-  out_grad.fill(0)
   out_grad.write(area = input.tmp_local_area, data = tmp_out_grad, propagate = propagate, debug = DEBUG)
 
 def wconvolution(input, grad, weight_grad, bias_grad, image_y, output_y, output_x, filter_size, padding, stride, channel):
   propagate = True
   filter_size_index = FilterLayout.HEIGHT
   r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
+  weight_grad.fill(0)
+  bias_grad.fill(0)
   state = get_state_from_slice_dim(grad.group_slice_dim, True, ConvDataLayout, FCDataLayout)
 
   if state == disw_i:
@@ -352,6 +359,7 @@ def maxpool(input, output, channel, pool_size, start, stride, input_y, output_y,
                             stride = stride,
                             filter_size = pool_size,
                             output_area = output.local_area)
+
   elif state == disw_b:
     input.batch_communicate(input.rank, ConvDataLayout.BATCH)
   elif state == sisw:
@@ -380,6 +388,7 @@ def maxpool(input, output, channel, pool_size, start, stride, input_y, output_y,
 def maxundo(input, grad, output, out_grad, pool_size, start, stride, output_y, output_x, input_y):
   propagate = True
   r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
+  out_grad.fill(0)
   state = get_state_from_slice_dim(output.group_slice_dim, True, ConvDataLayout, FCDataLayout)
 
   if state == disw_i:
@@ -424,7 +433,10 @@ def maxundo(input, grad, output, out_grad, pool_size, start, stride, output_y, o
       tmp_out_grad,
       pool_size, start, stride, output_y, output_x, input_y)
 
-  out_grad.fill(0)
+  if DEBUG:
+    print 'outgrad area', input.tmp_local_area
+    print 'data.shape', tmp_out_grad.shape
+    print 'propagate', propagate
   out_grad.write(data = tmp_out_grad, area = input.tmp_local_area, propagate = propagate)
 
 def avgpool(input, output, channel, pool_size, start, stride, input_y, output_y, output_x):
@@ -464,6 +476,7 @@ def avgpool(input, output, channel, pool_size, start, stride, input_y, output_y,
 def avgundo(input, grad, out_grad, pool_size, start, stride, output_y, output_x, image_y, image_x):
   propagate = True
   r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
+  out_grad.fill(0)
   state = get_state_from_slice_dim(grad.group_slice_dim, True, ConvDataLayout, FCDataLayout)
 
   if state == disw_i:
@@ -507,7 +520,6 @@ def avgundo(input, grad, out_grad, pool_size, start, stride, output_y, output_x,
       tmp_out_grad,
       pool_size, start, stride, output_y, output_x, image_y, image_x)
 
-  out_grad.fill(0)
   out_grad.write(data = tmp_out_grad, area = input.tmp_local_area, propagate = propagate)
 
 def rnorm(input, denom, output, channel, size, image_y, scalar, pow):
@@ -560,6 +572,7 @@ def rnorm(input, denom, output, channel, size, image_y, scalar, pow):
 def rnormundo(grad, denom, input, output, out_grad, channel, size, image_y, scalar, pow):
   propagate = True
   r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
+  out_grad.fill(0)
   state = get_state_from_slice_dim(grad.group_slice_dim, True, ConvDataLayout, FCDataLayout)
   if state == disw_i:
     if not hasattr(input, 'tmp_local_data'):
@@ -633,7 +646,6 @@ def rnormundo(grad, denom, input, output, out_grad, channel, size, image_y, scal
   
   if state == disw_i and propagate:
     tmp_out_grad = output.local_patch(tmp_out_grad)
-  out_grad.fill(0)
   out_grad.write(data = tmp_out_grad, area = output.local_area, propagate = propagate)
 
 def rnormcrossmap(input, denom, output, channel, size,image_y, scalar, pow, blocked):
@@ -685,6 +697,7 @@ def rnormcrossmap(input, denom, output, channel, size,image_y, scalar, pow, bloc
 def rnormcrossmapundo(grad, denom, input, output, out_grad, channel, size, image_y, scalar, pow, blocked):
   propagate = True
   r, c,ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
+  out_grad.fill(0)
   state = get_state_from_slice_dim(grad.group_slice_dim, True, ConvDataLayout, FCDataLayout)
   if state == disw_i:
     if not hasattr(input, 'tmp_local_data'):
@@ -749,5 +762,4 @@ def rnormcrossmapundo(grad, denom, input, output, out_grad, channel, size, image
 
   if state == sidw and propagate:
     tmp_out_grad = output.local_path(tmp_out_grad)
-  out_grad.fill(0)
   out_grad.write(data = tmp_out_grad, area = input.tmp_local_area, propagate = propagate)

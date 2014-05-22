@@ -4,30 +4,35 @@ import numpy as np
 import garray
 garray.device_init()
 
-shape = (128, 1)
-hosta = np.ones(shape = shape).astype(np.float32)
-virtuala = VArray(hosta,
-                  global_slice_dim = None,
-                  group_slice_dim = None
-                  )
-print virtuala.local_area
-
-#shape = (3, 224, 224, 128)
+#shape = (128, 1)
 #hosta = np.ones(shape = shape).astype(np.float32)
-#global_slice_dim = 3
-#group_slice_dim = (1, 2)
-#
-#worker_group = [4, 4]
-#context = Context(worker_group)
-#
 #virtuala = VArray(hosta,
-#                  global_unique = True,
-#                  group_unique = True,
-#                  context = context,
-#                  global_slice_dim = global_slice_dim,
-#                  group_slice_dim = group_slice_dim
+#                  global_slice_dim = None,
+#                  group_slice_dim = None
 #                  )
-#
+#print virtuala.local_area
+
+shape = (3, 16, 16, 32)
+hosta = np.arange(np.prod(shape)).astype(np.float32).reshape(shape)
+global_slice_dim = 3
+group_slice_dim = 1
+
+worker_group = [2, 2]
+context = Context(worker_group)
+
+virtuala = VArray(hosta,
+                  context = context,
+                  global_slice_dim = global_slice_dim,
+                  group_slice_dim = group_slice_dim
+                  )
+
+assert (virtuala.local_data.get() == hosta[virtuala.local_area.slice]).all()
+
+x = virtuala.fetch(virtuala.global_area)
+
+assert (x.get() == hosta).all()
+
+
 #print 'global_shape', virtuala.global_shape
 #print 'global_area', virtuala.global_area
 #

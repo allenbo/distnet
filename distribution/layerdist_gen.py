@@ -4,15 +4,15 @@ from distbase.layerdist import LayerDist
 import pickle
 
 
-conv_image_dist = LayerDist(True, disw_i, [2, 2])
-fc_shared_dist = LayerDist(False, sisw, [4])
+conv_image_dist = LayerDist(False, disw_i, [2])
+fc_shared_dist = LayerDist(False, sisw, [2])
 
 
-model_path = '../config/imagenet.cfg'
+model_path = '../config/cifar-13pct.cfg'
 strategy_path = model_path + '.layerdist'
 model = reader.getmodel(model_path)
 
-layerdists = [conv_image_dist] * (len(model) - 6) + [fc_shared_dist] * 6
+layerdists = [conv_image_dist] * (len(model) - 2) + [fc_shared_dist] * 2
 
 assert len(model) == len(layerdists)
 

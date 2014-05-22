@@ -167,6 +167,11 @@ def print_details(model, states):
   total_comm_cost = 0
   cfs = ConvFC.conv
   
+  conv_weight_comm = 0
+  conv_elapsed = 0
+  fc_elapsed = 0
+  conv_region = True
+
   prev_nw = -1
   print '\033[93m{:10}\t{:30}\t{:20}\t{:20}\t{:20}\033[0m'.format('layer', 'distribution', 'cp_cost', 'cm_cost', 'num_worker')
   for i in range(len(model)):
@@ -184,6 +189,9 @@ def print_details(model, states):
     else:
       communicat_cost = comm_cost_worker[cfs]
 
+    if cfs == ConvFC.conv_fc:
+      conv_region = False
+
     if cfs == ConvFC.conv_fc or cfs == ConvFC.fc:
       cfs = ConvFC.fc
     else:
@@ -193,6 +201,7 @@ def print_details(model, states):
           cfs = ConvFC.conv_fc
         else:
           cfs = ConvFC.conv
+          
 
     if layer['type'] not in ['fc', 'conv', 'softmax']:
       if layer['type'] == 'pool' and curr_state == disw_i and cur_nw != prev_nw:
@@ -210,6 +219,12 @@ def print_details(model, states):
         cm_cost += 0 if cm_cost == 0 else latency * 2
     cp_cost = layer['comp_cost'][curr_state][0]
 
+    if conv_region:
+      conv_elapsed += cp_cost + cm_cost
+      conv_weight_comm += weight_size * 1.0 / bandwidth
+    else:
+      fc_elapsed += cp_cost + cm_cost
+
     print '{:10}\t{:30}\t{:20}\t{:20}\t{:20}'.format(layer['name'], curr_state, cp_cost, cm_cost, cur_nw)
     prev_state = curr_state
     prev_nw = cur_nw
@@ -218,6 +233,9 @@ def print_details(model, states):
   print 'total computation cost is', total_comp_cost
   print 'total communication cost is', total_comm_cost
   print 'total cost is \033[33m%f\033[0m' % (total_comp_cost + total_comm_cost)
+  print 'conv elapsed %f' % (conv_elapsed)
+  print 'conv weight comm per worker %f' % (conv_weight_comm)
+  print 'fc elapsed %f' % (fc_elapsed)
 
 
 if __name__ == '__main__':
@@ -227,7 +245,7 @@ if __name__ == '__main__':
   parser.add_argument('--model-path', help='Path of model file', required=True)
   parser.add_argument('--ideal', help='Assume the backend ideally scale to any number of GPUs', default=False, action='store_true')
   parser.add_argument('--strategy-path', help='Path of generated strategy file', default='strategy')
-  parser.add_argument('--bandwidth', help='Bandwidth of the underlying network', default=2.5, type = float)
+  parser.add_argument('--bandwidth', help='Bandwidth of the underlying network', default=1.25, type = float)
   parser.add_argument('--single', help='Get the running time when the number of worker is 1', default=False, action = 'store_true')
   parser.add_argument('--batch-size', help='The size of batch', default=128, type = int)
 
@@ -269,8 +287,8 @@ if __name__ == '__main__':
   model = reader.getmodel(model_file)
   model_basename = os.path.basename(model_file)
   
-  ideal_filename = '%s-%d.%s.%s.ideal' % (name, n, model_basename, backend)
-  prat_filename = '%s-%d.%s.%s' % (name, n, model_basename, backend)
+  ideal_filename = '%s-%d.%s.%s.%d.ideal' % (name, n, model_basename, backend, batch_size)
+  prat_filename = '%s-%d.%s.%s.%d' % (name, n, model_basename, backend, batch_size)
    
   if not config['ideal']:
     filename = prat_filename
@@ -280,7 +298,7 @@ if __name__ == '__main__':
 
   # print out the running time when the number of worker is 1
   if config['single']:
-    glob_str = '%s-*.%s.%s' % (name, model_basename, backend)
+    glob_str = '%s-*.%s.%s.%d' % (name, model_basename, backend, batch_size)
     glob_str = [glob_str, glob_str + '.ideal']
     
     files = glob.glob(glob_str[0]) + glob.glob(glob_str[1])
