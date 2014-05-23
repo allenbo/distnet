@@ -104,5 +104,17 @@ class Context(object):
     group_id = self.get_group_id(global_rank)
     return global_rank - self._group_master[group_id]
 
+default_context = Context([size])
 
-default_context = Context([])
+class ContextManager(object):
+  def __init__(self):
+    self.context_dic = {}
+    self.context_dic[(size, )] = default_context
+
+  def build_context(self, workers_group):
+    mangled = tuple(workers_group)
+    if mangled not in self.context_dic:
+      self.context_dic[mangled] = Context(workers_group)
+    return self.context_dic[mangled]
+
+CONTEXTMANAGER = ContextManager()

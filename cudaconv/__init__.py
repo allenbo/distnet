@@ -93,4 +93,4 @@ def convert_to_conv(input):
 
 def convert_from_data(input, output):
   from distbase import cuda_base
-  cuda_base.gpu_copy_to(input, output) 
+  cuda_base.gpu_copy_to(input, output)

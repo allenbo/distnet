@@ -83,9 +83,7 @@ def fcbackward(input, weight, grad, out_grad, weight_grad, bias_grad, prev_conv)
 
 def softmax(input, output):
   max_rst = max(input, axis = 0)
-  # call garray.__sub__ or varray.ndarray.__sub__, input and max are both 2D array
   copy_to(input - max_rst, output)
   iexp(output)
   sum_rst = sum(output, axis = 0)
-  # call garray.__div__ or varray.ndarray.__div__, input and max are both 2D array
   copy_to(output / sum_rst, output)

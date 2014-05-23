@@ -12,7 +12,7 @@ multi_gpu = False
 if os.environ.get('MULTIGPU', 'no') == 'yes':
   import varray as arr
   from varray import DistMethod, rank, size as num_gpu
-  from varray.context import default_context, Context
+  from varray.context import default_context, Context, CONTEXTMANAGER
   multi_gpu = True
   import socket
   garray.device_init(arr.rank)
@@ -37,7 +37,7 @@ else:
 def build_context(workers_group):
   if default_context is None or len(workers_group) == 1:
     return default_context
-  return Context(workers_group)
+  return CONTEXTMANAGER.build_context(workers_group)
 
 def get_layerdist(layer_name):
   if strategy is None:

@@ -10,7 +10,7 @@ test_id = 'cifar-test'
 
 data_dir = '/ssd/nn-data/cifar-10.old/'
 checkpoint_dir = 'checkpoint/'
-param_file = 'config/cifar-13pct.cfg'
+param_file = 'config/cifar-13pct.cfg.mdf'
 
 train_range = range(1, 41) #1,2,3,....,40
 test_range = range(41, 49) #41, 42, ..., 48
@@ -25,8 +25,8 @@ init_model = checkpoint_dumper.get_checkpoint()
 if init_model is None:
   init_model = parser.parse_config_file(param_file)
 
-save_freq = 100
-test_freq = 100
+save_freq = 10000
+test_freq = 10000
 adjust_freq = 100
 factor = 1
 num_epoch = 30

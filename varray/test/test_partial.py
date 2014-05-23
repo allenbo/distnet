@@ -27,10 +27,8 @@ virtuala = VArray(hosta,
                   )
 
 assert (virtuala.local_data.get() == hosta[virtuala.local_area.slice]).all()
-
-x = virtuala.fetch(virtuala.global_area)
-
-assert (x.get() == hosta).all()
+virtuala.printout('virtual')
+#assert (x.get() == hosta[virtuala.group_area.slice]).all()
 
 
 #print 'global_shape', virtuala.global_shape

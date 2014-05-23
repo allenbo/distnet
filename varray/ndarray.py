@@ -27,7 +27,7 @@ class DistMethod(object):
   Square = 'square'
   Stripe = 'stripe'
 
-def barrier(communicator):
+def barrier(communicator = WORLD):
   communicator.Barrier()
 
 def tobuffer(gpuarray):
@@ -302,14 +302,15 @@ class VArray(object):
   def fetch_local(self, area):
     if area is None:
       return None
-    if area == self.local_area:
-      return self.local_data
+    #if area == self.local_area:
+    #  return self.local_data
     area = area.offset(self.local_area._from)
-    if area.id not in self.fetch_sent_cache:
-      data = garray.GPUArray(area.shape, dtype = np.float32)
-      self.fetch_sent_cache[area.id] = data
-    else:
-      data = self.fetch_sent_cache[area.id]
+    #if area.id not in self.fetch_sent_cache:
+    #  data = garray.GPUArray(area.shape, dtype = np.float32)
+    #  self.fetch_sent_cache[area.id] = data
+    #else:
+    #  data = self.fetch_sent_cache[area.id]
+    data = garray.zeros(area.shape, dtype = np.float32)
     garray.stride_copy(self.local_data, data, area.slice)
     return data
 
@@ -327,8 +328,10 @@ class VArray(object):
 
     for req in send_req: req.wait()
     for req in recv_req: req.wait()
+    barrier(communicator)
 
   def fetch_remote(self, reqs, communicator, self_id):
+    barrier(communicator)
     subs = {}
     req_list = reqs[:]
     num_worker = len(req_list)
@@ -337,9 +340,10 @@ class VArray(object):
     recv_data = [None] * num_worker
     for i, req in enumerate(req_list):
       if req is not None:
-        if req.id not in self.fetch_recv_cache:
-          self.fetch_recv_cache[req.id] = garray.GPUArray(req.shape, dtype = np.float32)
-        buffer =  self.fetch_recv_cache[req.id]
+        #if req.id not in self.fetch_recv_cache:
+        #  self.fetch_recv_cache[req.id] = garray.GPUArray(req.shape, dtype = np.float32)
+        #buffer =  self.fetch_recv_cache[req.id]
+        buffer = garray.zeros(req.shape, dtype = np.float32)
         recv_data[i] = buffer
 
     # preparea send_data
@@ -349,6 +353,7 @@ class VArray(object):
     self._communicate(send_data, recv_data, communicator)
 
     subs = {reqs[rank]: recv_data[rank] for rank in range(num_worker)}
+    barrier(communicator)
     return subs
 
   def _fetch(self, area, padding, slice_dim, self_id, num_worker, area_dict, communicator):
@@ -368,6 +373,7 @@ class VArray(object):
           reqs[rank] = sub_area
     subs.update(self.fetch_remote(reqs, communicator, self_id))
     rst = self.merge(subs, area, padding, slice_dim)
+    barrier(communicator)
     return rst
 
   def fetch(self, area, padding = 0, slice_dim = None):
@@ -394,12 +400,15 @@ class VArray(object):
       if len(subs) == 1:
         return subs.values()[0]
       min_from = Area.min_from(subs.keys())
-      if area.id not in self.fetch_sent_cache:
-        rst = garray.GPUArray(area.shape, dtype = np.float32)
-        self.fetch_sent_cache[area.id] = rst
-      else:
-        rst = self.fetch_sent_cache[area.id]
+      #if area.id not in self.fetch_sent_cache:
+      #  rst = garray.GPUArray(area.shape, dtype = np.float32)
+      #  self.fetch_sent_cache[area.id] = rst
+      #else:
+      #  rst = self.fetch_sent_cache[area.id]
+      rst = garray.zeros(shape = area.shape, dtype = np.float32)
       for sub_area, sub_array in subs.iteritems():
+        #if in_printout == 1 and self.global_rank == 1:
+        #  sub_array.printout('%s => %s' % (sub_area, sub_area.shape))
         garray.stride_write(sub_array, rst, sub_area.offset(min_from).slice)
       return rst
     else:
@@ -416,11 +425,12 @@ class VArray(object):
       new_shape, slices = self.get_pad_info(padding, area.shape, area, slice_dim)
       min_from = Area.min_from(subs.keys())
       area = Area.make_area(new_shape)
-      if area.id not in self.fetch_sent_cache:
-        rst = garray.zeros(new_shape, dtype = np.float32)
-        self.fetch_sent_cache[area.id] = rst
-      else:
-        rst = self.fetch_sent_cache[area.id]
+      #if area.id not in self.fetch_sent_cache:
+      #  rst = garray.zeros(new_shape, dtype = np.float32)
+      #  self.fetch_sent_cache[area.id] = rst
+      #else:
+      #  rst = self.fetch_sent_cache[area.id]
+      rst = garray.zeros(new_shape, dtype = np.float32)
 
       if len(subs) == 1:
         garray.stride_write(subs.values()[0], rst, slices)
@@ -443,6 +453,7 @@ class VArray(object):
       gpu_data.__setitem__(area.slice, data)
 
   def write_remote(self, reqs, sub_data, communicator):
+    barrier(communicator)
     req_list = reqs[:]
     num_worker = len(req_list)
     recv_data = [None] * num_worker
@@ -460,6 +471,7 @@ class VArray(object):
       if req_list[rank] is None: continue
       else:
         self.write_local(req_list[rank], recv_data[rank], acc = True)
+    barrier(communicator)
   
   def _partial_write(self, area, data):
     if data is self.local_data: return
@@ -491,11 +503,12 @@ class VArray(object):
 
         if sub_area is not None:
           offset_area = sub_area.offset(area._from)
-          if offset_area.id not in self.write_sent_cache:
-            sub_data = garray.GPUArray(offset_area.shape, dtype = np.float32)
-            self.write_sent_cache[offset_area.id] = sub_data
-          else:
-            sub_data = self.write_sent_cache[offset_area.id]
+          #if offset_area.id not in self.write_sent_cache:
+          #  sub_data = garray.GPUArray(offset_area.shape, dtype = np.float32)
+          #  self.write_sent_cache[offset_area.id] = sub_data
+          #else:
+          #  sub_data = self.write_sent_cache[offset_area.id]
+          sub_data = garray.GPUArray(offset_area.shape, dtype = np.float32)
           garray.stride_copy(data, sub_data, offset_area.slice)
         else:
           sub_data = None
@@ -507,6 +520,7 @@ class VArray(object):
           reqs[rank] = sub_area
           local_subs[rank] = sub_data
     self.write_remote(reqs, local_subs, communicator)
+    barrier(communicator)
     
   def group_write(self, area, data, propagate = True):
     self._write(area = area,
@@ -544,15 +558,18 @@ class VArray(object):
     self.group_comm.Bcast(tobuffer(recv_data), root = 0)
     if self.group_rank != 0:
       self.local_data = recv_data
+    barrier(self.group_comm)
 
   def group_reduce(self):
     assert self.group_unique == False
     barrier(self.group_comm)
     if self.group_rank == 0:
-      recv_buff = [garray.empty_like(self.local_data)] * (self.group_size - 1)
+      recv_buff = []
       requests = []
       for i in range(1, self.group_size):
-        requests.append(self.group_comm.Irecv(tobuffer(recv_buff[i - 1]), source = i))
+        buff = garray.empty_like(self.local_data)
+        requests.append(self.group_comm.Irecv(tobuffer(buff), source = i))
+        recv_buff.append(buff)
       for req in requests: req.wait()
       for buff in recv_buff:
         self.local_data += buff
@@ -684,8 +701,8 @@ class VArray(object):
     self.tmp_local_data = self.fetch(self.tmp_local_area)
 
   def batch_communicate(self, rank, slice_dim):
-    self.tmp_local_area = Area.make_stripe_area(rank, slice_dim)
-    self.tmp_local_data = self.fetch(self.tmp_local_area)
+    self.tmp_local_area = VArray.make_stripe_area(rank, slice_dim, self.group_area, self.group_size)
+    self.tmp_local_data = self.group_fetch(self.tmp_local_area)
 
   def image_communicate(self, slice_dim, stride, filter_size, padding = 0, output_area = None):
     assert padding <= 0, str(padding)
@@ -702,9 +719,9 @@ class VArray(object):
       col_end_centroid = to_point[c] * stride + padding + half_filter_size
 
       row_begin = max(row_begin_centroid - half_filter_size, 0)
-      row_end = min(row_end_centroid + half_filter_size, self.global_shape[r] - 1)
+      row_end = min(row_end_centroid + half_filter_size, self.group_shape[r] - 1)
       col_begin = max(col_begin_centroid - half_filter_size, 0)
-      col_end = min(col_end_centroid + half_filter_size, self.global_shape[c] - 1)
+      col_end = min(col_end_centroid + half_filter_size, self.group_shape[c] - 1)
       
       _from = self.group_area._from[:]
       _to = self.group_area._to[:]
@@ -716,7 +733,11 @@ class VArray(object):
       self.tmp_local_area = Area(Point(*_from), Point(*_to))
     else:
       self.tmp_local_area = copy.deepcopy(output_area)
+    #self.tmp_local_data = self.group_fetch(self.tmp_local_area, slice_dim = slice_dim)
     self.tmp_local_data = self.group_fetch(self.tmp_local_area, padding = padding, slice_dim = slice_dim)
+    #x = self.fetch(self.global_area, padding = padding, slice_dim = slice_dim)
+    #self.tmp_local_data = x[self.tmp_local_area.offset(self.global_area._from).slice]
+    #self.pad(padding, slice_dim)
 
   def local_patch(self, data):
     # reversed way against communicate
@@ -726,9 +747,6 @@ class VArray(object):
     
   def get_pad_info(self, padding, old_shape, old_area, slice_dim = None):
     #row, col = self.slice_dim
-    if slice_dim is None:
-      slice_dim = self.slice_dim
-      assert not np.isscalar(slice_dim)
     row, col = slice_dim
     new_shape = list(old_shape)
     new_area = copy.deepcopy(old_area)
@@ -753,14 +771,17 @@ class VArray(object):
 
     return tuple(new_shape), new_area.offset(old_area._from).slice
 
-  def pad(self, padding):
+  def pad(self, padding, slice_dim):
+    if padding == 0: return
     assert padding <= 0
     padding = -padding
-    new_shape, slices = self.get_pad_info(padding, self.tmp_local_data.shape, self.tmp_local_area)
+    new_shape, slices = self.get_pad_info(padding, self.tmp_local_data.shape, self.tmp_local_area, slice_dim)
+    #print self.global_rank, 'padding', padding, new_shape, slices
 
     if new_shape != self.tmp_local_data.shape:
       tmp = garray.zeros(new_shape, dtype = np.float32)
-      tmp[slices] = self.tmp_local_data
+      garray.stride_write(self.tmp_local_data, tmp, slices)
+      #tmp[slices] = self.tmp_local_data
       self.tmp_local_data = tmp
 
   def unpad(self, data, padding, old_shape, old_area, slice_dim, debug = False):

@@ -10,11 +10,12 @@ from garray import ConvDataLayout, FilterLayout, FCDataLayout, WeightLayout
 from multigpu import allocate, arr, uniformed_array, multi_gpu, get_layerdist, build_context
 from distbase import state
 
-PFout = False
+PFout = True
 PBout = False
 TEST = 0
 TRAIN = 1
-OUTINDEX = 1
+STOPITER = 1
+OUTINDEX = [6]
 
 def col_rand(shape, dtype):
   return np.require(np.random.rand(*shape), dtype=dtype, requirements='C')
@@ -32,6 +33,7 @@ class Layer(object):
     self.output = None
     self.output_grad = None
     self.neuron = None
+    self.iteration = 0
     if self.type != 'data':
       self.layerdist = get_layerdist(self.name)
 
@@ -53,16 +55,22 @@ class Layer(object):
   def update(self):
     pass
 
+  def _prev_fprop(self):
+    self.iteration += 1
+    self.output.fill(0)
+
   def _printout_forward(self, obj):
-    if PFout and self.index == OUTINDEX:
+    if PFout and self.index in OUTINDEX:
       obj.printout(self.name)
-      sys.exit(-1)
+      if self.index == OUTINDEX[-1] and self.iteration == STOPITER:
+        sys.exit(-1)
 
   def _printout_backward(self, obj_list):
-    if PBout and self.index == OUTINDEX:
+    if PBout and self.index in OUTINDEX:
       for obj in obj_list:
         obj.printout(self.name)
-      sys.exit(-1)
+      if self.index == OUTINDEX[0] and self.iteration == STOPITER:
+        sys.exit(-1)
 
   def init_output(self, fc = False):
     if self.type == 'data':
@@ -84,7 +92,7 @@ class Layer(object):
                                 global_slice_dim = self.global_slice_dim,
                                 group_slice_dim = self.group_slice_dim,
                                 context = build_context(self.layerdist.workers_group))
-    #print self.name, self.layerdist.global_dist, self.layerdist.group_state, self.output.local_data.shape, self.output.local_area
+    #print >> sys.stderr, self.name, self.layerdist.global_dist, self.layerdist.group_state, self.output.local_data.shape, self.output.local_area
 
   def dump(self):
     attr = [att for att in dir(self) if not att.startswith('__')]
@@ -106,6 +114,7 @@ class DataLayer(Layer):
     assert False, 'Must be first layer!'
 
   def fprop(self, input, output, train=TRAIN):
+    output.fill(0)
     arr.convert_from_data(input, output)
     self._printout_forward(output)
 
@@ -258,23 +267,21 @@ class ConvLayer(WeightedLayer):
       arr.relu_activate(output, output, 0)
 
     self._printout_forward(output)
-    #self._printout_forward(self.weight.wt)
-    #self._printout_forward(self.bias.wt)
 
   def bprop(self, grad, input, output, outGrad):
     self.weight.grad.fill(0)
     self.bias.grad.fill(0)
+    outGrad.fill(0)
 
     if self.neuron == 'relu':
       arr.relu_compute_grad(grad, output, grad, 0)
+    # bprop weight
+    arr.wconvolution(input, grad, self.weight.grad, self.bias.grad, self.img_size, self.outputSize,
+        self.outputSize, self.filterSize, -self.padding, self.stride, self.numColor)
     # bprop to next layer
     arr.bconvolution(input, grad, self.weight.wt, outGrad, self.img_size, self.img_size,
         self.outputSize, -self.padding, self.stride, self.numColor)
 
-    # bprop weight
-    arr.wconvolution(input, grad, self.weight.grad, self.bias.grad, self.img_size, self.outputSize,
-        self.outputSize, self.filterSize, -self.padding, self.stride, self.numColor)
-    
     self._printout_backward((self.bias.grad, self.weight.grad, outGrad))
     #self._printout_backward((outGrad, ))
 
@@ -304,6 +311,7 @@ class MaxPoolLayer(Layer):
     self._printout_forward(output)
 
   def bprop(self, grad, input, output, outGrad):
+    outGrad.fill(0)
     arr.maxundo(input, grad, output, outGrad, self.poolSize,
         self.start, self.stride, self.outputSize, self.outputSize, self.img_size)
     self._printout_backward((outGrad,))
@@ -333,6 +341,7 @@ class AvgPoolLayer(Layer):
     self._printout_forward(output)
 
   def bprop(self, grad, input, output, outGrad):
+    outGrad.fill(0)
     arr.avgundo(input, grad, outGrad, self.poolSize,
         self.start, self.stride, self.outputSize, self.outputSize, self.img_size, self.img_size)
     self._printout_backward((outGrad,))
@@ -376,6 +385,7 @@ class ResponseNormLayer(Layer):
 
 
   def bprop(self, grad, input, output, outGrad):
+    outGrad.fill(0)
     arr.rnormundo(grad, self.denom, input, output, outGrad, self.numColor,
         self.size, self.img_size, self.scalar, self.pow)
 
@@ -397,6 +407,7 @@ class CrossMapResponseNormLayer(ResponseNormLayer):
     self._printout_forward(output)
 
   def bprop(self, grad, input, output, outGrad):
+    outGrad.fill(0)
     arr.rnormcrossmapundo(grad, self.denom, input, output, outGrad, self.numColor,
         self.size, self.img_size,self.scalar, self.pow, self.blocked)
     self._printout_backward((outGrad,))
@@ -456,9 +467,13 @@ class FCLayer(WeightedLayer):
 
     if self.neuron == 'relu':
       arr.relu_activate(self.output, self.output, 0)
-    self._printout_forward(self.weight.wt)
+    self._printout_forward(output)
 
   def bprop(self, grad, input, output, outGrad):
+    outGrad.fill(0)
+    self.weight.grad.fill(0)
+    self.bias.grad.fill(0)
+
     if self.neuron == 'relu':
       arr.relu_compute_grad(grad, output, grad, 0)
     if self.dropRate > 0.0:
@@ -521,6 +536,7 @@ class SoftmaxLayer(Layer):
     garray.logreg_cost_col(tmp, label, self.cost)
 
   def bprop(self, label, input, output, outGrad):
+    outGrad.fill(0)
     arr.softmax_bprop(output, label, outGrad)
     self._printout_backward((outGrad,))
     

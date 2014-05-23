@@ -98,24 +98,11 @@ class FastNet(object):
   def fprop(self, data, train=TRAIN):
     assert len(self.layers) > 0, 'No outputs: uninitialized network!'
     input = data
-    fc = False
-    fc_time = 0
-    conv_time = 0
     for layer in self.layers:
-      if layer.type == 'fc':
-        fc = True
-      start = time.time()
+      layer._prev_fprop()
       layer.fprop(input, layer.output, train)
       input = layer.output
       driver.Context.synchronize()
-      if fc:
-        fc_time += time.time() - start
-      else:
-        conv_time += time.time() - start
-    #print 'conv time', conv_time
-    #print 'fc time', fc_time
-    self.fc_time_fprop.append(fc_time)
-    self.conv_time_fprop.append(conv_time)
     return self.layers[-1].output
 
   def bprop(self, label, train=TRAIN):
