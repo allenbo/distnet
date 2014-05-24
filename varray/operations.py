@@ -89,11 +89,17 @@ def convert_from_data(input, output):
 def fcforward(input, output, weight, bias, prev_conv):
   state = get_state_from_slice_dim(output.group_slice_dim, False, ConvDataLayout, FCDataLayout)
   if state == disw_b:
-    input.batch_communicate(input.group_rank, FCDataLayout.BATCH)
+    input.batch_communicate(input.group_rank, ConvDataLayout.BATCH if prev_conv else FCDataLayout.BATCH)
   else:
     input.global_global_communicate()
 
   input_data = input.tmp_local_data
+  if DEBUG:
+    print '------ in fcforward ------'
+    print 'state', state
+    print 'input.shape', input_data.shape
+    print 'weight.shape', weight.local_data.shape
+    print 'output.shape', output.local_data.shape
   garray.matrixmult(weight.local_data, input_data, dest = output.local_data)
   garray.copy_to(output.local_data + bias.local_data , output.local_data)
 
@@ -180,11 +186,10 @@ def softmax_bprop(output, label, out_grad):
     out_grad.write(area = out_grad.global_area, data = tmp_out_grad, propagate = False)
   else:
     # if softmax is disw_b, so is fc
-    local_input = input.local_data
     idx = output.group_slice_dim
     f = output.local_area._from[idx]
-    t = output.local_area._to[idx]
-    garray.softmax_bprop(output.local_data, label[0, f:t], output, out_grad.local_data)
+    t = output.local_area._to[idx] + 1
+    garray.softmax_bprop(output.local_data, label[0:1, f:t], out_grad.local_data)
 
 def relu_activate(input, output, e):
   garray.relu_activate(input.local_data, output.local_data, e)

@@ -646,7 +646,7 @@ class VArray(object):
         c.local_data = self.local_data == other
         return c
       else:
-        c.local_data = self.local_shape == other[self.local_area.slice]
+        c.local_data = self.local_data == other[self.local_area.slice]
       return c
     else:
       assert False

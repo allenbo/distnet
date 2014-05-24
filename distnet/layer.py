@@ -499,7 +499,7 @@ class SoftmaxLayer(Layer):
   def create_cost(self, size):
     if size < 0:
       return
-    self.cost = allocate((size, 1),
+    self.cost = allocate((1, size),
                          global_slice_dim = self.global_slice_dim,
                          group_slice_dim = self.group_slice_dim,
                          context = build_context(self.layerdist.workers_group))

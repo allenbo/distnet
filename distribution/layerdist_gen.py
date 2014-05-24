@@ -5,9 +5,10 @@ import pickle
 
 
 conv_image_dist = LayerDist(False, disw_i, [2])
-conv_batch_dist = LayerDist(True, disw_b, [2, 2])
+conv_batch_dist = LayerDist(False, disw_b, [2])
 fc_shared_dist = LayerDist(False, sisw, [2])
 fc_first_dist = LayerDist(False, sidw_f, [2])
+fc_batch_dist = LayerDist(False, disw_b, [2])
 
 
 model_path = '../config/cifar-13pct.cfg'
@@ -34,7 +35,7 @@ model = reader.getmodel(model_path)
 
 
 # image distribution with distributed fc layer of cifar 13
-layerdists = [conv_image_dist] * 6 + [fc_first_dist] + [fc_shared_dist]
+layerdists = [conv_image_dist] * 6 + [fc_batch_dist] * 2
 
 
 
