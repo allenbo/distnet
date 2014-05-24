@@ -841,7 +841,7 @@ class VArray(object):
     else:
       x = self.fetch(self.global_area)
     
-    if self.global_rank == 0:
+    if self.global_rank == 1:
       x.printout(name, row_from = row_from, row_to = row_to, col_from =  col_from, col_to = col_to)
     #self.local_data.printout(name)
     barrier(self.global_comm)

@@ -96,7 +96,7 @@ def get_bias_slice_dim(state, conv):
     assert conv
     return 0 # bias has to be distributed
   if state == sidw_f:
-    assert conv
+    assert not conv
     return 0
 
   return None
@@ -116,7 +116,7 @@ def get_state_from_slice_dim(output_dist, conv, ConvDataLayout, FCDataLayout):
   else:
     if output_dist is None:
       return sisw
-    elif outptu_dist == FCDataLayout.BATCH:
+    elif output_dist == FCDataLayout.BATCH:
       return disw_b
     elif output_dist == FCDataLayout.NEURON:
       return sidw_f

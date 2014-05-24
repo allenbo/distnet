@@ -8,9 +8,9 @@ from mpi4py import MPI
 
 test_id = 'cifar-test'
 
-data_dir = '/users/justin/cifar-10.old/'
+data_dir = '/proj/FastNet/exp/TestCentOSCuda/cifar-10.old/'
 checkpoint_dir = 'checkpoint/'
-param_file = 'config/cifar-18pct.cfg'
+param_file = 'config/cifar-13pct.cfg' 
 
 train_range = range(1, 41) #1,2,3,....,40
 test_range = range(41, 49) #41, 42, ..., 48

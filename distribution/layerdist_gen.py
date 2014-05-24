@@ -4,12 +4,13 @@ from distbase.layerdist import LayerDist
 import pickle
 
 
-conv_image_dist = LayerDist(True, disw_i, [2, 2])
+conv_image_dist = LayerDist(False, disw_i, [2])
 conv_batch_dist = LayerDist(True, disw_b, [2, 2])
-fc_shared_dist = LayerDist(False, sisw, [4])
+fc_shared_dist = LayerDist(False, sisw, [2])
+fc_first_dist = LayerDist(False, sidw_f, [2])
 
 
-model_path = '../config/cifar-18pct.cfg'
+model_path = '../config/cifar-13pct.cfg'
 strategy_path = model_path + '.layerdist'
 model = reader.getmodel(model_path)
 
@@ -23,13 +24,17 @@ model = reader.getmodel(model_path)
 #layerdists = [conv_image_dist] * 3 + [conv_batch_dist] * 3 + [fc_shared_dist] * 2
 
 # image distribution for cifar 18
-layerdists = [conv_image_dist] * 11 + [fc_shared_dist] * 2
+#layerdists = [conv_image_dist] * 11 + [fc_shared_dist] * 2
 # batch distribution for cifar 18
 #layerdists = [conv_batch_dist] * 11 + [fc_shared_dist] * 2
 # mix for cifar 18, batch-image-batch
 #layerdists = [conv_batch_dist] * 4 + [conv_image_dist] * 4 + [conv_batch_dist] * 3 + [fc_shared_dist] * 2
 # mix for cifar 18, image-batch-image
 #layerdists = [conv_image_dist] * 4 + [conv_batch_dist] * 4 + [conv_image_dist] * 3 + [fc_shared_dist] * 2
+
+
+# image distribution with distributed fc layer of cifar 13
+layerdists = [conv_image_dist] * 6 + [fc_first_dist] + [fc_shared_dist]
 
 
 

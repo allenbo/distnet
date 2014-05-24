@@ -168,8 +168,16 @@ def softmax_bprop(output, label, out_grad):
       out_grad.tmp_local_data = garray.empty_like(output.local_data)
     tmp_out_grad = out_grad.tmp_local_data
     tmp_out_grad.fill(0)
+    if DEBUG:
+      print '------ in softmax bprop ------'
+      print 'output.shape', output.local_data.shape
+      print 'label.shape', label.shape
+      print 'out_grad.shape', tmp_out_grad.shape
     garray.softmax_bprop(output.local_data, label, tmp_out_grad)
-    out_grad.write(area = out_grad.local_area, data = tmp_out_grad, propagate = False)
+    if DEBUG:
+      print 'area', out_grad.local_area
+      print 'data.shape', tmp_out_grad.shape
+    out_grad.write(area = out_grad.global_area, data = tmp_out_grad, propagate = False)
   else:
     # if softmax is disw_b, so is fc
     local_input = input.local_data
