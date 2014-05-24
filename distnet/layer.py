@@ -10,7 +10,7 @@ from garray import ConvDataLayout, FilterLayout, FCDataLayout, WeightLayout
 from multigpu import allocate, arr, uniformed_array, multi_gpu, get_layerdist, build_context
 from distbase import state
 
-PFout = True
+PFout = False
 PBout = False
 TEST = 0
 TRAIN = 1

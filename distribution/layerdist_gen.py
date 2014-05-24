@@ -4,7 +4,7 @@ from distbase.layerdist import LayerDist
 import pickle
 
 
-conv_image_dist = LayerDist(False, disw_i, [4])
+conv_image_dist = LayerDist(True, disw_i, [2, 2])
 conv_batch_dist = LayerDist(True, disw_b, [2, 2])
 fc_shared_dist = LayerDist(False, sisw, [4])
 

@@ -256,7 +256,8 @@ class DummyDataProvider(DataProvider):
     else:
       batch_size = self.batch_size
 
-    data = np.ndarray((3, self.inner_size, self.inner_size, batch_size)).astype(np.float32) * 128
+    #data = np.ndarray((3, self.inner_size, self.inner_size, batch_size)).astype(np.float32) * 128
+    data = np.random.randn(*(3, self.inner_size, self.inner_size, batch_size)).astype(np.float32) * 128
     label = [np.random.choice(self.output_size) for i in range(batch_size)]
     label = np.array(label).astype(np.float32)
 

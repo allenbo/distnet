@@ -227,8 +227,6 @@ def convolution(input, filter ,output, bias, image_y, output_y, output_x, paddin
       bias.local_data, 
       image_y, output_y, output_x, padding, stride, channel, group)
 
-  barrier()
-
 def bconvolution(input, grad, filter, out_grad, image_y, image_x, output_size, padding, stride, channel):
   real_padding = padding
   propagate = True
@@ -288,7 +286,6 @@ def bconvolution(input, grad, filter, out_grad, image_y, image_x, output_size, p
                                slice_dim = (r, c),
                                debug = DEBUG)
   out_grad.write(area = input.tmp_local_area, data = tmp_out_grad, propagate = propagate, debug = DEBUG)
-  barrier()
 
 def wconvolution(input, grad, weight_grad, bias_grad, image_y, output_y, output_x, filter_size, padding, stride, channel):
   propagate = True
@@ -355,7 +352,6 @@ def wconvolution(input, grad, weight_grad, bias_grad, image_y, output_y, output_
   #print 'rank %d, weight %f' % (input.global_rank, tmp_weight_grad.get()[0, 0, 0, 0])
   weight_grad.write(area = weight_grad.global_area, data = tmp_weight_grad, propagate = propagate)
   bias_grad.write(area = bias_grad.global_area, data = tmp_bias_grad, propagate = propagate)
-  barrier()
 
 def maxpool(input, output, channel, pool_size, start, stride, input_y, output_y, output_x):
   r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
@@ -449,7 +445,6 @@ def maxundo(input, grad, output, out_grad, pool_size, start, stride, output_y, o
     print 'data.shape', tmp_out_grad.shape
     print 'propagate', propagate
   out_grad.write(data = tmp_out_grad, area = input.tmp_local_area, propagate = propagate)
-  barrier()
 
 def avgpool(input, output, channel, pool_size, start, stride, input_y, output_y, output_x):
   r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
@@ -484,7 +479,6 @@ def avgpool(input, output, channel, pool_size, start, stride, input_y, output_y,
       input_data,
       output.local_data,
       channel, pool_size, start, stride, input_y, output_y, output_x)
-  barrier()
 
 def avgundo(input, grad, out_grad, pool_size, start, stride, output_y, output_x, image_y, image_x):
   propagate = True
@@ -535,7 +529,6 @@ def avgundo(input, grad, out_grad, pool_size, start, stride, output_y, output_x,
       pool_size, start, stride, output_y, output_x, image_y, image_x)
 
   out_grad.write(data = tmp_out_grad, area = input.tmp_local_area, propagate = propagate)
-  barrier()
 
 def rnorm(input, denom, output, channel, size, image_y, scalar, pow):
   r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
@@ -583,7 +576,6 @@ def rnorm(input, denom, output, channel, size, image_y, scalar, pow):
   if input.tmp_local_area != denom.local_area:
     output.write(area = input.tmp_local_area, data = tmp_output_data, propagate = False)
     denom.write(area = input.tmp_local_area, data = tmp_denom_data, propagate = False)
-  barrier()
 
 def rnormundo(grad, denom, input, output, out_grad, channel, size, image_y, scalar, pow):
   propagate = True
@@ -665,7 +657,6 @@ def rnormundo(grad, denom, input, output, out_grad, channel, size, image_y, scal
   if state == disw_i and propagate:
     tmp_out_grad = output.local_patch(tmp_out_grad)
   out_grad.write(data = tmp_out_grad, area = output.local_area, propagate = propagate)
-  barrier()
 
 def rnormcrossmap(input, denom, output, channel, size,image_y, scalar, pow, blocked):
   r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
@@ -712,7 +703,6 @@ def rnormcrossmap(input, denom, output, channel, size,image_y, scalar, pow, bloc
   if input.tmp_local_area.cmp(denom.local_area):
     output.write(area = denom.local_area, data = tmp_output_data, propagate = False)
     denom.write(area = denom.local_area, data = tmp_denom_data, propagate = False)
-  barrier()
 
 def rnormcrossmapundo(grad, denom, input, output, out_grad, channel, size, image_y, scalar, pow, blocked):
   propagate = True
@@ -784,4 +774,3 @@ def rnormcrossmapundo(grad, denom, input, output, out_grad, channel, size, image
   if state == sidw and propagate:
     tmp_out_grad = output.local_path(tmp_out_grad)
   out_grad.write(data = tmp_out_grad, area = input.tmp_local_area, propagate = propagate)
-  barrier()

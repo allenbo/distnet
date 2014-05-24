@@ -8,7 +8,7 @@ from mpi4py import MPI
 
 test_id = 'cifar-test'
 
-data_dir = '/ssd/nn-data/cifar-10.old/'
+data_dir = '/users/justin/cifar-10.old/'
 checkpoint_dir = 'checkpoint/'
 param_file = 'config/cifar-13pct.cfg.mdf'
 
