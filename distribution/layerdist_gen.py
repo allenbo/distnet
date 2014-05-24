@@ -4,14 +4,14 @@ from distbase.layerdist import LayerDist
 import pickle
 
 
-conv_image_dist = LayerDist(False, disw_i, [2])
-conv_batch_dist = LayerDist(False, disw_b, [2])
-fc_shared_dist = LayerDist(False, sisw, [2])
-fc_first_dist = LayerDist(False, sidw_f, [2])
+conv_image_dist = LayerDist(True, disw_i, [2])
+conv_batch_dist = LayerDist(False, disw_b, [8])
+fc_shared_dist = LayerDist(False, sisw, [8])
+fc_first_dist = LayerDist(False, sidw_f, [8])
 fc_batch_dist = LayerDist(False, disw_b, [2])
 
 
-model_path = '../config/cifar-13pct.cfg'
+model_path = '../config/imagenet.cfg'
 strategy_path = model_path + '.layerdist'
 model = reader.getmodel(model_path)
 
@@ -35,9 +35,11 @@ model = reader.getmodel(model_path)
 
 
 # image distribution with distributed fc layer of cifar 13
-layerdists = [conv_image_dist] * 6 + [fc_batch_dist] * 2
+#layerdists = [conv_image_dist] * 6 + [fc_batch_dist] * 2
 
 
+#image distribution, batch on conv layers, sidw_f on fc layers
+layerdists = [conv_batch_dist] *  (len(model) - 6) + [fc_first_dist] * 5 + [fc_shared_dist]
 
 assert len(model) == len(layerdists)
 

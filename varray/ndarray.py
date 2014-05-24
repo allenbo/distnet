@@ -819,7 +819,7 @@ class VArray(object):
     assert False
 
   def reshape(self, shape):
-    assert not self.unique
+    assert not self.group_unique and self.global_unique
     data = self.local_data
     return VArray(data.reshape(shape), unique = False)
 

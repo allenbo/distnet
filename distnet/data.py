@@ -257,7 +257,8 @@ class DummyDataProvider(DataProvider):
       batch_size = self.batch_size
 
     #data = np.ndarray((3, self.inner_size, self.inner_size, batch_size)).astype(np.float32) * 128
-    data = np.random.randn(*(3, self.inner_size, self.inner_size, batch_size)).astype(np.float32) * 128
+    #data = np.random.randn(*(3, self.inner_size, self.inner_size, batch_size)).astype(np.float32) * 128
+    data = np.ones((3, self.inner_size, self.inner_size, batch_size)).astype(np.float32) * 128
     label = [np.random.choice(self.output_size) for i in range(batch_size)]
     label = np.array(label).astype(np.float32)
 
@@ -462,7 +463,7 @@ class ParallelDataProvider(DataProvider):
 
       self.index = (self.index + batch_size) / width
       data = uniformed_array(np.require(data, requirements = 'C'), to2dim = True)
-      labels = uniformed_array(np.require(labels, requirements = 'C'), slice_dim = None)
+      labels = uniformed_array(np.require(labels, requirements = 'C'))
 
     return BatchData(data, labels, epoch)
 

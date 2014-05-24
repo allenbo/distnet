@@ -18,11 +18,14 @@ def copy_to(input, output):
   output are the same. When bprop, copy grad to grad. The input and output should share the same
   distribution. However, there is one exception. When copy to conv-related grad, the input is
   shared, while the output is distributed.'''
-  if output.global_unique or output.group_unique:
-    output.copy_from_global(input.local_data.reshape(output.shape))
-    return
-
-  garray.copy_to(input.local_data, output.local_data)
+  if input.check_param(output):
+    garray.copy_to(input.local_data, output.local_data)
+  else:
+    if output.global_unique or output.group_unique:
+      assert not input.global_unique and not input.group_unique
+      output.copy_from_global(input.local_data.reshape(output.shape))
+    else:
+      assert False
 
 def partial_copy1(input, f, t):
   ''' partial copy last dimention '''
