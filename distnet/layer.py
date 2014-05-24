@@ -14,8 +14,8 @@ PFout = False
 PBout = False
 TEST = 0
 TRAIN = 1
-STOPITER = 1
-OUTINDEX = [6]
+STOPITER = 2
+OUTINDEX = [1]
 
 def col_rand(shape, dtype):
   return np.require(np.random.rand(*shape), dtype=dtype, requirements='C')
@@ -92,7 +92,7 @@ class Layer(object):
                                 global_slice_dim = self.global_slice_dim,
                                 group_slice_dim = self.group_slice_dim,
                                 context = build_context(self.layerdist.workers_group))
-    #print >> sys.stderr, self.name, self.layerdist.global_dist, self.layerdist.group_state, self.output.local_data.shape, self.output.local_area
+    #print self.name, self.layerdist.global_dist, self.layerdist.group_state, self.output.local_data.shape, self.output.local_area
 
   def dump(self):
     attr = [att for att in dir(self) if not att.startswith('__')]
@@ -341,7 +341,6 @@ class AvgPoolLayer(Layer):
     self._printout_forward(output)
 
   def bprop(self, grad, input, output, outGrad):
-    outGrad.fill(0)
     arr.avgundo(input, grad, outGrad, self.poolSize,
         self.start, self.stride, self.outputSize, self.outputSize, self.img_size, self.img_size)
     self._printout_backward((outGrad,))
@@ -481,7 +480,7 @@ class FCLayer(WeightedLayer):
     
     arr.fcbackward(input, self.weight.wt, grad, outGrad, self.weight.grad, self.bias.grad, self.prev_conv)
 
-    self._printout_backward((self.weight.grad, outGrad))
+    self._printout_backward((self.bias.grad, self.weight.grad, outGrad))
    
 class SoftmaxLayer(Layer):
   def __init__(self, name, disable_bprop=False):

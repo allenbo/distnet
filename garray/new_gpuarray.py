@@ -437,7 +437,6 @@ def printout(self, name, row_from = 0, row_to = 0, col_from = 0, col_to = 0):
   x = reshape_last(self)
   if row_to == 0:
     row_to = x.shape[0]
-  #col_from = x.shape[1] / 2
   if col_to == 0:
     col_to = x.shape[1]
   a = x.get()[row_from: row_to , col_from: col_to]

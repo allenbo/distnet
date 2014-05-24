@@ -443,7 +443,7 @@ class VArray(object):
       garray.setitem_sum(gpu_data, area.slice, data)
     else:
       if data is gpu_data: return
-      gpu_data.__setitem__(area.slice, data)
+      gpu_data[area.slice] =  data
 
   def write_remote(self, reqs, sub_data, communicator):
     req_list = reqs[:]
@@ -454,14 +454,16 @@ class VArray(object):
     # prepare recv_data
     for i, req in enumerate(req_list):
       if req is not None:
-        recv_data[i] = garray.GPUArray(req.shape, dtype = np.float32)
+        recv_data[i] = garray.zeros(req.shape, dtype = np.float32)
 
     send_data = sub_data
     self._communicate(send_data, recv_data, communicator)
 
     for rank in range(num_worker):
+      #print 'rank:%d , req_list[rank]:%s' % (rank, req_list[rank])
       if req_list[rank] is None: continue
       else:
+        #print recv_data[rank][0:1, :, :, 0:1]
         self.write_local(req_list[rank], recv_data[rank], acc = True)
   
   def _partial_write(self, area, data):
@@ -841,6 +843,7 @@ class VArray(object):
     
     if self.global_rank == 0:
       x.printout(name, row_from = row_from, row_to = row_to, col_from =  col_from, col_to = col_to)
+    #self.local_data.printout(name)
     barrier(self.global_comm)
 
 def array(obj, global_slice_dim, group_slice_dim, context = default_context):

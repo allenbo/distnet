@@ -362,11 +362,6 @@ def maxpool(input, output, channel, pool_size, start, stride, input_y, output_y,
                             stride = stride,
                             filter_size = pool_size,
                             output_area = output.local_area)
-    if DEBUG:
-      print 'rank:', input.global_rank
-      print 'output_area', output.local_area
-      print 'input_area', input.tmp_local_area
-
   elif state == disw_b:
     input.batch_communicate(input.group_rank, ConvDataLayout.BATCH)
   elif state == sisw:
@@ -528,6 +523,10 @@ def avgundo(input, grad, out_grad, pool_size, start, stride, output_y, output_x,
       tmp_out_grad,
       pool_size, start, stride, output_y, output_x, image_y, image_x)
 
+  if DEBUG:
+    print 'outgrad area', input.tmp_local_area
+    print 'data.shape', tmp_out_grad.shape
+    print 'propagate', propagate
   out_grad.write(data = tmp_out_grad, area = input.tmp_local_area, propagate = propagate)
 
 def rnorm(input, denom, output, channel, size, image_y, scalar, pow):
