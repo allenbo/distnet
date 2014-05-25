@@ -171,11 +171,6 @@ class VArray(object):
 
     assert self.local_area.shape == self.local_data.shape
 
-    self.fetch_recv_cache = {}
-    self.fetch_sent_cache = {}
-    self.write_recv_cache = {}
-    self.write_sent_cache = {}
-
   def infer_area_dict(self, num_worker, slice_dim, global_area, area_dict = None):
     if area_dict is None:
       area_dict = {}
@@ -305,12 +300,12 @@ class VArray(object):
     if area == self.local_area:
       return self.local_data
     area = area.offset(self.local_area._from)
-    if area.id not in self.fetch_sent_cache:
-      data = garray.GPUArray(area.shape, dtype = np.float32)
-      self.fetch_sent_cache[area.id] = data
-    else:
-      data = self.fetch_sent_cache[area.id]
-    #data = garray.zeros(area.shape, dtype = np.float32)
+    #if area.id not in self.fetch_sent_cache:
+    #  data = garray.GPUArray(area.shape, dtype = np.float32)
+    #  self.fetch_sent_cache[area.id] = data
+    #else:
+    #  data = self.fetch_sent_cache[area.id]
+    data = garray.GPUArray(area.shape, dtype = np.float32)
     garray.stride_copy(self.local_data, data, area.slice)
     return data
 
@@ -337,10 +332,10 @@ class VArray(object):
     recv_data = [None] * num_worker
     for i, req in enumerate(req_list):
       if req is not None:
-        if req.id not in self.fetch_recv_cache:
-          self.fetch_recv_cache[req.id] = garray.GPUArray(req.shape, dtype = np.float32)
-        buffer =  self.fetch_recv_cache[req.id]
-        #buffer = garray.zeros(req.shape, dtype = np.float32)
+        #if req.id not in self.fetch_recv_cache:
+        #  self.fetch_recv_cache[req.id] = garray.GPUArray(req.shape, dtype = np.float32)
+        #buffer =  self.fetch_recv_cache[req.id]
+        buffer = garray.GPUArray(req.shape, dtype = np.float32)
         recv_data[i] = buffer
 
     # preparea send_data
@@ -395,12 +390,12 @@ class VArray(object):
       if len(subs) == 1:
         return subs.values()[0]
       min_from = Area.min_from(subs.keys())
-      if area.id not in self.fetch_sent_cache:
-        rst = garray.GPUArray(area.shape, dtype = np.float32)
-        self.fetch_sent_cache[area.id] = rst
-      else:
-        rst = self.fetch_sent_cache[area.id]
-      #rst = garray.zeros(shape = area.shape, dtype = np.float32)
+      #if area.id not in self.fetch_sent_cache:
+      #  rst = garray.GPUArray(area.shape, dtype = np.float32)
+      #  self.fetch_sent_cache[area.id] = rst
+      #else:
+      #  rst = self.fetch_sent_cache[area.id]
+      rst = garray.GPUArray(shape = area.shape, dtype = np.float32)
       for sub_area, sub_array in subs.iteritems():
         garray.stride_write(sub_array, rst, sub_area.offset(min_from).slice)
       return rst
@@ -418,12 +413,12 @@ class VArray(object):
       new_shape, slices = self.get_pad_info(padding, area.shape, area, slice_dim)
       min_from = Area.min_from(subs.keys())
       area = Area.make_area(new_shape)
-      if area.id not in self.fetch_sent_cache:
-        rst = garray.zeros(new_shape, dtype = np.float32)
-        self.fetch_sent_cache[area.id] = rst
-      else:
-        rst = self.fetch_sent_cache[area.id]
-      #rst = garray.zeros(new_shape, dtype = np.float32)
+      #if area.id not in self.fetch_sent_cache:
+      #  rst = garray.zeros(new_shape, dtype = np.float32)
+      #  self.fetch_sent_cache[area.id] = rst
+      #else:
+      #  rst = self.fetch_sent_cache[area.id]
+      rst = garray.GPUArray(new_shape, dtype = np.float32)
 
       if len(subs) == 1:
         garray.stride_write(subs.values()[0], rst, slices)
@@ -460,10 +455,8 @@ class VArray(object):
     self._communicate(send_data, recv_data, communicator)
 
     for rank in range(num_worker):
-      #print 'rank:%d , req_list[rank]:%s' % (rank, req_list[rank])
       if req_list[rank] is None: continue
       else:
-        #print recv_data[rank][0:1, :, :, 0:1]
         self.write_local(req_list[rank], recv_data[rank], acc = True)
   
   def _partial_write(self, area, data):
@@ -496,12 +489,12 @@ class VArray(object):
 
         if sub_area is not None:
           offset_area = sub_area.offset(area._from)
-          if offset_area.id not in self.write_sent_cache:
-            sub_data = garray.GPUArray(offset_area.shape, dtype = np.float32)
-            self.write_sent_cache[offset_area.id] = sub_data
-          else:
-            sub_data = self.write_sent_cache[offset_area.id]
-          #sub_data = garray.GPUArray(offset_area.shape, dtype = np.float32)
+          #if offset_area.id not in self.write_sent_cache:
+          #  sub_data = garray.GPUArray(offset_area.shape, dtype = np.float32)
+          #  self.write_sent_cache[offset_area.id] = sub_data
+          #else:
+          #  sub_data = self.write_sent_cache[offset_area.id]
+          sub_data = garray.GPUArray(offset_area.shape, dtype = np.float32)
           garray.stride_copy(data, sub_data, offset_area.slice)
         else:
           sub_data = None
@@ -823,17 +816,6 @@ class VArray(object):
     data = self.local_data
     return VArray(data.reshape(shape), unique = False)
 
-  def mem_free(self):
-    self.local_data.gpudata.free()
-    for key, value in self.fetch_recv_cache.iteritems():
-      value.free()
-    for key, value in self.fetch_sent_cache.iteritems():
-      value.free()
-    for key, value in self.write_recv_cache.iteritems():
-      value.free()
-    for key, value in self.write_sent_cache.iteritems():
-      value.free()
-
   def printout(self, name, row_from = 0, row_to = 0, col_from = 0, col_to = 0):
     barrier(self.global_comm)
     if not self.group_unique and not self.global_unique:
@@ -841,7 +823,7 @@ class VArray(object):
     else:
       x = self.fetch(self.global_area)
     
-    if self.global_rank == 1:
+    if self.global_rank == 0:
       x.printout(name, row_from = row_from, row_to = row_to, col_from =  col_from, col_to = col_to)
     #self.local_data.printout(name)
     barrier(self.global_comm)
