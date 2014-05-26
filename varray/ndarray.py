@@ -305,7 +305,7 @@ class VArray(object):
     #  self.fetch_sent_cache[area.id] = data
     #else:
     #  data = self.fetch_sent_cache[area.id]
-    data = garray.GPUArray(area.shape, dtype = np.float32)
+    data = garray.zeros(area.shape, dtype = np.float32)
     garray.stride_copy(self.local_data, data, area.slice)
     return data
 
@@ -335,7 +335,7 @@ class VArray(object):
         #if req.id not in self.fetch_recv_cache:
         #  self.fetch_recv_cache[req.id] = garray.GPUArray(req.shape, dtype = np.float32)
         #buffer =  self.fetch_recv_cache[req.id]
-        buffer = garray.GPUArray(req.shape, dtype = np.float32)
+        buffer = garray.zeros(req.shape, dtype = np.float32)
         recv_data[i] = buffer
 
     # preparea send_data
@@ -395,7 +395,7 @@ class VArray(object):
       #  self.fetch_sent_cache[area.id] = rst
       #else:
       #  rst = self.fetch_sent_cache[area.id]
-      rst = garray.GPUArray(shape = area.shape, dtype = np.float32)
+      rst = garray.zeros(shape = area.shape, dtype = np.float32)
       for sub_area, sub_array in subs.iteritems():
         garray.stride_write(sub_array, rst, sub_area.offset(min_from).slice)
       return rst
@@ -418,7 +418,7 @@ class VArray(object):
       #  self.fetch_sent_cache[area.id] = rst
       #else:
       #  rst = self.fetch_sent_cache[area.id]
-      rst = garray.GPUArray(new_shape, dtype = np.float32)
+      rst = garray.zeros(new_shape, dtype = np.float32)
 
       if len(subs) == 1:
         garray.stride_write(subs.values()[0], rst, slices)
@@ -494,7 +494,7 @@ class VArray(object):
           #  self.write_sent_cache[offset_area.id] = sub_data
           #else:
           #  sub_data = self.write_sent_cache[offset_area.id]
-          sub_data = garray.GPUArray(offset_area.shape, dtype = np.float32)
+          sub_data = garray.zeros(offset_area.shape, dtype = np.float32)
           garray.stride_copy(data, sub_data, offset_area.slice)
         else:
           sub_data = None
