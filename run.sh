@@ -1,17 +1,17 @@
 #!/bin/bash
 
-python experiments/run_cifar10_simple.py > single
-num=`wc -l single | cut -d" " -f 1`
+TMPDIR=/tmp
+EXPERIMENTS=experiments/run_imagenet_dummy.py
+MULTI=${TMPDIR}/multi
+SINGLE=${TMPDIR}/single
+CROPPED=${TMPDIR}/cropped
+
+python  ${EXPERIMENTS} > ${SINGLE}
+num=`wc -l ${SINGLE} | cut -d" " -f 1`
 echo ${num}
-for i in `seq 100`; do
-  mpirun -np 4 --hostfile hostfile -x MULTIGPU=yes python experiments/run_cifar10_simple.py > multi
-  head -n ${num} multi > cropped
-  X=`diff cropped single`
+for i in `seq 1`; do
+  mpirun -np 4 --hostfile hostfile -x MULTIGPU=yes python ${EXPEIRMENTS} > ${MULTI}
+  head -n ${num} ${MULTI} > ${CROPPED}
+  X=`diff ${CROPPED} ${SINGLE}`
   [[ "${X}" != "" ]] && exit 1
-  echo ${i}
-  mv multi multi${i}
-  pkill -f python
-  pkill -f mpirun
-  sleep 1
-  
 done

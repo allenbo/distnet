@@ -1,4 +1,5 @@
-from distbase.state import sisw
+from distbase.state import sisw, disw_i
+from distbase.util import issquare
 
 import cudaconv
 import caffe
@@ -524,8 +525,11 @@ class RequestExecuter(object):
           print 'Ideally scaled'
           elapsed = self.comput_cost[layer_name][sisw][0] / num_worker
         else:
-          executer = get_executer(decr['op'])(decr, param)
-          elapsed = executer.execute()
+          if state == disw_i and not issquare(num_worker):
+            elapsed = 1000
+          else:
+            executer = get_executer(decr['op'])(decr, param)
+            elapsed = executer.execute()
         print 'elapsed = \033[1m%f\033[0m second' % elapsed
         
         if layer_name not in self.comput_cost:
