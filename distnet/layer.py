@@ -15,7 +15,7 @@ PBout = False
 TEST = 0
 TRAIN = 1
 STOPITER = 1
-OUTINDEX = [5]
+OUTINDEX = [1]
 
 def col_rand(shape, dtype):
   return np.require(np.random.rand(*shape), dtype=dtype, requirements='C')
@@ -28,6 +28,8 @@ class Layer(object):
     self.merge_neuron = False
     self.name = name
     self.type = type
+    self._prev_layer = None
+    self._next_layer = None
     self.disable_bprop = disable_bprop
 
     self.output = None
@@ -39,6 +41,12 @@ class Layer(object):
 
   def set_index(self, index):
     self.index = index
+
+  def set_prev(self, layer):
+    self._prev_layer = layer
+
+  def set_next(self, layer):
+    self._next_layer = layer
 
   def disable_bprop(self):
     self.disable_bprop = True
@@ -68,13 +76,14 @@ class Layer(object):
   def _printout_backward(self, obj_list):
     if PBout and self.index in OUTINDEX:
       for obj in obj_list:
-        obj.printout(self.name)
+        if obj:
+          obj.printout(self.name)
       if self.index == OUTINDEX[0] and self.iteration == STOPITER:
         sys.exit(-1)
 
   def init_output(self, fc = False):
     if self.type == 'data':
-      self.layerdist = self.next_layer.layerdist
+      self.layerdist = self._next_layer.layerdist
       group_slice_dim = state.get_input_slice_dim(self.layerdist.group_state, not fc, ConvDataLayout, FCDataLayout, self.layerdist.group_size)
     else:
       group_slice_dim = state.get_output_slice_dim(self.layerdist.group_state, not fc, ConvDataLayout, FCDataLayout, self.layerdist.group_size)
@@ -88,10 +97,11 @@ class Layer(object):
                            group_slice_dim = self.group_slice_dim,
                            context = build_context(self.layerdist.workers_group))
 
-    self.output_grad = allocate(out_shape,
-                                global_slice_dim = self.global_slice_dim,
-                                group_slice_dim = self.group_slice_dim,
-                                context = build_context(self.layerdist.workers_group))
+    if self.type != 'data':
+      self.output_grad = allocate(out_shape,
+                                  global_slice_dim = self.global_slice_dim,
+                                  group_slice_dim = self.group_slice_dim,
+                                  context = build_context(self.layerdist.workers_group))
     #print self.name, self.layerdist.global_dist, self.layerdist.group_state, self.output.local_data.shape, self.output.local_area
 
   def dump(self):
@@ -114,7 +124,6 @@ class DataLayer(Layer):
     assert False, 'Must be first layer!'
 
   def fprop(self, input, output, train=TRAIN):
-    output.fill(0)
     arr.convert_from_data(input, output)
     self._printout_forward(output)
 
@@ -271,16 +280,18 @@ class ConvLayer(WeightedLayer):
   def bprop(self, grad, input, output, outGrad):
     self.weight.grad.fill(0)
     self.bias.grad.fill(0)
-    outGrad.fill(0)
+    #outGrad.fill(0)
 
     if self.neuron == 'relu':
       arr.relu_compute_grad(grad, output, grad, 0)
     # bprop weight
     arr.wconvolution(input, grad, self.weight.grad, self.bias.grad, self.img_size, self.outputSize,
         self.outputSize, self.filterSize, -self.padding, self.stride, self.numColor)
-    # bprop to next layer
-    arr.bconvolution(input, grad, self.weight.wt, outGrad, self.img_size, self.img_size,
-        self.outputSize, -self.padding, self.stride, self.numColor)
+
+    if self._prev_layer.type != 'data':
+      # bprop to next layer
+      arr.bconvolution(input, grad, self.weight.wt, outGrad, self.img_size, self.img_size,
+          self.outputSize, -self.padding, self.stride, self.numColor)
 
     self._printout_backward((self.bias.grad, self.weight.grad, outGrad))
     #self._printout_backward((outGrad, ))

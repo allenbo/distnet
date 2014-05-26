@@ -4,7 +4,9 @@ import numpy as np
 from aux_operation import *
 from distbase.util import divup, make_copy, deprecated
 import time
+import traceback
 
+curr_mem = 0
 
 @sync_function
 def array(obj, dtype = None, to2dim = False):
@@ -20,8 +22,24 @@ partial_copy_to = sync_function(gpu_partial_copy_to)
 logreg_cost_col = logreg_cost_col_reduce
 
 
+def get_mem_info():
+  return tuple([x / 1024.0  for x in driver.mem_get_info()])
+
 old_init = GPUArray.__init__
 def new_init(self, *args, **kw):
+  #global curr_mem
+  #if 'shape' in kw:
+  #  shape = kw['shape']
+  #else:
+  #  shape = args[0]
+
+  #size = np.prod(shape) * 4 / 1024.0
+  #free, total = get_mem_info()
+  #if size <= free:
+  #  print shape, free, curr_mem
+  #  curr_mem += size
+
+  #traceback.print_stack()
   result = old_init(self, *args, **kw)
   driver.Context.synchronize()
   return result

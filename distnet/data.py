@@ -434,18 +434,23 @@ class ParallelDataProvider(DataProvider):
       gpu_labels = self._gpu_batch.labels
       epoch = self._gpu_batch.epoch
 
-      if self.index + batch_size >=  width:
-        width = width - self.index
-        labels = gpu_labels[self.index:self.index + batch_size]
-
-        data = garray.partial_copy1(gpu_data, self.index, self.index+ width)
-
-        self.index = 0
-        self._fill_reserved_data()
+      # special case wheh the batch size is equal to the data provider batch size
+      if batch_size == width:
+        data = gpu_data
+        labels = gpu_labels
       else:
-        labels = gpu_labels[self.index:self.index + batch_size]
-        data = garray.partial_copy1(gpu_data, self.index, self.index + batch_size)
-        self.index += batch_size
+        if self.index + batch_size >=  width:
+          width = width - self.index
+          labels = gpu_labels[self.index:self.index + batch_size]
+
+          data = garray.partial_copy1(gpu_data, self.index, self.index+ width)
+
+          self.index = 0
+          self._fill_reserved_data()
+        else:
+          labels = gpu_labels[self.index:self.index + batch_size]
+          data = garray.partial_copy1(gpu_data, self.index, self.index + batch_size)
+          self.index += batch_size
     else:
       channel, img_size, img_size, width = self._cpu_batch.data.shape
       cpu_data = self._cpu_batch.data

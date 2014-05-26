@@ -37,12 +37,14 @@ class FastNet(object):
     else:
       if self.layers:
         prev_layer = self.layers[-1]
-        layer.attach(self.layers[-1])
-        if prev_layer.type == 'data':
-          prev_layer.next_layer = layer
-      self.layers.append(layer)
-      index = len(self.layers) - 1
+        layer.attach(prev_layer)
+        layer.set_prev(prev_layer)
+
+        prev_layer.set_next(layer)
+
+      index = len(self.layers)
       layer.set_index(index)
+      self.layers.append(layer)
       util.log_info('Append: %s [%s] at index %d: %s', layer.name, layer.type, index, layer.get_output_shape())
     return layer
 
@@ -107,29 +109,13 @@ class FastNet(object):
 
   def bprop(self, label, train=TRAIN):
     grad = label
-    fc_time  = 0
-    conv_time = 0
-    conv = False
     for i in range(1, len(self.layers) + 1):
-      start = time.time()
       curr = self.layers[-i]
       if curr.disable_bprop: break
       prev = self.layers[-(i + 1)]
-      if curr.type == 'pool':
-        conv = True
-      if prev.output_grad is None:
-        prev.eval()
       curr.bprop(grad, prev.output, curr.output, prev.output_grad)
       driver.Context.synchronize()
       grad = prev.output_grad
-      if conv:
-        conv_time += time.time() -start
-      else:
-        fc_time += time.time() - start
-    #print 'fc time', fc_time
-    #print 'conv time', conv_time
-    self.fc_time_bprop.append(fc_time)
-    self.conv_time_bprop.append(conv_time)
 
   def update(self):
     for layer in self.layers:
