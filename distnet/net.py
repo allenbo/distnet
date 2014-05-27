@@ -153,7 +153,7 @@ class FastNet(object):
 
   def get_cost(self, label, prediction):
     cost_layer = self.layers[-1]
-    assert not np.any(np.isnan(prediction.get()))
+    #assert not np.any(np.isnan(prediction.get()))
     cost_layer.logreg_cost(label, prediction)
     return cost_layer.cost.get().sum(), cost_layer.batchCorrect
 
@@ -193,12 +193,6 @@ class FastNet(object):
           fc = True
         layer.change_batch_size(self.batch_size)
         layer.init_output(fc)
-
-    #if not isinstance(data, GPUArray):
-    #  data = garray.to_gpu(data).astype(np.float32)
-
-    #if not isinstance(label, GPUArray):
-    #  label = garray.to_gpu(label).astype(np.float32)
 
     label = label.reshape((1, label.size))
     self.numCase += data.shape[-1]

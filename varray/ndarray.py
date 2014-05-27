@@ -28,6 +28,7 @@ class DistMethod(object):
   Stripe = 'stripe'
 
 def barrier(communicator = WORLD):
+  return 
   communicator.Barrier()
 
 def tobuffer(gpuarray):
@@ -305,7 +306,7 @@ class VArray(object):
     #  self.fetch_sent_cache[area.id] = data
     #else:
     #  data = self.fetch_sent_cache[area.id]
-    data = garray.zeros(area.shape, dtype = np.float32)
+    data = garray.GPUArray(area.shape, dtype = np.float32)
     garray.stride_copy(self.local_data, data, area.slice)
     return data
 
@@ -335,7 +336,7 @@ class VArray(object):
         #if req.id not in self.fetch_recv_cache:
         #  self.fetch_recv_cache[req.id] = garray.GPUArray(req.shape, dtype = np.float32)
         #buffer =  self.fetch_recv_cache[req.id]
-        buffer = garray.zeros(req.shape, dtype = np.float32)
+        buffer = garray.GPUArray(req.shape, dtype = np.float32)
         recv_data[i] = buffer
 
     # preparea send_data
@@ -449,7 +450,7 @@ class VArray(object):
     # prepare recv_data
     for i, req in enumerate(req_list):
       if req is not None:
-        recv_data[i] = garray.zeros(req.shape, dtype = np.float32)
+        recv_data[i] = garray.GPUArray(req.shape, dtype = np.float32)
 
     send_data = sub_data
     self._communicate(send_data, recv_data, communicator)
@@ -494,7 +495,7 @@ class VArray(object):
           #  self.write_sent_cache[offset_area.id] = sub_data
           #else:
           #  sub_data = self.write_sent_cache[offset_area.id]
-          sub_data = garray.zeros(offset_area.shape, dtype = np.float32)
+          sub_data = garray.GPUArray(offset_area.shape, dtype = np.float32)
           garray.stride_copy(data, sub_data, offset_area.slice)
         else:
           sub_data = None
@@ -545,20 +546,29 @@ class VArray(object):
 
   def group_reduce(self):
     assert self.group_unique == False
-    barrier(self.group_comm)
+    #if self.group_rank == 0:
+    #  recv_buff = []
+    #  requests = []
+    #  for i in range(1, self.group_size):
+    #    buff = garray.empty_like(self.local_data)
+    #    requests.append(self.group_comm.Irecv(tobuffer(buff), source = i))
+    #    recv_buff.append(buff)
+    #  for req in requests: req.wait()
+    #  for buff in recv_buff:
+    #    self.local_data += buff
+    #else:
+    #  request = self.group_comm.Isend(tobuffer(self.local_data), dest = 0)
+    #  request.wait()
+
+    data = self.local_data
     if self.group_rank == 0:
-      recv_buff = []
-      requests = []
+      cache = garray.empty(shape = (self.group_size, int(np.prod(self.local_data.shape))), dtype = np.float32)
+      self.group_comm.Gather([tobuffer(data), MPI.FLOAT], [tobuffer(cache), MPI.FLOAT])
       for i in range(1, self.group_size):
-        buff = garray.empty_like(self.local_data)
-        requests.append(self.group_comm.Irecv(tobuffer(buff), source = i))
-        recv_buff.append(buff)
-      for req in requests: req.wait()
-      for buff in recv_buff:
-        self.local_data += buff
+        tmp  = garray.GPUArray(shape = self.local_data.shape, dtype = np.float32, gpudata = cache.ptr + cache.strides[0] * i)
+        self.local_data += tmp
     else:
-      request = self.group_comm.Isend(tobuffer(self.local_data), dest = 0)
-      request.wait()
+      self.group_comm.Gather([tobuffer(data), MPI.FLOAT], None)
 
   def write(self, area, data, propagate = True, debug = False):
     if self.global_unique:
@@ -568,6 +578,7 @@ class VArray(object):
         self._partial_write(area, data)
         if propagate:
           self.group_reduce()
+          #self.group_write(area, data, propagate)
           self.master_write()
           self.group_bcast()
       else:
@@ -825,7 +836,6 @@ class VArray(object):
     
     if self.global_rank == 0:
       x.printout(name, row_from = row_from, row_to = row_to, col_from =  col_from, col_to = col_to)
-    #self.local_data.printout(name)
     barrier(self.global_comm)
 
 def array(obj, global_slice_dim, group_slice_dim, context = default_context):

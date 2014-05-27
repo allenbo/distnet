@@ -196,13 +196,17 @@ class WeightedLayer(Layer):
     self.bias.update(self.batch_size)
 
   def get_summary(self, type='mean'):
-    w = self.weight.wt.get()
-    w = np.mean(np.abs(w))
-    w_variance = np.var(np.abs(w.ravel()))
+    #w = self.weight.wt.get()
+    #w = np.mean(np.abs(w))
+    #w_variance = np.var(np.abs(w.ravel()))
 
-    b = self.bias.wt.get()
-    b = np.mean(np.abs(b))
-    b_variance = np.var(np.abs(b.ravel()))
+    #b = self.bias.wt.get()
+    #b = np.mean(np.abs(b))
+    #b_variance = np.var(np.abs(b.ravel()))
+    w = 0
+    w_variance = 0
+    b = 0
+    b_variance = 0
     return self.name, (w, w_variance, b, b_variance, self.weight.epsilon, self.bias.epsilon)
 
 

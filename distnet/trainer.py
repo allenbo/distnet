@@ -11,7 +11,9 @@ import os
 import sys
 import time
 import math
-from garray import ConvDataLayout
+import garray
+import numpy as np
+from garray import ConvDataLayout, GPUArray
 
 
 def cache_outputs(net, dp, dumper, layer_name = 'pool5', index = -1):
@@ -158,20 +160,18 @@ class Trainer:
     last_print_time = time.time()
 
     min_time = 12
-    while (self.curr_epoch - start_epoch <= num_epochs and 
-          self.should_continue_training()):
+    while (self.curr_epoch - start_epoch <= num_epochs and self.should_continue_training()):
       #if min_time < 1.55:
       #  util.dump_profile()
       #util.dump_profile()
       batch_start = time.time()
-      st = time.time()
       train_data = self.train_dp.get_next_batch(self.batch_size)
-      #print 'Minibatch fetch:', time.time() - st
 
       self.curr_epoch = train_data.epoch
       self.curr_batch += 1
 
       input, label = train_data.data, train_data.labels
+
       self.net.train_batch(input, label)
       cost, correct, numCase = self.net.get_batch_information()
       self.train_outputs += [({'logprob': [cost, 1 - correct]}, numCase, self.elapsed())]
@@ -199,21 +199,6 @@ class Trainer:
     rep = self.net.get_report()
     if rep is not None:
       log(rep)
-
-    #import numpy as np
-    #fc_time_fprop = np.array(self.net.fc_time_fprop[1:10])
-    #fc_time_bprop = np.array(self.net.fc_time_bprop[1:10])
-    #conv_time_fprop = np.array(self.net.conv_time_fprop[1:10])
-    #conv_time_bprop = np.array(self.net.conv_time_bprop[1:10])
-    #print 'fc time fprop', fc_time_fprop, 'average',  np.mean(fc_time_fprop)
-    #print 'fc time bprop', fc_time_bprop, 'average',  np.mean(fc_time_bprop)
-    #print 'conv time fprop', conv_time_fprop, 'average',  np.mean(conv_time_fprop)
-    #print 'conv time bprop', conv_time_bprop, 'average',  np.mean(conv_time_bprop)
-    ##timer.dump('timer')
-
-    #from varray import send_data_size, recv_data_size
-    #print 'send data', send_data_size
-    #print 'recv data', recv_data_size
 
   @staticmethod
   def get_trainer_by_name(name, param_dict):
@@ -433,8 +418,6 @@ class ImageNetCatewisedTrainer(MiniBatchTrainer):
       self.net.clear_weight_incr()
       MiniBatchTrainer.train(self)
 
-
-
 class ImageNetCateGroupTrainer(MiniBatchTrainer):
   def _finish_init(self):
     self.num_batch_list = self.num_batch[1:]
@@ -481,10 +464,6 @@ class ImageNetCateGroupTrainer(MiniBatchTrainer):
       self.net.clear_weight_incr()
       MiniBatchTrainer.train(self)
 
-
-
-
-
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
   parser.add_argument('--test_id', help='Test Id', default=None, type=str, required=True)
@@ -515,7 +494,6 @@ if __name__ == '__main__':
   parser.add_argument('--multiview', help='Whether use multiview to strenghen the test result', action = 'store_true')
 
   args = parser.parse_args()
-
 
   param_dict = {}
   param_dict['image_color'] = 3

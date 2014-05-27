@@ -4,19 +4,19 @@ from distbase.layerdist import LayerDist
 import pickle
 
 
-conv_image_dist = LayerDist(True, disw_i, [2,2])
-conv_batch_dist = LayerDist(False, disw_b, [8])
-fc_shared_dist = LayerDist(False, sisw, [4])
+conv_image_dist = LayerDist(True, disw_i, [4, 4])
+conv_batch_dist = LayerDist(True, disw_b, [4, 4])
+fc_shared_dist = LayerDist(False, sisw, [8])
 fc_first_dist = LayerDist(False, sidw_f, [8])
 fc_batch_dist = LayerDist(False, disw_b, [2])
 
 
-model_path = '../config/cifar-13pct.cfg'
+model_path = '../config/imagenet.cfg'
 strategy_path = model_path + '.layerdist'
 model = reader.getmodel(model_path)
 
 # image distribution for cifar 13
-layerdists = [conv_image_dist] * 6 + [fc_shared_dist] * 2
+#layerdists = [conv_image_dist] * 6 + [fc_shared_dist] * 2
 # batch_distribution for cifar 13
 #layerdists = [conv_batch_dist] * 6 + [fc_shared_dist] * 2
 # mix distribution for cifar 13, batch-image
@@ -42,7 +42,7 @@ layerdists = [conv_image_dist] * 6 + [fc_shared_dist] * 2
 #layerdists = [conv_batch_dist] *  (len(model) - 6) + [fc_first_dist] * 4 + [fc_shared_dist] * 2
 
 #2 groups on  image distribution
-#layerdists = [conv_image_dist] * (len(model) - 6) + [fc_first_dist] * 4 + [fc_shared_dist] * 2
+layerdists = [conv_image_dist] * (len(model) - 6) + [fc_first_dist] * 4 + [fc_shared_dist] * 2
 
 assert len(model) == len(layerdists)
 
@@ -52,4 +52,4 @@ for i, layer in enumerate(model):
   print layer['name'], layerdists[i]
 
 with open(strategy_path, 'w') as fout:
-    pickle.dump(strategy, fout)
+  pickle.dump(strategy, fout)
