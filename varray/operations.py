@@ -82,12 +82,15 @@ def logreg_cost_col(output, label, cost):
 
 def convert_from_data(input, output):
   ''' input has to be a GPUArray, and output has to be a VArray '''
-  assert isinstance(input, garray.GPUArray)
+  assert isinstance(input, VArray)
   assert isinstance(output, VArray)
 
-  global_output = garray.empty(shape = output.shape, dtype = np.float32)
-  garray.convert_from_data(input, global_output)
-  output.copy_from_global(global_output)
+  if input.check_param(output):  
+    garray.convert_from_data(input.local_data, output.local_data)
+  else:
+    global_output = garray.empty(shape = output.shape, dtype = np.float32)
+    garray.convert_from_data(input.fetch(input.global_area), global_output)
+    output.copy_from_global(global_output)
 
 def fcforward(input, output, weight, bias, prev_conv):
   state = get_state_from_slice_dim(output.group_slice_dim, False, ConvDataLayout, FCDataLayout)

@@ -12,7 +12,8 @@ curr_mem = 0
 def array(obj, dtype = None, to2dim = False):
   if dtype is None:
     dtype = obj.dtype
-  obj = to_gpu(obj).astype(dtype)
+  if not isinstance(obj, GPUArray):
+    obj = to_gpu(obj).astype(dtype)
   if len(obj.shape) != 2 and len(obj.shape) != 1 and to2dim:
     obj = reshape_last(obj)
   return obj

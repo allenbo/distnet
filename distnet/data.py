@@ -15,7 +15,7 @@ import sys
 import threading
 import time
 
-from multigpu import uniformed_array, arr, rank, num_gpu, multi_gpu
+from multigpu import uniformed_array, arr, rank, num_gpu, multi_gpu, 
 
 
 seed = arr.get_seed()
@@ -25,7 +25,9 @@ random.seed(seed)
 np.random.seed(seed)
 
 # determine whether we should split the input before training
-INPUT_SEG = False
+INPUT_SEG = True
+if num_gpu == 1:
+  INPUT_SEG = False
 # determine whether we should copy image data to gpu before training
 PREV_FILL_GPU = True
 
@@ -34,7 +36,6 @@ class BatchData(object):
     self.data = data
     self.labels = labels
     self.epoch = epoch
-
 
 class DataProvider(object):
   def __init__(self, data_dir='.', batch_range=None):
@@ -72,7 +73,6 @@ class DataProvider(object):
       self.curr_batch_index = 1
 
       self._handle_new_epoch()
-
 
     self.curr_batch = self.batch_range[self.curr_batch_index - 1]
 
@@ -409,13 +409,8 @@ class ParallelDataProvider(DataProvider):
       if self._gpu_batch is not None:
         self._gpu_batch.data.mem_free()
         del self._gpu_batch
-      if not multi_gpu or not INPUT_SEG:
-        batch_data.data = garray.array(batch_data.data, dtype = np.float32, to2dim = True)
-        batch_data.labels = garray.array(batch_data.labels, dtype = np.float32)
-      else:
-        # batch_data.data has to gather everything up on each worker and copy to gpu
-        # TODO
-        pass
+      batch_data.data = garray.array(batch_data.data, dtype = np.float32)
+      batch_data.labels = garray.array(batch_data.labels, dtype = np.float32)
       self._gpu_batch = batch_data
     else:
       self._cpu_batch = batch_data
@@ -435,6 +430,12 @@ class ParallelDataProvider(DataProvider):
       epoch = self._gpu_batch.epoch
 
       # special case wheh the batch size is equal to the data provider batch size
+      if INPUT_SEG:
+        tmp_batch_size = batch_size / num_gpu
+        if rank == num_gpu - 1:
+          tmp_batch_size = batch_size - tmp_batch_size * (num_gpu -1)
+        batch_size = tmp_batch_size
+
       if batch_size == width:
         data = gpu_data
         labels = gpu_labels
@@ -443,7 +444,8 @@ class ParallelDataProvider(DataProvider):
           width = width - self.index
           labels = gpu_labels[self.index:self.index + batch_size]
 
-          data = garray.partial_copy1(gpu_data, self.index, self.index+ width)
+          #data = garray.partial_copy1(gpu_data, self.index, self.index+ width)
+          data = gpu_data[:, :, :, self.index, self.index + width]
 
           self.index = 0
           self._fill_reserved_data()
@@ -451,6 +453,12 @@ class ParallelDataProvider(DataProvider):
           labels = gpu_labels[self.index:self.index + batch_size]
           data = garray.partial_copy1(gpu_data, self.index, self.index + batch_size)
           self.index += batch_size
+
+      if INPUT_SEG:
+        data = arr.assemble(data)
+        labels = arr.assemble(labels, flat = True)
+      else:
+        data = uniformed_array(data)
     else:
       channel, img_size, img_size, width = self._cpu_batch.data.shape
       cpu_data = self._cpu_batch.data

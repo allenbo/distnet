@@ -881,3 +881,24 @@ def zeros_like(like):
   va = allocate_like(like)
   va.fill(0)
   return va
+
+def assemble(local_data, flat = False, axis = 3):
+  assert len(local_data.shape) == 2 or len(local_data.shape) == 4
+  assert axis == 0 or axis == 3
+
+  shape_list = WORLD.allgather(local_data.shape)
+  dim_sum = int(np.sum(np.array([x[axis] for x in shape_list])))
+
+  if axis == 0:
+    shape = tuple([shape_sum] + shape_list[0][1:])
+  else:
+    shape = tuple(shape_list[0][:-1] + [shape_sum])
+
+  rst = allocate(shape = shape, global_slice_dim = None, group_slice_dim = axis)
+  assert rst.local_data.shape == local_data.shape
+  rst.local_data = local_data
+
+  if flat:
+    return rst.global_gather().local_data
+  else:
+    return rst
