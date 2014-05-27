@@ -88,6 +88,10 @@ def convert_from_data(input, output):
   if input.check_param(output):  
     garray.convert_from_data(input.local_data, output.local_data)
   else:
+    if not input.global_unique and not input.group_unique:
+      output.copy_from_global(input.local_data)
+      return
+
     if input.global_unique != output.global_unique:
       # must regroup the input
       input.regroup_like(output)
