@@ -280,6 +280,16 @@ class VArray(object):
     assert tmp.shape == self.local_shape, str(tmp.shape) + ' ' + str(self.local_shape)
     self.local_data = tmp
 
+  def regroup_like(self, other):
+    self.global_slice_dim = other.global_slice_dim
+    self.global_area_dic = other.global_area_dict
+    self.group_area = other.group_area
+    self.group_area_dict = other.group_area_dict
+
+  def copy_from_group(self, input):
+    assert input.shape == self.group_area.shape
+    self.local_data = input[self.local_area.offset(self.group_area._from).slice]
+
   def group_gather(self):
     if not self.group_unique:
       return

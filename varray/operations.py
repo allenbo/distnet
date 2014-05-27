@@ -88,9 +88,12 @@ def convert_from_data(input, output):
   if input.check_param(output):  
     garray.convert_from_data(input.local_data, output.local_data)
   else:
-    global_output = garray.empty(shape = output.shape, dtype = np.float32)
-    garray.convert_from_data(input.fetch(input.global_area), global_output)
-    output.copy_from_global(global_output)
+    if input.global_unique != output.global_unique:
+      # must regroup the input
+      input.regroup_like(output)
+    group_output = garray.empty(shape = output.shape, dtype = np.float32)
+    garray.convert_from_data(input.group_fetch(input.group_area), global_output)
+    output.copy_from_group(global_output)
 
 def fcforward(input, output, weight, bias, prev_conv):
   state = get_state_from_slice_dim(output.group_slice_dim, False, ConvDataLayout, FCDataLayout)
