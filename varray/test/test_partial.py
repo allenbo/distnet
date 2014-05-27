@@ -62,12 +62,18 @@ virtuala.global_comm.Barrier()
 print 'master_write passed'
 
 virtuala.fill(1.0)
+host = virtuala.local_data.get()
 virtuala.group_reduce()
 if virtuala.group_rank == 0:
-  print virtuala.local_data.get()
-  print hosta * virtuala.group_size
-  assert (virtuala.local_data.get() == hosta * virtuala.group_size).all()
+  assert (virtuala.local_data.get() == host * virtuala.group_size).all()
 print 'group_reduce passed'
+
+virtuala.fill(1.0)
+host = virtuala.local_data.get()
+virtuala.group_synchroize()
+assert (virtuala.local_data.get() == host * virtuala.group_size).all()
+print 'group_synchronize'
+
 MPI.Finalize()
 #virtuala.fill(0)
 #virtuala.write(area = virtuala.local_area, data = gpua)

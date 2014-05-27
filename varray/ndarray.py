@@ -17,6 +17,7 @@ from distbase.util import issquare
 from garray import ConvDataLayout, FCDataLayout, FilterLayout, WeightLayout
 from distbase.util import deprecated
 from context import Context, default_context
+from cache import Cache
 
 WORLD = MPI.COMM_WORLD
 MASTER = 0
@@ -171,6 +172,19 @@ class VArray(object):
           offset += self.group_size
 
     assert self.local_area.shape == self.local_data.shape
+    
+    self.use_cache = True
+    self.cache = Cache()
+
+  def get_gpuarray(self, area, zeroed = False):
+    if self.use_cache:
+      array = self.cache.get(area)
+    else:
+      array = garray.GPUArray(area.shape, np.float32)
+
+    if zeroed:
+      array.fill(0)
+    return array
 
   def infer_area_dict(self, num_worker, slice_dim, global_area, area_dict = None):
     if area_dict is None:
@@ -301,12 +315,8 @@ class VArray(object):
     if area == self.local_area:
       return self.local_data
     area = area.offset(self.local_area._from)
-    #if area.id not in self.fetch_sent_cache:
-    #  data = garray.GPUArray(area.shape, dtype = np.float32)
-    #  self.fetch_sent_cache[area.id] = data
-    #else:
-    #  data = self.fetch_sent_cache[area.id]
-    data = garray.GPUArray(area.shape, dtype = np.float32)
+    #data = garray.GPUArray(area.shape, dtype = np.float32)
+    data = self.get_gpuarray(area)
     garray.stride_copy(self.local_data, data, area.slice)
     return data
 
@@ -321,8 +331,7 @@ class VArray(object):
       if data is None:continue
       recv_req.append(communicator.Irecv(tobuffer(data), source = i))
 
-    for req in send_req: req.wait()
-    for req in recv_req: req.wait()
+    for req in send_req + recv_req: req.wait()
 
   def fetch_remote(self, reqs, communicator, self_id):
     subs = {}
@@ -333,11 +342,8 @@ class VArray(object):
     recv_data = [None] * num_worker
     for i, req in enumerate(req_list):
       if req is not None:
-        #if req.id not in self.fetch_recv_cache:
-        #  self.fetch_recv_cache[req.id] = garray.GPUArray(req.shape, dtype = np.float32)
-        #buffer =  self.fetch_recv_cache[req.id]
-        buffer = garray.GPUArray(req.shape, dtype = np.float32)
-        recv_data[i] = buffer
+        #recv_data[i] = garray.GPUArray(req.shape, dtype = np.float32)
+        recv_data[i] = self.get_gpuarray(req)
 
     # preparea send_data
     req_list = communicator.alltoall(req_list)
@@ -391,12 +397,8 @@ class VArray(object):
       if len(subs) == 1:
         return subs.values()[0]
       min_from = Area.min_from(subs.keys())
-      #if area.id not in self.fetch_sent_cache:
-      #  rst = garray.GPUArray(area.shape, dtype = np.float32)
-      #  self.fetch_sent_cache[area.id] = rst
-      #else:
-      #  rst = self.fetch_sent_cache[area.id]
-      rst = garray.zeros(shape = area.shape, dtype = np.float32)
+      #rst = garray.zeros(shape = area.shape, dtype = np.float32)
+      rst = self.get_gpuarray(area, zeroed = True)
       for sub_area, sub_array in subs.iteritems():
         garray.stride_write(sub_array, rst, sub_area.offset(min_from).slice)
       return rst
@@ -414,12 +416,8 @@ class VArray(object):
       new_shape, slices = self.get_pad_info(padding, area.shape, area, slice_dim)
       min_from = Area.min_from(subs.keys())
       area = Area.make_area(new_shape)
-      #if area.id not in self.fetch_sent_cache:
-      #  rst = garray.zeros(new_shape, dtype = np.float32)
-      #  self.fetch_sent_cache[area.id] = rst
-      #else:
-      #  rst = self.fetch_sent_cache[area.id]
-      rst = garray.zeros(new_shape, dtype = np.float32)
+      #rst = garray.zeros(new_shape, dtype = np.float32)
+      rst = self.get_gpuarray(area.shape, zeroed = True)
 
       if len(subs) == 1:
         garray.stride_write(subs.values()[0], rst, slices)
@@ -450,7 +448,8 @@ class VArray(object):
     # prepare recv_data
     for i, req in enumerate(req_list):
       if req is not None:
-        recv_data[i] = garray.GPUArray(req.shape, dtype = np.float32)
+        #recv_data[i] = garray.GPUArray(req.shape, dtype = np.float32)
+        recv_data[i] = self.get_gpuarray(req)
 
     send_data = sub_data
     self._communicate(send_data, recv_data, communicator)
@@ -490,12 +489,8 @@ class VArray(object):
 
         if sub_area is not None:
           offset_area = sub_area.offset(area._from)
-          #if offset_area.id not in self.write_sent_cache:
-          #  sub_data = garray.GPUArray(offset_area.shape, dtype = np.float32)
-          #  self.write_sent_cache[offset_area.id] = sub_data
-          #else:
-          #  sub_data = self.write_sent_cache[offset_area.id]
-          sub_data = garray.GPUArray(offset_area.shape, dtype = np.float32)
+          #sub_data = garray.GPUArray(offset_area.shape, dtype = np.float32)
+          sub_data = self.get_gpuarray(offset_area)
           garray.stride_copy(data, sub_data, offset_area.slice)
         else:
           sub_data = None
@@ -569,6 +564,20 @@ class VArray(object):
         self.local_data += tmp
     else:
       self.group_comm.Gather([tobuffer(data), MPI.FLOAT], None)
+  
+  def group_synchroize(self):
+    assert self.group_unique == False
+    #works for mvapich2
+    self.group_comm.Allreduce([tobuffer(self.local_data), MPI.FLOAT], [tobuffer(self.local_data), MPI.FLOAT])
+
+  def master_synchronize(self):
+    if self.num_group == 1:
+      return
+    else:
+      assert self.global_unique == False
+      #works for mvapich2
+      self.master_comm.Allreduce([tobuffer(self.local_data), MPI.FLOAT], [tobuffer(self.local_data), MPI.FLOAT])
+    
 
   def write(self, area, data, propagate = True, debug = False):
     if self.global_unique:
@@ -577,9 +586,10 @@ class VArray(object):
       if not self.group_unique:
         self._partial_write(area, data)
         if propagate:
-          self.group_reduce()
-          #self.group_write(area, data, propagate)
-          self.master_write()
+          #self.group_reduce()
+          #self.master_write()
+          self.group_synchronize()
+          self.master_synchronize()
           self.group_bcast()
       else:
         self.group_write(area, data, propagate)
