@@ -24,6 +24,8 @@ MASTER = 0
 size = WORLD.Get_size()
 rank = WORLD.Get_rank()
 
+MVAPICH2 = False
+
 class DistMethod(object):
   Square = 'square'
   Stripe = 'stripe'
@@ -572,19 +574,30 @@ class VArray(object):
         self.local_data += tmp
     else:
       self.group_comm.Gather([tobuffer(data), MPI.FLOAT], None)
+
+
+  def _synchronize(self, communicator, data, num_worker):
+    if MVAPICH2:
+      communicator.Allreduce([tobuffer(data), MPI.FLOAT], [tobuffer(data), MPI.FLOAT])
+    else:
+      cache = garray.empty(shape = (num_worker, int(np.prod(data.shape))), dtype = np.float32)
+      communicator.Allgather([tobuffer(data), MPI.FLOAT], [tobuffer(cache), MPI.FLOAT])
+      for i in range(1, num_worker):
+        tmp  = garray.GPUArray(shape = data.shape, dtype = np.float32, gpudata = cache.ptr + cache.strides[0] * i)
+        data += tmp
+
   
-  def group_synchroize(self):
+  def group_synchronize(self):
     assert self.group_unique == False
-    #works for mvapich2
-    self.group_comm.Allreduce([tobuffer(self.local_data), MPI.FLOAT], [tobuffer(self.local_data), MPI.FLOAT])
+    self._synchronize(self.group_comm, self.local_data, self.group_size)
 
   def master_synchronize(self):
     if self.num_group == 1:
       return
     else:
       assert self.global_unique == False
-      #works for mvapich2
-      self.master_comm.Allreduce([tobuffer(self.local_data), MPI.FLOAT], [tobuffer(self.local_data), MPI.FLOAT])
+      if self.group_rank == 0:
+        self._synchronize(self.master_comm, self.local_data, self.num_group)
     
 
   def write(self, area, data, propagate = True, debug = False):
@@ -594,10 +607,10 @@ class VArray(object):
       if not self.group_unique:
         self._partial_write(area, data)
         if propagate:
-          self.group_reduce()
-          self.master_write()
-          #self.group_synchronize()
-          #self.master_synchronize()
+          #self.group_reduce()
+          #self.master_write()
+          self.group_synchronize()
+          self.master_synchronize()
           self.group_bcast()
       else:
         self.group_write(area, data, propagate)
