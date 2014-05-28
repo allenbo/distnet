@@ -407,7 +407,6 @@ class VArray(object):
       if len(subs) == 1:
         return subs.values()[0]
       min_from = Area.min_from(subs.keys())
-      #rst = garray.zeros(shape = area.shape, dtype = np.float32)
       rst = self.get_gpuarray(area, zeroed = True)
       for sub_area, sub_array in subs.iteritems():
         garray.stride_write(sub_array, rst, sub_area.offset(min_from).slice)
@@ -426,7 +425,6 @@ class VArray(object):
       new_shape, slices = self.get_pad_info(padding, area.shape, area, slice_dim)
       min_from = Area.min_from(subs.keys())
       area = Area.make_area(new_shape)
-      #rst = garray.zeros(new_shape, dtype = np.float32)
       rst = self.get_gpuarray(area, zeroed = True)
 
       if len(subs) == 1:
@@ -458,7 +456,6 @@ class VArray(object):
     # prepare recv_data
     for i, req in enumerate(req_list):
       if req is not None:
-        #recv_data[i] = garray.GPUArray(req.shape, dtype = np.float32)
         recv_data[i] = self.get_gpuarray(req)
 
     send_data = sub_data
@@ -499,7 +496,6 @@ class VArray(object):
 
         if sub_area is not None:
           offset_area = sub_area.offset(area._from)
-          #sub_data = garray.GPUArray(offset_area.shape, dtype = np.float32)
           sub_data = self.get_gpuarray(offset_area)
           garray.stride_copy(data, sub_data, offset_area.slice)
         else:
@@ -551,34 +547,27 @@ class VArray(object):
 
   def group_reduce(self):
     assert self.group_unique == False
-    #if self.group_rank == 0:
-    #  recv_buff = []
-    #  requests = []
-    #  for i in range(1, self.group_size):
-    #    buff = garray.empty_like(self.local_data)
-    #    requests.append(self.group_comm.Irecv(tobuffer(buff), source = i))
-    #    recv_buff.append(buff)
-    #  for req in requests: req.wait()
-    #  for buff in recv_buff:
-    #    self.local_data += buff
-    #else:
-    #  request = self.group_comm.Isend(tobuffer(self.local_data), dest = 0)
-    #  request.wait()
-
     data = self.local_data
-    if self.group_rank == 0:
-      cache = garray.empty(shape = (self.group_size, int(np.prod(self.local_data.shape))), dtype = np.float32)
-      self.group_comm.Gather([tobuffer(data), MPI.FLOAT], [tobuffer(cache), MPI.FLOAT])
-      for i in range(1, self.group_size):
-        tmp  = garray.GPUArray(shape = self.local_data.shape, dtype = np.float32, gpudata = cache.ptr + cache.strides[0] * i)
-        self.local_data += tmp
+    if MVAPICH2:
+      cache = garray.zeros(shape = self.local_data.shape, dtype = np.float32)
+      self.group_comm.Reduce([tobuffer(data), MPI.FLOAT], [tobuffer(cache), MPI.FLOAT], root = 0)
+      self.local_data = cache
     else:
-      self.group_comm.Gather([tobuffer(data), MPI.FLOAT], None)
+      if self.group_rank == 0:
+        cache = garray.empty(shape = (self.group_size, int(np.prod(self.local_data.shape))), dtype = np.float32)
+        self.group_comm.Gather([tobuffer(data), MPI.FLOAT], [tobuffer(cache), MPI.FLOAT])
+        for i in range(1, self.group_size):
+          tmp  = garray.GPUArray(shape = self.local_data.shape, dtype = np.float32, gpudata = cache.ptr + cache.strides[0] * i)
+          self.local_data += tmp
+      else:
+        self.group_comm.Gather([tobuffer(data), MPI.FLOAT], None)
 
 
   def _synchronize(self, communicator, data, num_worker):
     if MVAPICH2:
-      communicator.Allreduce([tobuffer(data), MPI.FLOAT], [tobuffer(data), MPI.FLOAT])
+      cache = garray.zeros(shape = data.shape, dtype = np.float32)
+      communicator.Allreduce([tobuffer(data), MPI.FLOAT], [tobuffer(cache), MPI.FLOAT])
+      garray.copy_to(cache, data)
     else:
       cache = garray.empty(shape = (num_worker, int(np.prod(data.shape))), dtype = np.float32)
       communicator.Allgather([tobuffer(data), MPI.FLOAT], [tobuffer(cache), MPI.FLOAT])
