@@ -15,7 +15,7 @@ PBout = False
 TEST = 0
 TRAIN = 1
 STOPITER = 1
-OUTINDEX = [1]
+OUTINDEX = [0]
 
 def col_rand(shape, dtype):
   return np.require(np.random.rand(*shape), dtype=dtype, requirements='C')

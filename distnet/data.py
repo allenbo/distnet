@@ -15,7 +15,7 @@ import sys
 import threading
 import time
 
-from multigpu import uniformed_array, arr, rank, num_gpu, multi_gpu, 
+from multigpu import uniformed_array, arr, rank, num_gpu, multi_gpu
 
 
 seed = arr.get_seed()
@@ -279,9 +279,14 @@ class CifarDataProvider(DataProvider):
     num_image = img.shape[-1]
     label = data['labels']
     if multi_gpu and INPUT_SEG:
-      num_image = img.shape[-1] / num_gpu
-      img = img[:, rank * num_image : (rank + 1) * num_image if rank != num_gpu - 1 else img.shape[-1]]
-      label = label[rank * num_image : (rank + 1) * num_image if rank != num_gpu -1 else len(label)]
+      nrow = 1.0 * img.shape[-1] / num_gpu
+      pos_from = int(nrow * rank)
+      pos_to = int((rank+ 1)* nrow)
+      if rank == num_gpu -1:
+        pos_to = img.shape[-1]
+
+      img = img[:, pos_from : pos_to]
+      label = label[pos_from: pos_to]
       assert img.shape[-1] == len(label)
       num_image = img.shape[-1]
     img_size = CifarDataProvider.img_size
@@ -445,18 +450,19 @@ class ParallelDataProvider(DataProvider):
           labels = gpu_labels[self.index:self.index + batch_size]
 
           #data = garray.partial_copy1(gpu_data, self.index, self.index+ width)
-          data = gpu_data[:, :, :, self.index, self.index + width]
+          data = gpu_data[:, :, :, self.index:self.index + width]
 
           self.index = 0
           self._fill_reserved_data()
         else:
           labels = gpu_labels[self.index:self.index + batch_size]
-          data = garray.partial_copy1(gpu_data, self.index, self.index + batch_size)
+          #data = garray.partial_copy1(gpu_data, self.index, self.index + batch_size)
+          data = gpu_data[:, :, :, self.index:self.index + batch_size]
           self.index += batch_size
 
       if INPUT_SEG:
         data = arr.assemble(data)
-        labels = arr.assemble(labels, flat = True)
+        labels = arr.assemble(labels.reshape((1, labels.size)), flat = True)
       else:
         data = uniformed_array(data)
     else:

@@ -173,7 +173,7 @@ class VArray(object):
 
     assert self.local_area.shape == self.local_data.shape
     
-    self.use_cache = True
+    self.use_cache = False
     self.cache = Cache()
 
   def get_gpuarray(self, area, zeroed = False):
@@ -276,7 +276,7 @@ class VArray(object):
     return self.local_area.shape
 
   def copy_from_global(self, input):
-    tmp = input.__getitem__(self.local_area.slice)
+    tmp = input[self.local_area.slice]
     assert tmp.shape == self.local_shape, str(tmp.shape) + ' ' + str(self.local_shape)
     self.local_data = tmp
 
@@ -284,7 +284,6 @@ class VArray(object):
     self.global_slice_dim = other.global_slice_dim
     self.global_area_dic = other.global_area_dict
     self.group_area = other.group_area
-    self.group_area_dict = other.group_area_dict
 
   def copy_from_group(self, input):
     assert input.shape == self.group_area.shape
@@ -298,7 +297,6 @@ class VArray(object):
     for i in range(self.group_size):
       self.group_area_dict[i] = self.group_area
     self.local_area = self.group_area
-    self.local_shape = self.local_area.shape
 
   def gather(self):
     if not self.global_unique:
@@ -427,7 +425,7 @@ class VArray(object):
       min_from = Area.min_from(subs.keys())
       area = Area.make_area(new_shape)
       #rst = garray.zeros(new_shape, dtype = np.float32)
-      rst = self.get_gpuarray(area.shape, zeroed = True)
+      rst = self.get_gpuarray(area, zeroed = True)
 
       if len(subs) == 1:
         garray.stride_write(subs.values()[0], rst, slices)
@@ -596,10 +594,10 @@ class VArray(object):
       if not self.group_unique:
         self._partial_write(area, data)
         if propagate:
-          #self.group_reduce()
-          #self.master_write()
-          self.group_synchronize()
-          self.master_synchronize()
+          self.group_reduce()
+          self.master_write()
+          #self.group_synchronize()
+          #self.master_synchronize()
           self.group_bcast()
       else:
         self.group_write(area, data, propagate)
@@ -892,23 +890,26 @@ def zeros_like(like):
   va.fill(0)
   return va
 
-def assemble(local_data, flat = False, axis = 3):
+def assemble(local_data, flat = False, axis = -1):
   assert len(local_data.shape) == 2 or len(local_data.shape) == 4
-  assert axis == 0 or axis == 3
+  assert axis == 0 or axis == -1
+  if axis < 0: axis = len(local_data.shape) + axis
 
   shape_list = WORLD.allgather(local_data.shape)
   dim_sum = int(np.sum(np.array([x[axis] for x in shape_list])))
 
   if axis == 0:
-    shape = tuple([shape_sum] + shape_list[0][1:])
+    shape = tuple([dim_sum] + list(shape_list[0][1:]))
   else:
-    shape = tuple(shape_list[0][:-1] + [shape_sum])
+    shape = tuple(list(shape_list[0][:-1]) + [dim_sum])
 
   rst = allocate(shape = shape, global_slice_dim = None, group_slice_dim = axis)
+  #print '%s, %s, %s' % (shape, rst.local_data.shape, local_data.shape)
   assert rst.local_data.shape == local_data.shape
   rst.local_data = local_data
 
   if flat:
-    return rst.global_gather().local_data
+    rst.gather()
+    return rst.local_data
   else:
     return rst

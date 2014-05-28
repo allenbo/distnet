@@ -1,5 +1,6 @@
 import garray
 import numpy as np
+import random
 
 class Cache(object):
   DEFAULT_CAPACITY = 200 * 1024 * 1024
@@ -16,16 +17,16 @@ class Cache(object):
       size = int( np.prod(shape) )
       array = garray.GPUArray(shape, dtype = np.float32)
       if size > self.max_capacity: 
-        return data
+        return array
       
-      while size + self.curr_capacity < self.max_capacity:
+      while size + self.curr_capacity > self.max_capacity:
         shape = random.choice(self._cache_pool.keys())
         self.curr_capacity -= np.prod(shape)
         del self._cache_pool[shape]
 
-      self._cache_pool[shape] = data
+      self._cache_pool[shape] = array
       self.curr_capacity += size
-      return data
+      return array
 
   def clear(self):
     self.curr_capacity = 0
