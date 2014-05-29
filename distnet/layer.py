@@ -1,4 +1,5 @@
 from distbase import util
+from distbase.monitor import MONITOR
 from distbase.util import divup
 from distnet.weights import WEIGHTS
 import os
@@ -15,7 +16,7 @@ PBout = False
 TEST = 0
 TRAIN = 1
 STOPITER = 1
-OUTINDEX = [2]
+OUTINDEX = [6]
 
 def col_rand(shape, dtype):
   return np.require(np.random.rand(*shape), dtype=dtype, requirements='C')
@@ -63,9 +64,14 @@ class Layer(object):
   def update(self):
     pass
 
-  def _prev_fprop(self):
+  def prev_fprop(self):
     self.iteration += 1
     self.output.fill(0)
+    MONITOR.set_name(self.name)
+
+  def prev_bprop(self):
+    MONITOR.set_name(self.name)
+
 
   def _printout_forward(self, obj):
     if PFout and self.index in OUTINDEX:

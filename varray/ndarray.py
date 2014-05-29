@@ -26,10 +26,6 @@ rank = WORLD.Get_rank()
 
 MVAPICH2 = False
 
-class DistMethod(object):
-  Square = 'square'
-  Stripe = 'stripe'
-
 def barrier(communicator = WORLD):
   return 
   communicator.Barrier()
@@ -177,7 +173,7 @@ class VArray(object):
     
     self.use_cache = False
     self.cache = Cache()
-
+  
   def get_gpuarray(self, area, zeroed = False):
     if self.use_cache:
       array = self.cache.get(area)
@@ -294,8 +290,10 @@ class VArray(object):
   def group_gather(self):
     if not self.group_unique:
       return
+
     self.group_slice_dim = None
     self.local_data = self.group_fetch(self.group_area)
+
     for i in range(self.group_size):
       self.group_area_dict[i] = self.group_area
     self.local_area = self.group_area
@@ -313,7 +311,9 @@ class VArray(object):
       self.group_area = self.global_area
       self.local_area = self.group_area
       self.local_shape = self.local_area.shape
+
       self.local_data = sel.fetch(self.global_area)
+
       for i in range(self.num_group):
         self.global_area_dict[i] = self.global_area
       for i in range(self.group_size):
@@ -391,7 +391,7 @@ class VArray(object):
                        num_worker = self.global_size,
                        area_dict = self.all_area_dict,
                        communicator = self.global_comm)
-  
+
   def group_fetch(self, area, padding = 0, slice_dim = None):
     return self._fetch(area = area,
                        padding = padding,
@@ -406,11 +406,11 @@ class VArray(object):
     if padding == 0:
       if len(subs) == 1:
         return subs.values()[0]
+      dst = self.get_gpuarray(area)
       min_from = Area.min_from(subs.keys())
-      rst = self.get_gpuarray(area, zeroed = True)
       for sub_area, sub_array in subs.iteritems():
-        garray.stride_write(sub_array, rst, sub_area.offset(min_from).slice)
-      return rst
+        garray.stride_write(sub_array, dst, sub_area.offset(min_from).slice)
+      return dst
     else:
       def get_new_min_from(min_from, slices):
         for i, s in enumerate(slices):
@@ -425,16 +425,15 @@ class VArray(object):
       new_shape, slices = self.get_pad_info(padding, area.shape, area, slice_dim)
       min_from = Area.min_from(subs.keys())
       area = Area.make_area(new_shape)
-      rst = self.get_gpuarray(area, zeroed = True)
-
+      dst = self.get_gpuarray(area, zeroed = True)
       if len(subs) == 1:
-        garray.stride_write(subs.values()[0], rst, slices)
-        return rst
+        garray.stride_write(subs.values()[0], dst, slices)
+        return dst
       min_from = get_new_min_from(min_from, slices)
 
       for sub_area, sub_array in subs.iteritems():
-        garray.stride_write(sub_array, rst, sub_area.offset(min_from).slice)
-      return rst
+        garray.stride_write(sub_array, dst, sub_area.offset(min_from).slice)
+      return dst
 
   def write_local(self, area,  data, acc = False):
     if area is None:
@@ -710,8 +709,12 @@ class VArray(object):
     self.tmp_local_data = self.fetch(self.tmp_local_area)
 
   def batch_communicate(self, rank, slice_dim):
-    self.tmp_local_area = VArray.make_stripe_area(rank, slice_dim, self.group_area, self.group_size)
-    self.tmp_local_data = self.group_fetch(self.tmp_local_area)
+    if slice_dim == self.group_slice_dim:
+      self.tmp_local_area = self.local_area
+      self.tmp_local_data = self.local_data
+    else:
+      self.tmp_local_area = VArray.make_stripe_area(rank, slice_dim, self.group_area, self.group_size)
+      self.tmp_local_data = self.group_fetch(self.tmp_local_area)
 
   def image_communicate(self, slice_dim, stride, filter_size, padding = 0, output_area = None):
     assert padding <= 0, str(padding)
@@ -742,6 +745,7 @@ class VArray(object):
       self.tmp_local_area = Area(Point(*_from), Point(*_to))
     else:
       self.tmp_local_area = copy.deepcopy(output_area)
+    
     self.tmp_local_data = self.group_fetch(self.tmp_local_area, padding = padding, slice_dim = slice_dim)
 
   def local_patch(self, data):

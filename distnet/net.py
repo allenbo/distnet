@@ -101,7 +101,7 @@ class FastNet(object):
     assert len(self.layers) > 0, 'No outputs: uninitialized network!'
     input = data
     for layer in self.layers:
-      layer._prev_fprop()
+      layer.prev_fprop()
       layer.fprop(input, layer.output, train)
       input = layer.output
       driver.Context.synchronize()
@@ -113,6 +113,7 @@ class FastNet(object):
       curr = self.layers[-i]
       if curr.disable_bprop: break
       prev = self.layers[-(i + 1)]
+      curr.prev_bprop()
       curr.bprop(grad, prev.output, curr.output, prev.output_grad)
       driver.Context.synchronize()
       grad = prev.output_grad

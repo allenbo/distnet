@@ -52,9 +52,6 @@ def log_warn(msg, *args, **kw): log(msg, *args, level=WARN, caller_frame=2)
 def log_error(msg, *args, **kw): log(msg, *args, level=ERROR, caller_frame=2)
 def log_fatal(msg, *args, **kw): log(msg, *args, level=FATAL, caller_frame=2)
 
-
-
-
 class Timer:
   def __init__(self):
     self.func_time = {}
@@ -269,12 +266,8 @@ def enable_profile():
   if PROFILER is None:
     yappi.start()
     PROFILER = 1
-    #PROFILER = cProfile.Profile()
-    #PROFILER.enable()
 
 def dump_profile():
   if PROFILER is None:
     return
-
   yappi.get_func_stats().save('./profile.%d' % MPI.COMM_WORLD.Get_rank(), 'pstat')
-  #PROFILER.dump_stats('./profile.%d' % MPI.COMM_WORLD.Get_rank())

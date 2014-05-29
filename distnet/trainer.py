@@ -1,5 +1,6 @@
 from distbase import util
 from distbase.util import log, timer
+from distbase.monitor import MONITOR
 from collections import deque
 from distnet import argparse, layer, data
 from distnet.checkpoint import CheckpointDumper, DataDumper, MemoryDataHolder
@@ -161,8 +162,6 @@ class Trainer:
 
     min_time = 12
     while (self.curr_epoch - start_epoch <= num_epochs and self.should_continue_training()):
-      #if min_time < 1.55:
-      #  util.dump_profile()
       #util.dump_profile()
       batch_start = time.time()
       train_data = self.train_dp.get_next_batch(self.batch_size)
@@ -178,6 +177,7 @@ class Trainer:
 
       if time.time() - last_print_time > 1:
         log('%d.%d: error: %f logreg: %f time: %f', self.curr_epoch, self.curr_batch, 1 - correct, cost, time.time() - batch_start)
+        MONITOR.report()
         min_time = time.time() - batch_start
         last_print_time = time.time()
 

@@ -11,12 +11,12 @@ multi_gpu = False
 
 if os.environ.get('MULTIGPU', 'no') == 'yes':
   import varray as arr
-  from varray import DistMethod, rank, size as num_gpu
+  from varray import rank, size as num_gpu
   from varray.context import default_context, Context, CONTEXTMANAGER
   multi_gpu = True
   import socket
   garray.device_init(arr.rank)
-  dist_file = 'config/imagenet.cfg.layerdist'
+  dist_file = 'config/cifar-13pct.cfg.layerdist'
   strategy = util.load(dist_file)
 else:
   import garray as arr
