@@ -14,6 +14,7 @@ import numpy as np
 
 import garray
 from distbase.util import issquare
+from distbase.monitor import MONITOR
 from garray import ConvDataLayout, FCDataLayout, FilterLayout, WeightLayout
 from distbase.util import deprecated
 from context import Context, default_context
@@ -25,6 +26,7 @@ size = WORLD.Get_size()
 rank = WORLD.Get_rank()
 
 MVAPICH2 = False
+INNER = True
 
 def barrier(communicator = WORLD):
   communicator.Barrier()
@@ -329,6 +331,7 @@ class VArray(object):
     return data
 
   def _communicate(self, send_data, recv_data, communicator):
+    _ = time.time()
     send_req = []
     recv_req = []
     for i, data in enumerate(send_data):
@@ -340,8 +343,10 @@ class VArray(object):
       recv_req.append(communicator.Irecv(tobuffer(data), source = i))
 
     for req in send_req + recv_req: req.wait()
+    if INNER: MONITOR.add_comm(time.time() - _)
 
   def fetch_remote(self, reqs, communicator, self_id):
+    _ = time.time()
     subs = {}
     req_list = reqs[:]
     num_worker = len(req_list)
@@ -350,12 +355,12 @@ class VArray(object):
     recv_data = [None] * num_worker
     for i, req in enumerate(req_list):
       if req is not None:
-        #recv_data[i] = garray.GPUArray(req.shape, dtype = np.float32)
         recv_data[i] = self.get_gpuarray(req)
 
     # preparea send_data
     req_list = communicator.alltoall(req_list)
     send_data = [self.fetch_local(req_list[rank]) for rank in range(num_worker)]
+    if INNER: MONITOR.add_marshall(time.time() - _)
     # communicate with other workers
     self._communicate(send_data, recv_data, communicator)
 
@@ -364,6 +369,7 @@ class VArray(object):
 
   def _fetch(self, area, padding, slice_dim, self_id, num_worker, area_dict, communicator):
     barrier(communicator)
+    _ = time.time()
     subs = {}
     reqs = [None] * num_worker
     if area in self.local_area:
@@ -377,8 +383,11 @@ class VArray(object):
           reqs[rank] = None
         else:
           reqs[rank] = sub_area
+    if INNER: MONITOR.add_marshall(time.time() - _)
     subs.update(self.fetch_remote(reqs, communicator, self_id))
+    _ = time.time()
     rst = self.merge(subs, area, padding, slice_dim)
+    if INNER: MONITOR.add_merge(time.time() - _)
     barrier(communicator)
     return rst
 
@@ -446,6 +455,7 @@ class VArray(object):
       gpu_data[area.slice] =  data
 
   def write_remote(self, reqs, sub_data, communicator):
+    _ = time.time()
     req_list = reqs[:]
     num_worker = len(req_list)
     recv_data = [None] * num_worker
@@ -457,12 +467,15 @@ class VArray(object):
         recv_data[i] = self.get_gpuarray(req)
 
     send_data = sub_data
+    if INNER: MONITOR.add_marshall(time.time() - _)
     self._communicate(send_data, recv_data, communicator)
-
+    
+    _ = time.time()
     for rank in range(num_worker):
       if req_list[rank] is None: continue
       else:
         self.write_local(req_list[rank], recv_data[rank], acc = True)
+    if INNER: MONITOR.add_merge(time.time() - _)
     barrier(communicator)
   
   def _partial_write(self, area, data):
@@ -480,8 +493,10 @@ class VArray(object):
   
   def _write(self, area, data, propagate, unique, self_id, num_worker, area_dict, communicator):
     barrier(communicator)
+    _ = time.time()
     if not propagate:
       self._partial_write(area, data)
+      if INNER: MONITOR.add_marshall(time.time() - _)
       return
 
     assert area.shape == data.shape
@@ -506,6 +521,7 @@ class VArray(object):
         else:
           reqs[rank] = sub_area
           local_subs[rank] = sub_data
+    if INNER: MONITOR.add_marshall(time.time() - _)
     self.write_remote(reqs, local_subs, communicator)
     
   def group_write(self, area, data, propagate = True):

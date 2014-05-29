@@ -4,7 +4,7 @@ from distbase import util
 from distbase.util import deprecated
 from distbase.monitor import MONITOR
 import numpy as np
-from .ndarray import VArray, zeros_like, WORLD, zeros, allocate_like, allocate, WORLD, barrier
+from .ndarray import VArray, zeros_like, WORLD, zeros, allocate_like, allocate, WORLD, barrier, INNER
 from .area import Area
 import garray
 from distbase.state import *
@@ -101,7 +101,7 @@ def convert_from_data(input, output):
       garray.convert_from_data(input.local_data, group_output)
       output.copy_from_group(group_output)
 
-  MONITOR.add_comm(time.time() - _)
+  if not INNER: MONITOR.add_comm(time.time() - _)
 
 def fcforward(input, output, weight, bias, prev_conv):
   state = get_state_from_slice_dim(output.group_slice_dim, False, ConvDataLayout, FCDataLayout)
@@ -110,7 +110,7 @@ def fcforward(input, output, weight, bias, prev_conv):
     input.batch_communicate(input.group_rank, ConvDataLayout.BATCH if prev_conv else FCDataLayout.BATCH)
   else:
     input.global_global_communicate()
-  MONITOR.add_comm(time.time() - _)
+  if not INNER: MONITOR.add_comm(time.time() - _)
 
   _ = time.time()
   input_data = input.tmp_local_data
@@ -150,7 +150,7 @@ def fcbackward(input, weight, grad, out_grad, weight_grad, bias_grad, prev_conv)
         out_grad.tmp_local_data = garray.empty_like(input.tmp_local_data)
       tmp_out_grad = out_grad.tmp_local_data
       
-  MONITOR.add_comm(time.time() - _)
+  if not INNER: MONITOR.add_comm(time.time() - _)
 
   if state in [disw_b]:
     if not hasattr(weight_grad, 'tmp_local_data'):
@@ -177,7 +177,7 @@ def fcbackward(input, weight, grad, out_grad, weight_grad, bias_grad, prev_conv)
   weight_grad.write(area = weight_grad.local_area, data = tmp_weight_grad, propagate = weight_propagate)
   out_grad.write(area = input.tmp_local_area, data = tmp_out_grad, propagate = grad_propagate)
 
-  MONITOR.add_comm(time.time() - _)
+  if not INNER: MONITOR.add_comm(time.time() - _)
   garray.copy_to(garray.sum(grad.local_data, axis = 1), bias_grad.local_data)
   
 def softmax(input, output):
@@ -185,7 +185,7 @@ def softmax(input, output):
   if state == sisw:
     _ = time.time()
     input.global_global_communicate()
-    MONITOR.add_comm(time.time() - _)
+    if not INNER: MONITOR.add_comm(time.time() - _)
     local_input = input.tmp_local_data
   else:
     local_input = input.local_data
@@ -218,7 +218,7 @@ def softmax_bprop(output, label, out_grad):
       print 'area', out_grad.local_area
       print 'data.shape', tmp_out_grad.shape
     out_grad.write(area = out_grad.global_area, data = tmp_out_grad, propagate = False)
-    MONITOR.add_comm(time.time() - _)
+    if not INNER: MONITOR.add_comm(time.time() - _)
   else:
     # if softmax is disw_b, so is fc
     _ = time.time()
@@ -258,7 +258,7 @@ def convolution(input, filter ,output, bias, image_y, output_y, output_x, paddin
   elif state == sidw or state == sisw:
     input.global_communicate()
 
-  MONITOR.add_comm(time.time() - _)
+  if not INNER: MONITOR.add_comm(time.time() - _)
 
   input_data = input.tmp_local_data
   image_y = input_data.shape[r]
@@ -308,7 +308,7 @@ def bconvolution(input, grad, filter, out_grad, image_y, image_x, output_size, p
     if state == sisw:
       propagate = False
   
-  MONITOR.add_comm(time.time() - _)
+  if not INNER: MONITOR.add_comm(time.time() - _)
 
   input_data = input.tmp_local_data
 
@@ -341,6 +341,7 @@ def bconvolution(input, grad, filter, out_grad, image_y, image_x, output_size, p
 
   MONITOR.add_comp(time.time() - _)
   
+  _ = time.time()
   if state == disw_i:
     tmp_out_grad = input.unpad(data = tmp_out_grad, 
                                padding = real_padding,
@@ -349,6 +350,7 @@ def bconvolution(input, grad, filter, out_grad, image_y, image_x, output_size, p
                                slice_dim = (r, c),
                                debug = DEBUG)
   out_grad.write(area = input.tmp_local_area, data = tmp_out_grad, propagate = propagate, debug = DEBUG)
+  if not INNER: MONITOR.add_comm(time.time() - _)
 
 def wconvolution(input, grad, weight_grad, bias_grad, image_y, output_y, output_x, filter_size, padding, stride, channel):
   propagate = True
@@ -375,12 +377,9 @@ def wconvolution(input, grad, weight_grad, bias_grad, image_y, output_y, output_
   
   input_data = input.tmp_local_data
 
-  MONITOR.add_comm(time.time() - _)
+  if not INNER: MONITOR.add_comm(time.time() - _)
 
   if state in [disw_i, disw_b]:
-    #if not hasattr(weight_grad, 'tmp_local_data'):
-    #  weight_grad.tmp_local_data = garray.GPUArray(weight_grad.shape, dtype = weight_grad.dtype)
-    #tmp_weight_grad = weight_grad.tmp_local_data
     tmp_weight_grad = weight_grad.local_data
     if not hasattr(bias_grad, 'tmp_local_data'):
       bias_grad.tmp_local_data = garray.GPUArray(bias_grad.shape, dtype = bias_grad.dtype)
@@ -423,7 +422,7 @@ def wconvolution(input, grad, weight_grad, bias_grad, image_y, output_y, output_
   #print 'rank %d, weight %f' % (input.global_rank, tmp_weight_grad.get()[0, 0, 0, 0])
   weight_grad.write(area = weight_grad.global_area, data = tmp_weight_grad, propagate = propagate)
   bias_grad.write(area = bias_grad.global_area, data = tmp_bias_grad, propagate = propagate)
-  MONITOR.add_comm(time.time() - _)
+  if not INNER: MONITOR.add_comm(time.time() - _)
 
 def maxpool(input, output, channel, pool_size, start, stride, input_y, output_y, output_x):
   r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
@@ -442,7 +441,7 @@ def maxpool(input, output, channel, pool_size, start, stride, input_y, output_y,
   elif state == sidw:
     input.channel_communicate(input.group_rank, ConvDataLayout.CHANNEL)
 
-  MONITOR.add_comm(time.time() - _)
+  if not INNER: MONITOR.add_comm(time.time() - _)
   input_data = input.tmp_local_data
   
   output_y = output.local_shape[r]
@@ -487,7 +486,7 @@ def maxundo(input, grad, output, out_grad, pool_size, start, stride, output_y, o
       input.global_communicate()
     propagate = False
 
-  MONITOR.add_comm(time.time() - _)
+  if not INNER: MONITOR.add_comm(time.time() - _)
   
   input_data = input.tmp_local_data
 
@@ -524,7 +523,7 @@ def maxundo(input, grad, output, out_grad, pool_size, start, stride, output_y, o
     print 'data.shape', tmp_out_grad.shape
     print 'propagate', propagate
   out_grad.write(data = tmp_out_grad, area = input.tmp_local_area, propagate = propagate)
-  MONITOR.add_comm(time.time() - _)
+  if not INNER: MONITOR.add_comm(time.time() - _)
 
 def avgpool(input, output, channel, pool_size, start, stride, input_y, output_y, output_x):
   r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
@@ -543,7 +542,7 @@ def avgpool(input, output, channel, pool_size, start, stride, input_y, output_y,
   elif state == sidw:
     input.channel_communicate(input.group_rank, ConvDataLayout.CHANNEL)
 
-  MONITOR.add_comm(time.time() - _)
+  if not INNER: MONITOR.add_comm(time.time() - _)
   input_data = input.tmp_local_data
 
   output_y = output.local_shape[r]
@@ -588,7 +587,7 @@ def avgundo(input, grad, out_grad, pool_size, start, stride, output_y, output_x,
       input.global_communicate()
     propagate = False
   
-  MONITOR.add_comm(time.time() - _)
+  if not INNER: MONITOR.add_comm(time.time() - _)
   input_data = input.tmp_local_data
 
   if not hasattr(out_grad, 'tmp_local_data'):
@@ -623,7 +622,7 @@ def avgundo(input, grad, out_grad, pool_size, start, stride, output_y, output_x,
     print 'data.shape', tmp_out_grad.shape
     print 'propagate', propagate
   out_grad.write(data = tmp_out_grad, area = input.tmp_local_area, propagate = propagate)
-  MONITOR.add_comm(time.time() - _)
+  if not INNER: MONITOR.add_comm(time.time() - _)
 
 def rnorm(input, denom, output, channel, size, image_y, scalar, pow):
   r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
@@ -642,7 +641,7 @@ def rnorm(input, denom, output, channel, size, image_y, scalar, pow):
   elif state == sidw:
     input.channel_communicate(input.group_rank, ConvDataLayout.CHANNEL)
 
-  MONITOR.add_comm(time.time() - _)
+  if not INNER: MONITOR.add_comm(time.time() - _)
   input_data = input.tmp_local_data
 
   if input.tmp_local_area.cmp(denom.local_area):
@@ -677,7 +676,7 @@ def rnorm(input, denom, output, channel, size, image_y, scalar, pow):
   if input.tmp_local_area != denom.local_area:
     output.write(area = input.tmp_local_area, data = tmp_output_data, propagate = False)
     denom.write(area = input.tmp_local_area, data = tmp_denom_data, propagate = False)
-  MONITOR.add_comm(time.time() - _)
+  if not INNER: MONITOR.add_comm(time.time() - _)
 
 def rnormundo(grad, denom, input, output, out_grad, channel, size, image_y, scalar, pow):
   propagate = True
@@ -721,7 +720,7 @@ def rnormundo(grad, denom, input, output, out_grad, channel, size, image_y, scal
     if not hasattr(input, 'tmp_local_data'):
       input.channel_communicate(input.group_rank, ConvDataLayout.CHANNEL)
     
-  MONITOR.add_comm(time.time() - _)
+  if not INNER: MONITOR.add_comm(time.time() - _)
   input_data = input.tmp_local_data
 
   if denom.local_area.cmp(input.tmp_local_area):
@@ -765,7 +764,7 @@ def rnormundo(grad, denom, input, output, out_grad, channel, size, image_y, scal
   if state == disw_i and propagate:
     tmp_out_grad = output.local_patch(tmp_out_grad)
   out_grad.write(data = tmp_out_grad, area = output.local_area, propagate = propagate)
-  MONITOR.add_comm(time.time() - _)
+  if not INNER: MONITOR.add_comm(time.time() - _)
 
 def rnormcrossmap(input, denom, output, channel, size,image_y, scalar, pow, blocked):
   r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
@@ -784,7 +783,7 @@ def rnormcrossmap(input, denom, output, channel, size,image_y, scalar, pow, bloc
     input.channel_communicate(input.group_rank, ConvDataLayout.CHANNEL, padding = size / 2)
   elif state == sisw:
     input.global_communicate()
-  MONITOR.add_comm(time.time() - _)
+  if not INNER: MONITOR.add_comm(time.time() - _)
     
   input_data = input.tmp_local_data
   if input.tmp_local_area.cmp(denom.local_area):
@@ -818,7 +817,7 @@ def rnormcrossmap(input, denom, output, channel, size,image_y, scalar, pow, bloc
   if input.tmp_local_area.cmp(denom.local_area):
     output.write(area = denom.local_area, data = tmp_output_data, propagate = False)
     denom.write(area = denom.local_area, data = tmp_denom_data, propagate = False)
-  MONITOR.add_comm(time.time() - _)
+  if not INNER: MONITOR.add_comm(time.time() - _)
 
 def rnormcrossmapundo(grad, denom, input, output, out_grad, channel, size, image_y, scalar, pow, blocked):
   propagate = True
@@ -852,7 +851,7 @@ def rnormcrossmapundo(grad, denom, input, output, out_grad, channel, size, image
     if output.group_slice_dim == input.group_slice_dim: # prievious layer has the some distribution sidw
       propagate = False
     
-  MONITOR.add_comm(time.time() - _)
+  if not INNER: MONITOR.add_comm(time.time() - _)
   input_data = input.tmp_local_data
 
   if denom.local_area.cmp(input.tmp_local_area):
@@ -896,4 +895,4 @@ def rnormcrossmapundo(grad, denom, input, output, out_grad, channel, size, image
   if state == sidw and propagate:
     tmp_out_grad = output.local_path(tmp_out_grad)
   out_grad.write(data = tmp_out_grad, area = input.tmp_local_area, propagate = propagate)
-  MONITOR.add_comm(time.time() - _)
+  if not INNER: MONITOR.add_comm(time.time() - _)
