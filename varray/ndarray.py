@@ -27,7 +27,6 @@ rank = WORLD.Get_rank()
 MVAPICH2 = False
 
 def barrier(communicator = WORLD):
-  return 
   communicator.Barrier()
 
 def tobuffer(gpuarray):
@@ -325,7 +324,6 @@ class VArray(object):
     if area == self.local_area:
       return self.local_data
     area = area.offset(self.local_area._from)
-    #data = garray.GPUArray(area.shape, dtype = np.float32)
     data = self.get_gpuarray(area)
     garray.stride_copy(self.local_data, data, area.slice)
     return data
@@ -381,6 +379,7 @@ class VArray(object):
           reqs[rank] = sub_area
     subs.update(self.fetch_remote(reqs, communicator, self_id))
     rst = self.merge(subs, area, padding, slice_dim)
+    barrier(communicator)
     return rst
 
   def fetch(self, area, padding = 0, slice_dim = None):
@@ -464,6 +463,7 @@ class VArray(object):
       if req_list[rank] is None: continue
       else:
         self.write_local(req_list[rank], recv_data[rank], acc = True)
+    barrier(communicator)
   
   def _partial_write(self, area, data):
     if data is self.local_data: return

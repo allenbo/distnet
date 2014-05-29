@@ -11,12 +11,12 @@ fc_first_dist = LayerDist(False, sidw_f, [4])
 fc_batch_dist = LayerDist(False, disw_b, [2])
 
 
-model_path = '../config/cifar-13pct.cfg'
+model_path = '../config/imagenet.cfg'
 strategy_path = model_path + '.layerdist'
 model = reader.getmodel(model_path)
 
 # image distribution for cifar 13
-layerdists = [conv_image_dist] * 6 + [fc_shared_dist] * 2
+#layerdists = [conv_image_dist] * 6 + [fc_shared_dist] * 2
 # batch_distribution for cifar 13
 #layerdists = [conv_batch_dist] * 6 + [fc_shared_dist] * 2
 # mix distribution for cifar 13, batch-image
@@ -42,7 +42,7 @@ layerdists = [conv_image_dist] * 6 + [fc_shared_dist] * 2
 #layerdists = [conv_batch_dist] *  (len(model) - 6) + [fc_first_dist] * 4 + [fc_shared_dist] * 2
 
 #2 groups on  image distribution
-#layerdists = [conv_image_dist] * (len(model) - 6) + [fc_first_dist] * 4 + [fc_shared_dist] * 2
+layerdists = [conv_image_dist] * (len(model) - 6) + [fc_first_dist] * 4 + [fc_shared_dist] * 2
 
 assert len(model) == len(layerdists)
 

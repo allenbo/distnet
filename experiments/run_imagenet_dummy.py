@@ -26,8 +26,8 @@ data_provider = 'dummy'
 
 image_size=224
 multiview = False
-train_dp = data.get_by_name(data_provider)(image_size, 1000, batch_size = 256)
-test_dp = data.get_by_name(data_provider)(image_size, 1000, batch_size = 256)
+train_dp = data.get_by_name(data_provider)(image_size, 1000, batch_size = 1024)
+test_dp = data.get_by_name(data_provider)(image_size, 1000, batch_size = 1024)
 checkpoint_dumper = trainer.CheckpointDumper(checkpoint_dir, test_id)
 
 model = checkpoint_dumper.get_checkpoint()
@@ -40,7 +40,7 @@ adjust_freq = 100
 factor = 1
 num_epoch = 1
 learning_rate = 0.1
-batch_size = 256
+batch_size = 128
 image_color = 3
 image_shape = ConvDataLayout.get_output_shape(image_size, image_size, image_color, batch_size)
 net = parser.load_model(net.FastNet(image_shape), model)
