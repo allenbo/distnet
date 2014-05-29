@@ -1,4 +1,5 @@
 import numpy as np
+import sys
 
 class Monitor(object):
   COMP = 0
@@ -46,13 +47,13 @@ class Monitor(object):
     self._merge += elapsed
 
   def report(self):
-    print '{:10}\t{:20}\t{:20}\t{:20}\t{:20}'.format('layer', 'comp', 'comm', 'marshal', 'merge')
+    print >> sys.stderr, '{:10}\t{:20}\t{:20}\t{:20}\t{:20}'.format('layer', 'comp', 'comm', 'marshal', 'merge')
     for name in self._list:
-      print '{:10}\t{:20}\t{:20}\t{:20}\t{:20}'.format(name, self._list[name][Monitor.COMP],
+      print >> sys.stderr, '{:10}\t{:20}\t{:20}\t{:20}\t{:20}'.format(name, self._list[name][Monitor.COMP],
           self._list[name][Monitor.COMM], self._list[name][Monitor.MARSHALL],
           self._list[name][Monitor.MERGE])
 
-    print '{:10}\t{:20}\t{:20}\t{:20}\t{:20}'.format('total', self._comp, self._comm, self._marshall, self._merge)
+    print >> sys.stderr, '{:10}\t{:20}\t{:20}\t{:20}\t{:20}'.format('total', self._comp, self._comm, self._marshall, self._merge)
     self._clear()
 
   def _clear(self):

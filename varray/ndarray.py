@@ -579,6 +579,7 @@ class VArray(object):
 
 
   def _synchronize(self, communicator, data, num_worker):
+    _ = time.time()
     if MVAPICH2:
       cache = garray.zeros(shape = data.shape, dtype = np.float32)
       communicator.Allreduce([tobuffer(data), MPI.FLOAT], [tobuffer(cache), MPI.FLOAT])
@@ -589,6 +590,7 @@ class VArray(object):
       for i in range(1, num_worker):
         tmp  = garray.GPUArray(shape = data.shape, dtype = np.float32, gpudata = cache.ptr + cache.strides[0] * i)
         data += tmp
+    if INNER: MONITOR.add_comm(time.time() - _)
 
   
   def group_synchronize(self):
@@ -615,7 +617,7 @@ class VArray(object):
           #self.master_write()
           self.group_synchronize()
           self.master_synchronize()
-          self.group_bcast()
+          #self.group_bcast()
       else:
         self.group_write(area, data, propagate)
     
