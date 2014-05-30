@@ -2,7 +2,7 @@ from backend import cm_backend
 import aux_operation
 from aux_operation import sync_function, reshape_first, reshape_last
 import numpy as np
-from new_gpuarray import sum, max, iexp, copy_to
+from new_gpuarray import sum, max, iexp, copy_to, to_gpu
 
 
 convert_from_data = cm_backend.convert_from_data
@@ -57,6 +57,12 @@ def transpose(mat, dest = None):
     mat = reshape_last(mat)
   
   return aux_operation.transpose(mat, dest)
+
+def random_uniform(shape):
+  size = np.prod(shape)
+  obj = np.random.uniform(0, 1, size).astype(np.float32).reshape(shape)
+  return to_gpu(obj)
+
 
 def fcforward(input, output, weight, bias, prev_conv):
   if prev_conv:

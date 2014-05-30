@@ -130,7 +130,7 @@ def find_best(model, init_state, cfs, prev_nw):
       communicat_cost = comm_cost_worker[cfs]
       cost, state_list = find_best(model[1:], init_state, ncfs, cur_nw)
       cm_cost = communicat_cost[(init_state, init_state)](input_size, weight_size, actual_data, cur_nw, prev_nw) * 1.0 / bandwidth + latency * 2
-      if init_state == disw_i:
+      if init_state == disw_i or init_state == sidw_f:
         cm_cost *= 1.5
       return (layer['comp_cost'][init_state][0] + cm_cost + cost, [init_state] + state_list)
     else:
@@ -138,7 +138,7 @@ def find_best(model, init_state, cfs, prev_nw):
       cost, state_list = find_best(model[1:], init_state, ncfs, cur_nw)
       cm_cost = 0 if init_state != disw_i or layer['type'] == 'neuron' else overlapping * 2.0 / bandwidth
       cm_latency = 0 if cm_cost == 0 else latency * 2
-      if init_state == disw_i:
+      if init_state == disw_i or init_state == sidw_f:
         cm_cost *= 1.5
       return (layer['comp_cost'][init_state][0] + cm_cost + cm_latency + cost, [init_state] + state_list)
 
@@ -212,7 +212,7 @@ def print_details(model, states):
         cm_cost = communicat_cost[(prev_state, curr_state)](input_size, weight_size, actual_data, cur_nw, prev_nw) * 1.0 / bandwidth
       else:
         cm_cost = 0 if curr_state != disw_i or layer['type'] == 'neuron' else overlapping * 2.0 / bandwidth
-      if curr_state == disw_i:
+      if curr_state == disw_i or curr_state == sidw_f:
         cm_cost *= 1.5
       communicat_latency = 0 if cm_cost == 0 else latency * 2
       cm_cost += communicat_latency
@@ -223,7 +223,7 @@ def print_details(model, states):
       else:
         cm_cost = communicat_cost[(prev_state, curr_state)](input_size, weight_size, actual_data, cur_nw, prev_nw) * 1.0 / bandwidth
         cm_cost += 0 if cm_cost == 0 else latency * 2
-      if curr_state == disw_i:
+      if curr_state == disw_i or curr_state == sidw_f:
         cm_cost *= 1.5
     cp_cost = layer['comp_cost'][curr_state][0]
 
@@ -337,7 +337,7 @@ if __name__ == '__main__':
     cost, states = find_best(model, state0, ConvFC.conv, -1)
   print '%s: Total cost is \033[44m%f\033[0m' % (model_basename.upper(), cost)
   print 'Number of worker is \033[32m%d\033[0m' % n
-  states = [disw_b] * (len(model) - 6) + [sisw] * 6
+  states = [disw_b] * (len(model) - 6) + [sidw_f] * 4 + [sisw] * 2
   print_details(model, states)
   
   strategy = {}

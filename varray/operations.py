@@ -120,9 +120,9 @@ def fcforward(input, output, weight, bias, prev_conv):
   _ = time.time()
   input_data = input.tmp_local_data
   garray.matrixmult(weight.local_data, input_data, dest = output.local_data)
-  garray.copy_to(output.local_data + bias.local_data , output.local_data)
   driver.Context.synchronize()
   MONITOR.add_comp(time.time() - _)
+  garray.copy_to(output.local_data + bias.local_data , output.local_data)
 
 def fcbackward(input, weight, grad, out_grad, weight_grad, bias_grad, prev_conv):
   grad_propagate = False
@@ -159,7 +159,7 @@ def fcbackward(input, weight, grad, out_grad, weight_grad, bias_grad, prev_conv)
   else:
     tmp_weight_grad = weight_grad.local_data
     weight_propagate = False
-
+  
   _ = time.time()
   tmp_out_grad.fill(0)
   tmp_weight_grad.fill(0)
@@ -443,9 +443,12 @@ def maxundo(input, grad, output, out_grad, pool_size, start, stride, output_y, o
   if not INNER: MONITOR.add_comm(time.time() - _)
   
   input_data = input.tmp_local_data
-
-  if not hasattr(out_grad, 'tmp_local_data'):
-    out_grad.tmp_local_data = garray.empty_like(input_data)
+  
+  if input_data.shape != out_grad.local_data.shape:
+    if not hasattr(out_grad, 'tmp_local_data'):
+      out_grad.tmp_local_data = garray.empty_like(input_data)
+  else:
+    out_grad.tmp_local_data = out_grad.local_data
   tmp_out_grad = out_grad.tmp_local_data
 
   output_y = output.local_data.shape[r]
@@ -718,7 +721,7 @@ def rnormcrossmap(input, denom, output, channel, size,image_y, scalar, pow, bloc
   MONITOR.add_comp(time.time() - _)
   _ = time.time()
 
-  if input.tmp_local_area.cmp(denom.local_area):
+  if not input.tmp_local_area.cmp(denom.local_area):
     output.write(area = denom.local_area, data = tmp_output_data, propagate = False)
     denom.write(area = denom.local_area, data = tmp_denom_data, propagate = False)
   if not INNER: MONITOR.add_comm(time.time() - _)
@@ -789,5 +792,6 @@ def rnormcrossmapundo(grad, denom, input, output, out_grad, channel, size, image
   _ = time.time()
   if state == sidw and propagate:
     tmp_out_grad = output.local_path(tmp_out_grad)
-  out_grad.write(data = tmp_out_grad, area = input.tmp_local_area, propagate = propagate)
+  if not denom.local_area.cmp(input.tmp_local_area):
+    out_grad.write(data = tmp_out_grad, area = input.tmp_local_area, propagate = propagate)
   if not INNER: MONITOR.add_comm(time.time() - _)

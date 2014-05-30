@@ -498,12 +498,13 @@ class VArray(object):
   
   def _write(self, area, data, propagate, unique, self_id, num_worker, area_dict, communicator):
     barrier(communicator)
-    _ = time.time()
     if not propagate:
+      _ = time.time()
       self._partial_write(area, data)
       if INNER: MONITOR.add_marshall(time.time() - _)
       return
 
+    _ = time.time()
     assert area.shape == data.shape
     reqs = [None] * num_worker
     local_subs = [None] * num_worker
@@ -771,8 +772,11 @@ class VArray(object):
       self.tmp_local_area = Area(Point(*_from), Point(*_to))
     else:
       self.tmp_local_area = copy.deepcopy(output_area)
-    
-    self.tmp_local_data = self.group_fetch(self.tmp_local_area, padding = padding, slice_dim = slice_dim)
+
+    if self.tmp_local_area.cmp(self.local_area):
+      self.tmp_local_data = self.local_data
+    else:
+      self.tmp_local_data = self.group_fetch(self.tmp_local_area, padding = padding, slice_dim = slice_dim)
 
   def local_patch(self, data):
     # reversed way against communicate
@@ -921,6 +925,15 @@ def zeros_like(like):
   va = allocate_like(like)
   va.fill(0)
   return va
+
+def random_uniform(shape, global_slice_dim, group_slice_dim, context = default_context):
+  va = allocate(shape = shape,
+                global_slice_dim = global_slice_dim,
+                group_slice_dim = group_slice_dim,
+                context = context)
+  va.local_data = garray.random_uniform(va.local_shape)
+  return va
+  
 
 def assemble(local_data, flat = False, axis = -1):
   assert len(local_data.shape) == 2 or len(local_data.shape) == 4

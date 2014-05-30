@@ -84,6 +84,8 @@ class ConvExecuter(Executer):
       input = gpuarray.to_gpu(np.ndarray(input_shape).astype(np.float32))
       output = gpuarray.to_gpu(np.ndarray(output_shape).astype(np.float32))
       filter = gpuarray.to_gpu(np.ndarray(filter_shape).astype(np.float32))
+
+      filter_grad = gpuarray.to_gpu(np.ndarray(filter_shape).astype(np.float32))
        
       ingrad = gpuarray.to_gpu(np.ndarray(output_shape).astype(np.float32))
       outgrad = gpuarray.to_gpu(np.ndarray(input_shape).astype(np.float32))
@@ -113,7 +115,14 @@ class ConvExecuter(Executer):
         operation.convWeightActs(input, ingrad, filter, bias, image_y, output_y, output_x, filter_size,
             -padding, stride, channel, 1, 0)
         driver.Context.synchronize()
-      
+
+        garray.matrix_add(filter_grad, filter)
+        driver.Context.synchronize()
+        garray.matrix_add(filter_grad, filter)
+        driver.Context.synchronize()
+        garray.matrix_add(filter_grad, filter)
+        driver.Context.synchronize()
+
       elapsed = (time.time() - start) / self.count
       times.append(elapsed)
     
@@ -358,6 +367,7 @@ class FCExecuter(Executer):
       input = gpuarray.to_gpu(np.ndarray(input_shape).astype(np.float32))
       output = gpuarray.to_gpu(np.ndarray(output_shape).astype(np.float32))
       weight = gpuarray.to_gpu(np.ndarray(weight_shape).astype(np.float32))
+      weight_grad = gpuarray.to_gpu(np.ndarray(weight_shape).astype(np.float32))
        
       ingrad = gpuarray.to_gpu(np.ndarray(output_shape).astype(np.float32))
       outgrad = gpuarray.to_gpu(np.ndarray(input_shape).astype(np.float32))
@@ -380,7 +390,8 @@ class FCExecuter(Executer):
         # forward
         garray.matrixmult(weight, input, dest = output)
         if drop_out > 0.0:
-          drop_mask = gpuarray.to_gpu(np.random.uniform(0, 1, output.size).astype(np.float32).reshape(output.shape))
+          obj = np.random.uniform(0, 1, output.size).astype(np.float32).reshape(output.shape)
+          drop_mask = gpuarray.to_gpu(obj)
           garray.bigger_than_scalar(drop_mask, drop_out)
           garray.copy_to(output * drop_mask, output)
           # backward
@@ -388,6 +399,12 @@ class FCExecuter(Executer):
 
         garray.matrixmult(garray.transpose(weight), ingrad, dest = outgrad)
         garray.matrixmult(ingrad, garray.transpose(input), dest = weight)
+        garray.matrix_add(weight_grad, weight)
+        driver.Context.synchronize()
+        garray.matrix_add(weight_grad, weight)
+        driver.Context.synchronize()
+        garray.matrix_add(weight_grad, weight)
+        driver.Context.synchronize()
 
       elapsed = (time.time() - start) / self.count
       times.append(elapsed)

@@ -9,7 +9,7 @@ import time
 import garray
 from garray import ConvDataLayout, FilterLayout, FCDataLayout, WeightLayout
 
-from multigpu import allocate, arr, uniformed_array, multi_gpu, get_layerdist, build_context
+from multigpu import allocate, arr, uniformed_array, multi_gpu, get_layerdist, build_context, random_uniform
 from distbase import state
 
 PFout = False
@@ -482,14 +482,13 @@ class FCLayer(WeightedLayer):
         output *= (1.0 - self.dropRate)
     else:
       if self.dropRate > 0.0:
-        obj = np.random.uniform(0, 1, output.size).astype(np.float32).reshape(output.shape)
-        self.dropMask = uniformed_array(obj,
-                                        global_slice_dim = None,
-                                        group_slice_dim = self.group_slice_dim,
-                                        context = build_context(self.layerdist.workers_group))
+        xxx = time.time()
+        self.dropMask = random_uniform(shape = output.shape,
+                                       global_slice_dim = None,
+                                       group_slice_dim = self.group_slice_dim,
+                                       context = build_context(self.layerdist.workers_group))
         arr.bigger_than_scalar(self.dropMask, self.dropRate)
         arr.copy_to(output * self.dropMask, output)
-
 
     if self.neuron == 'relu':
       arr.relu_activate(self.output, self.output, 0)

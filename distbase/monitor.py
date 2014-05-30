@@ -6,7 +6,7 @@ class Monitor(object):
   COMM = 1
   MARSHALL = 2
   MERGE = 3
-  def __init__(self, name, active = False):
+  def __init__(self, name, active = True):
     self._name = name
     self._active = active
     self._clear()
@@ -16,6 +16,10 @@ class Monitor(object):
     if name not in self._list:
       self._list[name] = [0.0, 0.0, 0.0, 0.0]
     self._curr_name = name
+
+  def get_name(self):
+    if self._active == False: return None
+    return self._curr_name
 
   def add_comp(self, elapsed):
     if self._active == False: return
