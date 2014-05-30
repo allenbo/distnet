@@ -5,6 +5,7 @@ from distnet.weights import WEIGHTS
 import os
 import sys
 import numpy as np
+import time
 import garray
 from garray import ConvDataLayout, FilterLayout, FCDataLayout, WeightLayout
 
@@ -195,11 +196,14 @@ class WeightedLayer(Layer):
     self.clear_bias_incr()
 
   def update(self):
+    MONITOR.set_name(self.name)
+    _ = time.time()
     if self.disable_bprop:
       return
-
     self.weight.update(self.batch_size)
     self.bias.update(self.batch_size)
+    garray.driver.Context.synchronize()
+    MONITOR.add_comp(time.time() - _)
 
   def get_summary(self, type='mean'):
     #w = self.weight.wt.get()
@@ -472,6 +476,7 @@ class FCLayer(WeightedLayer):
 
   def fprop(self, input, output, train=TRAIN):
     arr.fcforward(input, output, self.weight.wt, self.bias.wt, self.prev_conv)
+    _ = time.time()
     if train == TEST:
       if self.dropRate > 0.0:
         output *= (1.0 - self.dropRate)
@@ -485,20 +490,24 @@ class FCLayer(WeightedLayer):
         arr.bigger_than_scalar(self.dropMask, self.dropRate)
         arr.copy_to(output * self.dropMask, output)
 
+
     if self.neuron == 'relu':
       arr.relu_activate(self.output, self.output, 0)
     self._printout_forward(output)
+    MONITOR.add_comp(time.time() - _)
 
   def bprop(self, grad, input, output, outGrad):
     outGrad.fill(0)
     self.weight.grad.fill(0)
     self.bias.grad.fill(0)
 
+    _ = time.time()
     if self.neuron == 'relu':
       arr.relu_compute_grad(grad, output, grad, 0)
     if self.dropRate > 0.0:
       arr.copy_to(grad * self.dropMask, grad)
     
+    MONITOR.add_comp(time.time() - _)
     arr.fcbackward(input, self.weight.wt, grad, outGrad, self.weight.grad, self.bias.grad, self.prev_conv)
 
     self._printout_backward((self.bias.grad, self.weight.grad, outGrad))

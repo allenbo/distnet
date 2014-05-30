@@ -163,13 +163,21 @@ class Trainer:
     min_time = 12
     while (self.curr_epoch - start_epoch <= num_epochs and self.should_continue_training()):
       #util.dump_profile()
-      batch_start = time.time()
       train_data = self.train_dp.get_next_batch(self.batch_size)
 
       self.curr_epoch = train_data.epoch
       self.curr_batch += 1
 
       input, label = train_data.data, train_data.labels
+
+      if isinstance(input, np.ndarray):
+        input = garray.array(input)
+
+      if isinstance(label, np.ndarray):
+        label = garray.array(label.reshape((1, label.size)))
+
+      garray.driver.Context.synchronize()
+      batch_start = time.time()
 
       self.net.train_batch(input, label)
       cost, correct, numCase = self.net.get_batch_information()
@@ -178,6 +186,7 @@ class Trainer:
       if time.time() - last_print_time > 0:
         log('%d.%d: error: %f logreg: %f time: %f', self.curr_epoch, self.curr_batch, 1 - correct, cost, time.time() - batch_start)
         MONITOR.report()
+        self.net.batch_report()
         min_time = time.time() - batch_start
         last_print_time = time.time()
 

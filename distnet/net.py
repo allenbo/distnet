@@ -2,6 +2,7 @@ from distnet import layer
 from distnet.layer import TRAIN, WeightedLayer, TEST
 from distbase import util
 from distbase.util import timer
+from distbase.monitor import Monitor
 import garray
 from garray import GPUArray, driver
 import numpy as np
@@ -12,16 +13,13 @@ class FastNet(object):
   def __init__(self, image_shape, neuron_merged = True):
     self.batch_size = -1
     self.layers = []
+    self._monitor = Monitor('net')
     self.image_shape = image_shape
 
     self.numCase = self.cost = self.correct = 0.0
     self.numConv = 0
     self.neuron_merged = neuron_merged
-    self.fc_time_fprop = []
-    self.fc_time_bprop = []
-    self.conv_time_fprop = []
-    self.conv_time_bprop = []
-  
+
   def __getitem__(self, name):
     for layer in self.layers:
       if layer.name == name:
@@ -101,26 +99,35 @@ class FastNet(object):
     assert len(self.layers) > 0, 'No outputs: uninitialized network!'
     input = data
     for layer in self.layers:
+      self._monitor.set_name(layer.name)
+      _ = time.time()
       layer.prev_fprop()
       layer.fprop(input, layer.output, train)
       input = layer.output
       driver.Context.synchronize()
+      self._monitor.add_comp(time.time() - _)
     return self.layers[-1].output
 
   def bprop(self, label, train=TRAIN):
     grad = label
     for i in range(1, len(self.layers) + 1):
       curr = self.layers[-i]
+      self._monitor.set_name(curr.name)
+      _ = time.time()
       if curr.disable_bprop: break
       prev = self.layers[-(i + 1)]
       curr.prev_bprop()
       curr.bprop(grad, prev.output, curr.output, prev.output_grad)
       driver.Context.synchronize()
       grad = prev.output_grad
+      self._monitor.add_comp(time.time() - _)
 
   def update(self):
     for layer in self.layers:
+      self._monitor.set_name(layer.name)
+      _ = time.time()
       layer.update()
+      self._monitor.add_comp(time.time() - _)
 
   def adjust_learning_rate(self, factor=1.0):
     util.log_info('Adjusting learning rate: %s', factor)
@@ -178,13 +185,10 @@ class FastNet(object):
     self.cost = self.numCase = self.correct = 0.0
     return cost / numCase, correct / numCase, int(numCase)
 
-
   def get_correct(self):
     return self.layers[-1].get_correct()
 
   def prepare_for_train(self, data, label):
-    timer.start()
-
     # If data size doesn't match our expected batch_size, reshape outputs.
     if data.shape[-1] != self.batch_size:
       self.batch_size = data.shape[-1]
@@ -210,10 +214,8 @@ class FastNet(object):
     if train == TRAIN:
       self.bprop(label)
       self.update()
-
-    # make sure we have everything finished before returning!
-    # also, synchronize properly releases the Python GIL,
-    # allowing other threads to make progress.
+    
+    driver.Context.synchronize()
 
   def test_batch_multiview(self, data, label, num_view):
     data, label = self.prepare_for_train(data, label)
@@ -233,6 +235,9 @@ class FastNet(object):
   def enable_bprop(self):
     for l in self.layers:
       l.enable_bprop()
+
+  def batch_report(self):
+   self._monitor.report() 
 
   def get_report(self):
     pass

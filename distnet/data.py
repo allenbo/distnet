@@ -248,7 +248,7 @@ class DummyDataProvider(DataProvider):
     self.output_size = output_size
     self.batch_size = batch_size
 
-  def get_next_batch(self):
+  def get_next_batch(self, _):
     if INPUT_SEG:
       batch_size = self.batch_size / num_gpu
       if rank == num_gpu - 1:
@@ -502,6 +502,7 @@ def get_by_name(name):
     dp_klass = dp_dict[name]
     def construct_dp(*args, **kw):
       dp = dp_klass(*args, **kw)
+      return dp
       return ParallelDataProvider(dp)
     return construct_dp
 

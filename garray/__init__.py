@@ -8,3 +8,7 @@ from operation import *
 def get_seed():
   import time
   return int(time.time())
+
+def tobuffer(gpuarray):
+  dtype = np.dtype(gpuarray.dtype)
+  return make_buffer(gpuarray.ptr, gpuarray.size * dtype.itemsize)

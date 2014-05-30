@@ -4,10 +4,10 @@ from distbase.layerdist import LayerDist
 import pickle
 
 
-conv_image_dist = LayerDist(False, disw_i, [4])
-conv_batch_dist = LayerDist(True, disw_b, [2, 2])
-fc_shared_dist = LayerDist(False, sisw, [4])
-fc_first_dist = LayerDist(False, sidw_f, [4])
+conv_image_dist = LayerDist(False, disw_i, [4, 4])
+conv_batch_dist = LayerDist(True, disw_b, [2, 2, 2, 2])
+fc_shared_dist = LayerDist(False, sisw, [8])
+fc_first_dist = LayerDist(False, sidw_f, [8])
 fc_batch_dist = LayerDist(False, disw_b, [2])
 
 
@@ -39,10 +39,10 @@ model = reader.getmodel(model_path)
 
 
 #image distribution, batch on conv layers, sidw_f on fc layers
-#layerdists = [conv_batch_dist] *  (len(model) - 6) + [fc_first_dist] * 4 + [fc_shared_dist] * 2
+layerdists = [conv_batch_dist] *  (len(model) - 6) +  [fc_first_dist] * 4 + [fc_shared_dist] * 2
 
 #2 groups on  image distribution
-layerdists = [conv_image_dist] * (len(model) - 6) + [fc_first_dist] * 4 + [fc_shared_dist] * 2
+#layerdists = [conv_image_dist] * (len(model) - 6) +  [fc_shared_dist] * 6
 
 assert len(model) == len(layerdists)
 

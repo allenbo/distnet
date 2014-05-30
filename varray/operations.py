@@ -8,7 +8,7 @@ from .ndarray import VArray, zeros_like, WORLD, zeros, allocate_like, allocate, 
 from .area import Area
 import garray
 from distbase.state import *
-from garray import ConvDataLayout, FCDataLayout, FilterLayout, WeightLayout
+from garray import ConvDataLayout, FCDataLayout, FilterLayout, WeightLayout, driver
 
 import sys
 
@@ -84,9 +84,13 @@ def logreg_cost_col(output, label, cost):
 def convert_from_data(input, output):
   ''' input has to be a GPUArray, and output has to be a VArray '''
   _ = time.time()
-  assert isinstance(input, VArray)
+  #assert isinstance(input, VArray)
   assert isinstance(output, VArray)
 
+  if isinstance(input, garray.GPUArray):
+    output.copy_from_global(input)
+    return
+  
   if input.check_param(output):  
     garray.convert_from_data(input.local_data, output.local_data)
   else:
@@ -101,6 +105,7 @@ def convert_from_data(input, output):
       garray.convert_from_data(input.local_data, group_output)
       output.copy_from_group(group_output)
 
+  driver.Context.synchronize()
   if not INNER: MONITOR.add_comm(time.time() - _)
 
 def fcforward(input, output, weight, bias, prev_conv):
@@ -114,14 +119,9 @@ def fcforward(input, output, weight, bias, prev_conv):
 
   _ = time.time()
   input_data = input.tmp_local_data
-  if DEBUG:
-    print '------ in fcforward ------'
-    print 'state', state
-    print 'input.shape', input_data.shape
-    print 'weight.shape', weight.local_data.shape
-    print 'output.shape', output.local_data.shape
   garray.matrixmult(weight.local_data, input_data, dest = output.local_data)
   garray.copy_to(output.local_data + bias.local_data , output.local_data)
+  driver.Context.synchronize()
   MONITOR.add_comp(time.time() - _)
 
 def fcbackward(input, weight, grad, out_grad, weight_grad, bias_grad, prev_conv):
@@ -163,22 +163,16 @@ def fcbackward(input, weight, grad, out_grad, weight_grad, bias_grad, prev_conv)
   _ = time.time()
   tmp_out_grad.fill(0)
   tmp_weight_grad.fill(0)
-
-  if DEBUG:
-    print '------ in fcbackward ------'
-    print 'weight.shape', weight.local_data.shape
-    print 'grad.shape', grad.local_data.shape
-    print 'out_grad.shape', tmp_out_grad.shape
   garray.matrixmult(garray.transpose(weight.local_data), grad.local_data, dest = tmp_out_grad)
   garray.matrixmult(grad.local_data, garray.transpose(input.tmp_local_data), dest = tmp_weight_grad)
-  
+  garray.copy_to(garray.sum(grad.local_data, axis = 1), bias_grad.local_data)
+  driver.Context.synchronize()
   MONITOR.add_comp(time.time() - _)
   _ = time.time()
   weight_grad.write(area = weight_grad.local_area, data = tmp_weight_grad, propagate = weight_propagate)
   out_grad.write(area = input.tmp_local_area, data = tmp_out_grad, propagate = grad_propagate)
 
   if not INNER: MONITOR.add_comm(time.time() - _)
-  garray.copy_to(garray.sum(grad.local_data, axis = 1), bias_grad.local_data)
   
 def softmax(input, output):
   state = get_state_from_slice_dim(output.group_slice_dim, False, ConvDataLayout, FCDataLayout)
@@ -206,17 +200,9 @@ def softmax_bprop(output, label, out_grad):
       out_grad.tmp_local_data = garray.empty_like(output.local_data)
     tmp_out_grad = out_grad.tmp_local_data
     tmp_out_grad.fill(0)
-    if DEBUG:
-      print '------ in softmax bprop ------'
-      print 'output.shape', output.local_data.shape
-      print 'label.shape', label.shape
-      print 'out_grad.shape', tmp_out_grad.shape
     garray.softmax_bprop(output.local_data, label, tmp_out_grad)
     MONITOR.add_comp(time.time() - _)
     _ = time.time()
-    if DEBUG:
-      print 'area', out_grad.local_area
-      print 'data.shape', tmp_out_grad.shape
     out_grad.write(area = out_grad.global_area, data = tmp_out_grad, propagate = False)
     if not INNER: MONITOR.add_comm(time.time() - _)
   else:
@@ -267,13 +253,6 @@ def convolution(input, filter ,output, bias, image_y, output_y, output_x, paddin
   channel = input_data.shape[ch]
 
   _ = time.time()
-  if DEBUG:
-    print '------ in convolution ------'
-    print 'input.shape', input_data.shape
-    print 'filter.shape', filter.local_data.shape
-    print 'output.shape', output.local_data.shape
-    print 'padding:',padding, 'stride:', stride, 'channel:', channel
-  
   garray.convolution(
       input_data,
       filter.local_data,
@@ -325,13 +304,6 @@ def bconvolution(input, grad, filter, out_grad, image_y, image_x, output_size, p
   _ = time.time()
   tmp_out_grad.fill(0)
 
-  if DEBUG:
-    print '------ in bconvolution ------'
-    print 'input.shape', input_data.shape
-    print 'grad.shape', grad.local_data.shape
-    print 'filter.shape', filter.local_data.shape
-    print 'out_grad.shape', tmp_out_grad.shape
-    print 'padding:', padding, 'channel:', channel
   garray.bconvolution(
       input_data,
       grad.local_data,
@@ -399,13 +371,6 @@ def wconvolution(input, grad, weight_grad, bias_grad, image_y, output_y, output_
   tmp_weight_grad.fill(0)
   tmp_bias_grad.fill(0)
 
-  if DEBUG:
-    print '------ in wconvolution ------'
-    print 'input.shape', input_data.shape
-    print 'grad.shape', grad.local_data.shape
-    print 'weight_grad.shape', tmp_weight_grad.shape
-    print 'bias_grad.shape', tmp_bias_grad.shape
-    print 'padding:', padding, 'channel:', channel
   garray.wconvolution(
       input_data,
       grad.local_data,
@@ -415,11 +380,6 @@ def wconvolution(input, grad, weight_grad, bias_grad, image_y, output_y, output_
   
   MONITOR.add_comp(time.time() - _)
   _ = time.time()
-  if DEBUG:
-    print 'area.shape', weight_grad.global_area.shape
-    print 'data.shape', tmp_weight_grad.shape
-    print 'propagate:', propagate
-  #print 'rank %d, weight %f' % (input.global_rank, tmp_weight_grad.get()[0, 0, 0, 0])
   weight_grad.write(area = weight_grad.global_area, data = tmp_weight_grad, propagate = propagate)
   bias_grad.write(area = bias_grad.global_area, data = tmp_bias_grad, propagate = propagate)
   if not INNER: MONITOR.add_comm(time.time() - _)
@@ -450,12 +410,6 @@ def maxpool(input, output, channel, pool_size, start, stride, input_y, output_y,
   channel = output.local_shape[ch]
 
   _ = time.time()
-  if DEBUG:
-    print '------ in maxpool ------'
-    print 'input.shape', input_data.shape
-    print 'output.shape', output.local_data.shape
-    print 'channel:', channel
-  
   garray.maxpool(
       input_data,
       output.local_data,
@@ -501,13 +455,6 @@ def maxundo(input, grad, output, out_grad, pool_size, start, stride, output_y, o
   
   _ = time.time()
   tmp_out_grad.fill(0)
-  if DEBUG:
-    print '------ in maxundo ------'
-    print 'input.shape', input_data.shape
-    print 'grad.shpae', grad.local_data.shape
-    print 'output.shape', output.local_data.shape
-    print 'out_grad.shape', tmp_out_grad.shape
-    print 'channel:', channel
   garray.maxundo(
       input_data,
       grad.local_data,
@@ -518,10 +465,6 @@ def maxundo(input, grad, output, out_grad, pool_size, start, stride, output_y, o
   MONITOR.add_comp(time.time() - _)
 
   _ = time.time()
-  if DEBUG:
-    print 'outgrad area', input.tmp_local_area
-    print 'data.shape', tmp_out_grad.shape
-    print 'propagate', propagate
   out_grad.write(data = tmp_out_grad, area = input.tmp_local_area, propagate = propagate)
   if not INNER: MONITOR.add_comm(time.time() - _)
 
@@ -551,12 +494,6 @@ def avgpool(input, output, channel, pool_size, start, stride, input_y, output_y,
   channel = input_data.shape[ch]
 
   _ = time.time()
-  if DEBUG:
-    print '------ in avgpool ------'
-    print 'input.shape', input_data.shape
-    print 'output.shape', output.local_data.shape
-    print 'channel:', channel
-
   garray.avgpool(
       input_data,
       output.local_data,
@@ -602,13 +539,6 @@ def avgundo(input, grad, out_grad, pool_size, start, stride, output_y, output_x,
 
   _ = time.time()
   tmp_out_grad.fill(0)
-
-  if DEBUG:
-    print '------ in avgundo ------'
-    print 'input.shape', input_data.shape
-    print 'grad.shape', grad.local_data.shape
-    print 'out_grad.shape', tmp_out_grad.shape
-    print 'channel:', channel
   garray.avgundo(
       input_data,
       grad.local_data,
@@ -617,10 +547,6 @@ def avgundo(input, grad, out_grad, pool_size, start, stride, output_y, output_x,
 
   MONITOR.add_comp(time.time() - _)
   _ = time.time()
-  if DEBUG:
-    print 'outgrad area', input.tmp_local_area
-    print 'data.shape', tmp_out_grad.shape
-    print 'propagate', propagate
   out_grad.write(data = tmp_out_grad, area = input.tmp_local_area, propagate = propagate)
   if not INNER: MONITOR.add_comm(time.time() - _)
 
@@ -658,12 +584,6 @@ def rnorm(input, denom, output, channel, size, image_y, scalar, pow):
   channel = input_data.shape[ch]
   
   _ = time.time()
-  if DEBUG:
-    print '------ in rnorm ------'
-    print 'input.shape', input_data.shape
-    print 'denom.shape', tmp_denom_data.shape
-    print 'output.shape', tmp_output_data.shape
-    print 'channel:', channel
   garray.rnorm(
       input_data,
       tmp_denom_data,
@@ -742,15 +662,6 @@ def rnormundo(grad, denom, input, output, out_grad, channel, size, image_y, scal
   _ = time.time()
   tmp_out_grad.fill(0)
   
-  if DEBUG:
-    print '------ in rnormundo ------'
-    print 'grad.shape', grad_data.shape
-    print 'denom.shape', denom_data.shape
-    print 'input.shape', input_data.shape
-    print 'output.shape', output_data.shape
-    print 'out_grad.shape', tmp_out_grad.shape
-    print 'channel:', channel
-
   garray.rnormundo(
       grad_data,
       denom_data,
@@ -799,13 +710,6 @@ def rnormcrossmap(input, denom, output, channel, size,image_y, scalar, pow, bloc
   channel = input_data.shape[ch]
   
   _ = time.time()
-  if DEBUG:
-    print '------ in rnormcrossmap ------'
-    print 'input.shape', input_data.shape
-    print 'denom.shape', tmp_denom_data.shape
-    print 'output.shape', tmp_output_data.shape
-    print 'channel:', channel
-
   garray.rnormcrossmap(
       input_data,
       tmp_denom_data,
@@ -873,15 +777,6 @@ def rnormcrossmapundo(grad, denom, input, output, out_grad, channel, size, image
   _ = time.time()
   tmp_out_grad.fill(0)
   
-  if DEBUG:
-    print '------ in rnormcrossmapundo ------'
-    print 'grad.shape', grad_data.shape
-    print 'denom.shape', denom_data.shape
-    print 'input.shape', input_data.shape
-    print 'output.shape', output_data.shape
-    print 'out_grad.shape', tmp_out_grad.shape
-    print 'channel:', channel
-
   garray.rnormcrossmapundo(
       grad_data,
       denom_data,

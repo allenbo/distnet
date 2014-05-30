@@ -471,10 +471,15 @@ class VArray(object):
     self._communicate(send_data, recv_data, communicator)
     
     _ = time.time()
-    for rank in range(num_worker):
-      if req_list[rank] is None: continue
-      else:
-        self.write_local(req_list[rank], recv_data[rank], acc = True)
+    if self.global_unique == False and self.group_unique == False:
+      for data in recv_data:
+        if data is not None:
+          self.local_data += data
+    else:
+      for rank in range(num_worker):
+        if req_list[rank] is None: continue
+        else:
+          self.write_local(req_list[rank], recv_data[rank], acc = True)
     if INNER: MONITOR.add_merge(time.time() - _)
     barrier(communicator)
   
@@ -561,6 +566,7 @@ class VArray(object):
       self.local_data = recv_data
 
   def group_reduce(self):
+    if self.num_gpu == 1: return
     assert self.group_unique == False
     data = self.local_data
     if MVAPICH2:
@@ -579,18 +585,20 @@ class VArray(object):
 
 
   def _synchronize(self, communicator, data, num_worker):
-    _ = time.time()
     if MVAPICH2:
       cache = garray.zeros(shape = data.shape, dtype = np.float32)
       communicator.Allreduce([tobuffer(data), MPI.FLOAT], [tobuffer(cache), MPI.FLOAT])
       garray.copy_to(cache, data)
     else:
       cache = garray.empty(shape = (num_worker, int(np.prod(data.shape))), dtype = np.float32)
+      _ = time.time()
       communicator.Allgather([tobuffer(data), MPI.FLOAT], [tobuffer(cache), MPI.FLOAT])
+      if INNER: MONITOR.add_comm(time.time() - _)
+      _ = time.time()
       for i in range(1, num_worker):
         tmp  = garray.GPUArray(shape = data.shape, dtype = np.float32, gpudata = cache.ptr + cache.strides[0] * i)
         data += tmp
-    if INNER: MONITOR.add_comm(time.time() - _)
+      if INNER: MONITOR.add_comp(time.time() - _)
 
   
   def group_synchronize(self):
@@ -617,7 +625,7 @@ class VArray(object):
           #self.master_write()
           self.group_synchronize()
           self.master_synchronize()
-          #self.group_bcast()
+          self.group_bcast()
       else:
         self.group_write(area, data, propagate)
     
