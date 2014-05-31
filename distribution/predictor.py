@@ -152,10 +152,14 @@ def find_best(model, init_state, cfs, prev_nw):
       communicat_cost = comm_cost[cfs]
       cm_cost = communicat_cost[(init_state, s)](input_size, weight_size, overlapping, cur_nw) * 1.0 / bandwidth
       cm_latency = 0 if cm_cost == 0 else latency * 2
+      if s == disw_i or s == sidw_f:
+        cm_cost *= 1.5
     else:
       communicat_cost = comm_cost_worker[cfs]
       cm_cost = communicat_cost[(init_state, s)](input_size, weight_size, actual_data, cur_nw, prev_nw) * 1.0 / bandwidth
       cm_latency = 0 if cm_cost == 0 else latency * 2
+      if s == disw_i or s == sidw_f:
+        cm_cost *= 1.5
     cp_cost = layer['comp_cost'][s][0]
     cost = cm_cost + cp_cost + cost + cm_latency
     costs.append(cost)
@@ -255,7 +259,8 @@ if __name__ == '__main__':
   parser.add_argument('--strategy-path', help='Path of generated strategy file', default='strategy')
   parser.add_argument('--bandwidth', help='Bandwidth of the underlying network', default=1.25, type = float)
   parser.add_argument('--single', help='Get the running time when the number of worker is 1', default=False, action = 'store_true')
-  parser.add_argument('--batch-size', help='The size of batch', default=128, type = int)
+  parser.add_argument('--batch-size', help='The size of group batch', default=128, type = int)
+  parser.add_argument('--global-batch-size', help='The size of global batch', default=1024, type = int)
 
   args = parser.parse_args()
 
@@ -268,6 +273,8 @@ if __name__ == '__main__':
   config['bandwidth'] = args.bandwidth / 2
   config['single'] = args.single
   config['batch-size'] = args.batch_size
+  config['global-batch-size'] = args.global_batch_size
+  config['num_group'] = config['global-batch-size'] / config['batch-size']
 
   name = device_name()
   latency = 0.000001
@@ -337,7 +344,7 @@ if __name__ == '__main__':
     cost, states = find_best(model, state0, ConvFC.conv, -1)
   print '%s: Total cost is \033[44m%f\033[0m' % (model_basename.upper(), cost)
   print 'Number of worker is \033[32m%d\033[0m' % n
-  states = [disw_b] * (len(model) - 6) + [sidw_f] * 4 + [sisw] * 2
+  #states = [disw_b] * (len(model) - 6) + [sidw_f] * 4 + [sisw] * 2
   print_details(model, states)
   
   strategy = {}
