@@ -120,9 +120,9 @@ def fcforward(input, output, weight, bias, prev_conv):
   _ = time.time()
   input_data = input.tmp_local_data
   garray.matrixmult(weight.local_data, input_data, dest = output.local_data)
+  garray.copy_to(output.local_data + bias.local_data , output.local_data)
   driver.Context.synchronize()
   MONITOR.add_comp(time.time() - _)
-  garray.copy_to(output.local_data + bias.local_data , output.local_data)
 
 def fcbackward(input, weight, grad, out_grad, weight_grad, bias_grad, prev_conv):
   grad_propagate = False
@@ -770,9 +770,12 @@ def rnormcrossmapundo(grad, denom, input, output, out_grad, channel, size, image
     output_data = output.tmp_local_data
     grad_data = grad.tmp_local_data
  
-  if not hasattr(out_grad, 'tmp_local_data'):
-    out_grad.tmp_local_data = garray.empty_like(input_data)
-  tmp_out_grad = out_grad.tmp_local_data
+  if input_data.shape != out_grad.local_data.shape:
+    if not hasattr(out_grad, 'tmp_local_data'):
+      out_grad.tmp_local_data = garray.empty_like(input_data)
+    tmp_out_grad = out_grad.tmp_local_data
+  else:
+    tmp_out_grad = out_grad.local_data
 
   image_y = input.local_data.shape[r]
   channel = input_data.shape[ch]

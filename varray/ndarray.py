@@ -540,6 +540,16 @@ class VArray(object):
                 area_dict = self.group_area_dict,
                 communicator = self.group_comm)
 
+  def global_write(self, area, data, propagate = True):
+    self._write(area = area,
+                data = data,
+                propagate = propagate,
+                unique = self.global_unique and self.group_unique,
+                num_worker = self.global_size,
+                self_id = self.global_rank,
+                area_dict = self.all_area_dict,
+                communicator = self.global_comm)
+
   def master_write(self):
     if self.num_group == 1: return
     assert self.global_unique == False and self.group_unique == False
@@ -567,7 +577,6 @@ class VArray(object):
       self.local_data = recv_data
 
   def group_reduce(self):
-    if self.num_gpu == 1: return
     assert self.group_unique == False
     data = self.local_data
     if MVAPICH2:
@@ -617,16 +626,23 @@ class VArray(object):
 
   def write(self, area, data, propagate = True, debug = False):
     if self.global_unique:
-      self.group_write(area, data, propagate)
+      if self.global_area.cmp(area):
+        self.global_write(area, data, propagate)
+      else:
+        self.group_write(area, data, propagate)
     else:
       if not self.group_unique:
         self._partial_write(area, data)
         if propagate:
-          #self.group_reduce()
-          #self.master_write()
-          self.group_synchronize()
-          self.master_synchronize()
-          self.group_bcast()
+          if self.num_group == 1:
+            self.group_synchronize()
+          else:
+            self.group_reduce()
+            #self.master_write()
+            #self.group_synchronize()
+            self.master_synchronize()
+            #if self.num_group != 1:
+            self.group_bcast()
       else:
         self.group_write(area, data, propagate)
     
@@ -772,11 +788,10 @@ class VArray(object):
       self.tmp_local_area = Area(Point(*_from), Point(*_to))
     else:
       self.tmp_local_area = copy.deepcopy(output_area)
-
-    if self.tmp_local_area.cmp(self.local_area):
       self.tmp_local_data = self.local_data
-    else:
-      self.tmp_local_data = self.group_fetch(self.tmp_local_area, padding = padding, slice_dim = slice_dim)
+      return
+
+    self.tmp_local_data = self.group_fetch(self.tmp_local_area, padding = padding, slice_dim = slice_dim)
 
   def local_patch(self, data):
     # reversed way against communicate
