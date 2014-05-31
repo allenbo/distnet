@@ -30,6 +30,7 @@ if num_gpu == 1:
   INPUT_SEG = False
 # determine whether we should copy image data to gpu before training
 PREV_FILL_GPU = True
+PARALLEL_READ = True
 
 class BatchData(object):
   def __init__(self, data, labels, epoch):
@@ -195,7 +196,7 @@ class ImageNetDataProvider(DataProvider):
           pic = pic[:, :, ::-1]
         target[:,:, :, idx] = pic
 
-  def get_next_batch(self):
+  def get_next_batch(self, _ = 128):
     self.get_next_index()
 
     epoch = self.curr_epoch
@@ -248,7 +249,7 @@ class DummyDataProvider(DataProvider):
     self.output_size = output_size
     self.batch_size = batch_size
 
-  def get_next_batch(self, _):
+  def get_next_batch(self, _ = 128):
     if INPUT_SEG:
       batch_size = self.batch_size / num_gpu
       if rank == num_gpu - 1:
@@ -270,7 +271,7 @@ class CifarDataProvider(DataProvider):
   inner_size = 32
 
   BATCH_REGEX = re.compile('^data_batch_(\d+)$')
-  def get_next_batch(self):
+  def get_next_batch(self, _ = 128):
     self.get_next_index()
     filename = os.path.join(self.data_dir, 'data_batch_%d' % self.curr_batch)
 
@@ -502,8 +503,10 @@ def get_by_name(name):
     dp_klass = dp_dict[name]
     def construct_dp(*args, **kw):
       dp = dp_klass(*args, **kw)
-      return dp
-      return ParallelDataProvider(dp)
+      if PARALLEL_READ:
+        return ParallelDataProvider(dp)
+      else:
+        return dp
     return construct_dp
 
 

@@ -3,6 +3,7 @@ from distbase.util import log, timer
 from distbase.monitor import MONITOR
 from collections import deque
 from distnet import argparse, layer, data
+from distnet.data import PARALLEL_READ
 from distnet.checkpoint import CheckpointDumper, DataDumper, MemoryDataHolder
 from distnet.layer import TRAIN, TEST
 from distnet.net import FastNet
@@ -163,6 +164,8 @@ class Trainer:
     min_time = 12
     while (self.curr_epoch - start_epoch <= num_epochs and self.should_continue_training()):
       #util.dump_profile()
+      if PARALLEL_READ == True:
+        batch_start = time.time()
       train_data = self.train_dp.get_next_batch(self.batch_size)
 
       self.curr_epoch = train_data.epoch
@@ -177,13 +180,14 @@ class Trainer:
         label = garray.array(label.reshape((1, label.size)))
 
       garray.driver.Context.synchronize()
-      batch_start = time.time()
+      if PARALLEL_READ == False:
+        batch_start = time.time()
 
       self.net.train_batch(input, label)
       cost, correct, numCase = self.net.get_batch_information()
       self.train_outputs += [({'logprob': [cost, 1 - correct]}, numCase, self.elapsed())]
 
-      if time.time() - last_print_time > 0:
+      if time.time() - last_print_time > 1:
         log('%d.%d: error: %f logreg: %f time: %f', self.curr_epoch, self.curr_batch, 1 - correct, cost, time.time() - batch_start)
         MONITOR.report()
         self.net.batch_report()
