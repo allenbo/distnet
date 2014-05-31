@@ -13,11 +13,11 @@ from multigpu import allocate, arr, uniformed_array, multi_gpu, get_layerdist, b
 from distbase import state
 
 PFout = False
-PBout = False
+PBout = True
 TEST = 0
 TRAIN = 1
 STOPITER = 1
-OUTINDEX = [6]
+OUTINDEX = [5]
 
 def col_rand(shape, dtype):
   return np.require(np.random.rand(*shape), dtype=dtype, requirements='C')
@@ -67,7 +67,7 @@ class Layer(object):
 
   def prev_fprop(self):
     self.iteration += 1
-    self.output.fill(0)
+    #self.output.fill(0)
     MONITOR.set_name(self.name)
 
   def prev_bprop(self):
@@ -482,7 +482,6 @@ class FCLayer(WeightedLayer):
         output *= (1.0 - self.dropRate)
     else:
       if self.dropRate > 0.0:
-        xxx = time.time()
         self.dropMask = random_uniform(shape = output.shape,
                                        global_slice_dim = None,
                                        group_slice_dim = self.group_slice_dim,
@@ -493,23 +492,26 @@ class FCLayer(WeightedLayer):
     if self.neuron == 'relu':
       arr.relu_activate(self.output, self.output, 0)
     self._printout_forward(output)
+    garray.driver.Context.synchronize()
     MONITOR.add_comp(time.time() - _)
 
   def bprop(self, grad, input, output, outGrad):
+    _ = time.time()
     outGrad.fill(0)
     self.weight.grad.fill(0)
     self.bias.grad.fill(0)
 
-    _ = time.time()
     if self.neuron == 'relu':
       arr.relu_compute_grad(grad, output, grad, 0)
     if self.dropRate > 0.0:
       arr.copy_to(grad * self.dropMask, grad)
     
+    garray.driver.Context.synchronize()
     MONITOR.add_comp(time.time() - _)
     arr.fcbackward(input, self.weight.wt, grad, outGrad, self.weight.grad, self.bias.grad, self.prev_conv)
 
-    self._printout_backward((self.bias.grad, self.weight.grad, outGrad))
+    #self._printout_backward((self.bias.grad, self.weight.grad, outGrad))
+    self._printout_backward((outGrad, ))
    
 class SoftmaxLayer(Layer):
   def __init__(self, name, disable_bprop=False):
@@ -644,11 +646,11 @@ class NeuronLayer(Layer):
 
   def fprop(self, input, output, train=TRAIN):
     self.neuron.activate(input, output)
-    if PFout:
-      output.printout(self.name)
+    self._printout_forward(output)
 
   def bprop(self, grad, input, output, outGrad):
     self.neuron.computeGrad(grad, output, outGrad)
+    self._printout_backward((outGrad, ))
 
   def dump(self):
     d = Layer.dump(self)
