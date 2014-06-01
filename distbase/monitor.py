@@ -6,7 +6,7 @@ class Monitor(object):
   COMM = 1
   MARSHALL = 2
   MERGE = 3
-  def __init__(self, name, active = True):
+  def __init__(self, name, active = False):
     self._name = name
     self._active = active
     self._clear()

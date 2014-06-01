@@ -5,9 +5,9 @@ import pickle
 
 
 conv_image_dist = LayerDist(False, disw_i, [4, 4])
-conv_batch_dist = LayerDist(False, disw_b, [8])
-fc_shared_dist = LayerDist(False, sisw, [8])
-fc_first_dist = LayerDist(False, sidw_f, [8])
+conv_batch_dist = LayerDist(False, disw_b, [4])
+fc_shared_dist = LayerDist(False, sisw, [4])
+fc_first_dist = LayerDist(False, sidw_f, [4])
 fc_batch_dist = LayerDist(False, disw_b, [2])
 
 

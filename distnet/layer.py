@@ -13,7 +13,7 @@ from multigpu import allocate, arr, uniformed_array, multi_gpu, get_layerdist, b
 from distbase import state
 
 PFout = False
-PBout = True
+PBout = False
 TEST = 0
 TRAIN = 1
 STOPITER = 1

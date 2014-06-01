@@ -25,7 +25,7 @@ random.seed(seed)
 np.random.seed(seed)
 
 # determine whether we should split the input before training
-INPUT_SEG = False
+INPUT_SEG = True
 if num_gpu == 1:
   INPUT_SEG = False
 # determine whether we should copy image data to gpu before training
