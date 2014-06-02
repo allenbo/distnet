@@ -105,10 +105,11 @@ class FastNetBuilder(Builder):
     weightIncr = Builder.set_val(ld, 'weightIncr')
     biasIncr = Builder.set_val(ld, 'biasIncr')
     name = Builder.set_val(ld, 'name')
+    neuron = Builder.set_val(ld, 'neuron')
     disable_bprop = Builder.set_val(ld, 'disable_bprop', default = False)
     cv = ConvLayer(name, numFilter, (filterSize, filterSize), padding, stride, initW, initB,
         partialSum,sharedBiases, epsW, epsB, momW, momB, wc, bias, weight,
-        weightIncr = weightIncr, biasIncr = biasIncr, disable_bprop = disable_bprop)
+        weightIncr = weightIncr, biasIncr = biasIncr, disable_bprop = disable_bprop, neuron = neuron)
     return cv
 
   def pool_layer(self, ld):
@@ -180,9 +181,10 @@ class FastNetBuilder(Builder):
     weightIncr = Builder.set_val(ld, 'weightIncr')
     biasIncr = Builder.set_val(ld, 'biasIncr')
     name = Builder.set_val(ld, 'name')
+    neuron = Builder.set_val(ld, 'neuron')
     disable_bprop = Builder.set_val(ld, 'disable_bprop', default = False)
     return FCLayer(name, n_out, epsW, epsB, initW, initB, momW, momB, wc, dropRate,
-        weight, bias, weightIncr = weightIncr, biasIncr = biasIncr, disable_bprop = disable_bprop)
+        weight, bias, weightIncr = weightIncr, biasIncr = biasIncr, disable_bprop = disable_bprop, neuron = neuron)
 
 
 

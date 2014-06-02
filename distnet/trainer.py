@@ -1,8 +1,8 @@
 from distbase import util
 from distbase.util import log, timer
 from distbase.monitor import MONITOR
-from collections import deque
 from distnet import argparse, layer, data
+from collections import deque
 from distnet.data import PARALLEL_READ
 from distnet.checkpoint import CheckpointDumper, DataDumper, MemoryDataHolder
 from distnet.layer import TRAIN, TEST
@@ -64,7 +64,7 @@ class Trainer:
 
 
     checkpoint = self.checkpoint_dumper.get_checkpoint()
-    if checkpoint:
+    if checkpoint and len(checkpoint['train_outputs']) != 0:
       self.train_outputs = checkpoint['train_outputs']
       self.test_outputs = checkpoint['test_outputs']
       self.base_time = self.train_outputs[-1][-1]

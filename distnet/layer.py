@@ -17,7 +17,7 @@ PBout = False
 TEST = 0
 TRAIN = 1
 STOPITER = 1
-OUTINDEX = [0]
+OUTINDEX = [1]
 
 def col_rand(shape, dtype):
   return np.require(np.random.rand(*shape), dtype=dtype, requirements='C')
@@ -237,7 +237,7 @@ class WeightedLayer(Layer):
 class ConvLayer(WeightedLayer):
   def __init__(self, name, num_filters, filter_shape, padding=2, stride=1, initW=None,
                initB=None, partialSum=0, sharedBiases=0, epsW=0.001, epsB=0.002, momW=0.9, momB=0.9, wc=0.004,
-               bias=None, weight=None, weightIncr=None, biasIncr=None, disable_bprop=False):
+               bias=None, weight=None, weightIncr=None, biasIncr=None, disable_bprop=False, neuron = None):
 
     self.numFilter = num_filters
     assert filter_shape[0] == filter_shape[1], 'Non-square filters not yet supported.'
@@ -252,9 +252,12 @@ class ConvLayer(WeightedLayer):
                            epsW, epsB, initW, initB, momW, momB, wc, weight,
                            bias, weightIncr, biasIncr, disable_bprop)
 
-    util.log('numFilter:%s padding:%s stride:%s initW:%s initB:%s, w: %s, b: %s',
-             self.numFilter, self.padding, self.stride, self.initW, self.initB, self.weight, self.bias)
+    util.log('filter shape:%s padding:%s stride:%s initW:%s initB:%s, w: %s, b: %s',
+             filter_shape, self.padding, self.stride, self.initW, self.initB, self.weight, self.bias)
     self.merge_neuron = True
+    if neuron is not None:
+      self.neuron = neuron
+      util.log_info('Attach %s to %s', self.neuron, self.name)
 
   def attach(self, prev_layer):
     image_shape = prev_layer.get_output_shape()
@@ -264,7 +267,6 @@ class ConvLayer(WeightedLayer):
     self.batch_size = image_shape[ConvDataLayout.BATCH]
 
     self.outputSize = 1 + divup(2 * self.padding + self.img_size - self.filterSize, self.stride)
-    util.log_info('%s %s %s %s: %s', self.padding, self.img_size, self.filterSize, self.stride, self.outputSize)
     self.modules = self.outputSize ** 2
 
     weight_shape = FilterLayout.get_filter_shape(self.filterSize, self.numColor, self.numFilter)
@@ -432,7 +434,7 @@ class FCLayer(WeightedLayer):
   dimension of matrix'''
   def __init__(self, name, n_out, epsW=0.001, epsB=0.002, initW=None, initB=None,
       momW=0.9, momB=0.9, wc=0.004, dropRate=0.0, weight=None, bias=None, weightIncr=None,
-      biasIncr=None, disable_bprop=False):
+      biasIncr=None, disable_bprop=False, neuron = None):
     self.outputSize = n_out
     self.dropRate = dropRate
 
@@ -442,6 +444,9 @@ class FCLayer(WeightedLayer):
         self.outputSize, self.initW, self.initB, self.dropRate, self.weight, self.bias)
     self.merge_neuron = True
     self.prev_conv = False
+    if neuron is not None:
+      self.neuron = neuron
+      util.log_info('Attach %s to %s', self.neuron, self.name)
 
   def attach(self, prev):
     input_shape = prev.get_output_shape()

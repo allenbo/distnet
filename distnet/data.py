@@ -19,7 +19,7 @@ from multigpu import uniformed_array, arr, rank, num_gpu, multi_gpu
 
 
 seed = arr.get_seed()
-#seed = 0
+seed = 0
 assert type(seed) == int
 random.seed(seed)
 np.random.seed(seed)
