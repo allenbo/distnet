@@ -172,11 +172,12 @@ class CheckpointDumper(object):
       return None
 
     checkpoint_file = sorted(cp_files, key=os.path.getmtime)[-1]
+    if '.' in os.path.basename(checkpoint_file):
+      checkpoint_file = os.path.splitext(checkpoint_file)[0]
     util.log('Loading from checkpoint file: %s', checkpoint_file)
 
     try:
-      #return shelve.open(checkpoint_file, flag='r', protocol=-1, writeback=False)
-      return shelve.open(checkpoint_file, flag='r', protocol=-1, writeback=False)
+      return shelve.open(checkpoint_file, flag='c', protocol=-1, writeback=False)
     except:
       dict = {}
       with zipfile.ZipFile(checkpoint_file) as zf:
@@ -192,9 +193,6 @@ class CheckpointDumper(object):
     cp_pattern = os.path.join(self.checkpoint_dir, '*')
     cp_files = [(f, os.stat(f)) for f in glob.glob(cp_pattern)]
     cp_files = list(reversed(sorted(cp_files, key=lambda f: f[1].st_mtime)))
-
-    #while sum([f[1].st_size for f in cp_files]) > self.max_cp_size:
-    #  os.remove(cp_files.pop())
 
     checkpoint_filename = "%d" % suffix
     checkpoint_filename = os.path.join(self.checkpoint_dir, checkpoint_filename)
@@ -223,4 +221,3 @@ class CheckpointDumper(object):
       sf.close()
 
     util.log('save file finished')
-
