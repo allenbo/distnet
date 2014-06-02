@@ -161,7 +161,7 @@ class FastNet(object):
 
   def get_cost(self, label, prediction):
     cost_layer = self.layers[-1]
-    #assert not np.any(np.isnan(prediction.get()))
+    assert not np.any(np.isnan(prediction.get()))
     cost_layer.logreg_cost(label, prediction)
     return cost_layer.cost.get().sum(), cost_layer.batchCorrect
 

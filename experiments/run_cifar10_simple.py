@@ -25,7 +25,7 @@ init_model = checkpoint_dumper.get_checkpoint()
 if init_model is None:
   init_model = parser.parse_config_file(param_file)
 
-save_freq = 10000
+save_freq = 100
 test_freq = 10000
 adjust_freq = 100
 factor = 1

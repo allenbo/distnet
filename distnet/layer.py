@@ -17,7 +17,7 @@ PBout = False
 TEST = 0
 TRAIN = 1
 STOPITER = 1
-OUTINDEX = [5]
+OUTINDEX = [0]
 
 def col_rand(shape, dtype):
   return np.require(np.random.rand(*shape), dtype=dtype, requirements='C')
@@ -67,12 +67,10 @@ class Layer(object):
 
   def prev_fprop(self):
     self.iteration += 1
-    #self.output.fill(0)
     MONITOR.set_name(self.name)
 
   def prev_bprop(self):
     MONITOR.set_name(self.name)
-
 
   def _printout_forward(self, obj):
     if PFout and self.index in OUTINDEX:
@@ -144,20 +142,21 @@ class DataLayer(Layer):
 
 class WeightedLayer(Layer):
   def __init__(self, name, type, epsW, epsB, initW, initB, momW, momB, wc, weight, bias,
-      weightIncr , biasIncr, disable_bprop=False):
+               weightIncr , biasIncr, disable_bprop=False):
     Layer.__init__(self, name, type, disable_bprop)
     self.initW = initW
     self.initB = initB
+
     context = build_context(self.layerdist.workers_group)
     group_slice_dim = state.get_weight_slice_dim(self.layerdist.group_state, (self.type == 'conv'), FilterLayout, WeightLayout)
     self.weight = WEIGHTS.empty('weight.' + self.name, epsW, momW, wc,
-      group_slice_dim = group_slice_dim,
-      context = context)
+                                group_slice_dim = group_slice_dim,
+                                context = context)
 
     group_slice_dim = state.get_bias_slice_dim(self.layerdist.group_state, conv = (self.type == 'conv'))
     self.bias = WEIGHTS.empty('bias.' + self.name, epsB, momB, 0.0,
-      group_slice_dim = group_slice_dim,
-      context = context)
+                              group_slice_dim = group_slice_dim,
+                              context = context)
 
     if weight is not None:
       self.weight.set_weight(weight)
@@ -198,27 +197,23 @@ class WeightedLayer(Layer):
   def update(self):
     MONITOR.set_name(self.name)
     _ = time.time()
-    if self.disable_bprop:
-      return
+    if self.disable_bprop: return
+
     self.weight.update(self.batch_size)
     self.bias.update(self.batch_size)
     garray.driver.Context.synchronize()
+
     MONITOR.add_comp(time.time() - _)
 
   def get_summary(self, type='mean'):
-    #w = self.weight.wt.get()
-    #w = np.mean(np.abs(w))
-    #w_variance = np.var(np.abs(w.ravel()))
+    w = self.weight.wt.get()
+    w = np.mean(np.abs(w))
+    w_variance = np.var(np.abs(w.ravel()))
 
-    #b = self.bias.wt.get()
-    #b = np.mean(np.abs(b))
-    #b_variance = np.var(np.abs(b.ravel()))
-    w = 0
-    w_variance = 0
-    b = 0
-    b_variance = 0
+    b = self.bias.wt.get()
+    b = np.mean(np.abs(b))
+    b_variance = np.var(np.abs(b.ravel()))
     return self.name, (w, w_variance, b, b_variance, self.weight.epsilon, self.bias.epsilon)
-
 
   def dump(self):
     d = Layer.dump(self)
@@ -232,7 +227,6 @@ class WeightedLayer(Layer):
     d['epsB'] = self.bias.epsilon
     d['momB'] = self.bias.momentum
 
-
     if self.weight.incr is not None:
       d['weightIncr'] = self.weight.incr.get()
     if self.bias.incr is not None:
@@ -243,7 +237,7 @@ class WeightedLayer(Layer):
 class ConvLayer(WeightedLayer):
   def __init__(self, name, num_filters, filter_shape, padding=2, stride=1, initW=None,
                initB=None, partialSum=0, sharedBiases=0, epsW=0.001, epsB=0.002, momW=0.9, momB=0.9, wc=0.004,
-      bias=None, weight=None, weightIncr=None, biasIncr=None, disable_bprop=False):
+               bias=None, weight=None, weightIncr=None, biasIncr=None, disable_bprop=False):
 
     self.numFilter = num_filters
     assert filter_shape[0] == filter_shape[1], 'Non-square filters not yet supported.'
@@ -259,24 +253,22 @@ class ConvLayer(WeightedLayer):
                            bias, weightIncr, biasIncr, disable_bprop)
 
     util.log('numFilter:%s padding:%s stride:%s initW:%s initB:%s, w: %s, b: %s',
-             self.numFilter, self.padding, self.stride, self.initW, self.initB,
-             self.weight, self.bias)
+             self.numFilter, self.padding, self.stride, self.initW, self.initB, self.weight, self.bias)
     self.merge_neuron = True
 
   def attach(self, prev_layer):
-    self.prev_layer = prev_layer
     image_shape = prev_layer.get_output_shape()
+
     self.numColor = image_shape[ConvDataLayout.CHANNEL]
     self.img_size = image_shape[ConvDataLayout.HEIGHT]
     self.batch_size = image_shape[ConvDataLayout.BATCH]
+
     self.outputSize = 1 + divup(2 * self.padding + self.img_size - self.filterSize, self.stride)
-    util.log_info('%s %s %s %s: %s', self.padding, self.img_size, self.filterSize, self.stride,
-                  self.outputSize)
+    util.log_info('%s %s %s %s: %s', self.padding, self.img_size, self.filterSize, self.stride, self.outputSize)
     self.modules = self.outputSize ** 2
 
     weight_shape = FilterLayout.get_filter_shape(self.filterSize, self.numColor, self.numFilter)
     bias_shape = (self.numFilter, 1)
-
     self._init_weights(weight_shape, bias_shape)
 
   def get_output_shape(self):
@@ -294,7 +286,6 @@ class ConvLayer(WeightedLayer):
   def bprop(self, grad, input, output, outGrad):
     self.weight.grad.fill(0)
     self.bias.grad.fill(0)
-    #outGrad.fill(0)
 
     if self.neuron == 'relu':
       arr.relu_compute_grad(grad, output, grad, 0)
@@ -308,7 +299,6 @@ class ConvLayer(WeightedLayer):
           self.outputSize, -self.padding, self.stride, self.numColor)
 
     self._printout_backward((self.bias.grad, self.weight.grad, outGrad))
-    #self._printout_backward((outGrad, ))
 
 class MaxPoolLayer(Layer):
   def __init__(self, name, poolSize=2, stride=2, start=0, disable_bprop=False):

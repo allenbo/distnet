@@ -80,10 +80,8 @@ class Weight(object):
     return update(self.wt, self.grad, self.incr,
                   self.epsilon, self.momentum, self.decay, batch_size)
 
-
   def __repr__(self):
     return 'Weight(eps=%s mom=%s decay=%s)' % (self.epsilon, self.momentum, self.decay)
-
 
 class WeightManager(object):
   def __init__(self):

@@ -129,7 +129,6 @@ class Trainer:
       log("Layer '%s' weight: %e [%e] @ [%e]", name, values[0], values[1], values[4])
       log("Layer '%s' bias: %e [%e] @ [%e]", name, values[2], values[3],values[5])
 
-
   def check_test_data(self):
     return self.curr_batch % self.test_freq == 0
 
@@ -179,7 +178,6 @@ class Trainer:
       if isinstance(label, np.ndarray):
         label = garray.array(label.reshape((1, label.size)))
 
-      garray.driver.Context.synchronize()
       if PARALLEL_READ == False:
         batch_start = time.time()
 
