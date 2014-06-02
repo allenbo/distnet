@@ -19,7 +19,7 @@ from multigpu import uniformed_array, arr, rank, num_gpu, multi_gpu
 
 
 seed = arr.get_seed()
-seed = 0
+#seed = 0
 assert type(seed) == int
 random.seed(seed)
 np.random.seed(seed)
@@ -443,21 +443,19 @@ class ParallelDataProvider(DataProvider):
         batch_size = tmp_batch_size
 
       if batch_size == width:
-        data = gpu_data
-        labels = gpu_labels
+        data = gpu_data.copy()
+        labels = gpu_labels.copy()
+        self._fill_reserved_data()
       else:
         if self.index + batch_size >=  width:
           width = width - self.index
           labels = gpu_labels[self.index:self.index + batch_size]
-
-          #data = garray.partial_copy1(gpu_data, self.index, self.index+ width)
-          data = gpu_data[:, :, :, self.index:self.index + width]
+          data = gpu_data[:, :, :, self.index:self.index + batch_size]
 
           self.index = 0
           self._fill_reserved_data()
         else:
           labels = gpu_labels[self.index:self.index + batch_size]
-          #data = garray.partial_copy1(gpu_data, self.index, self.index + batch_size)
           data = gpu_data[:, :, :, self.index:self.index + batch_size]
           self.index += batch_size
 
@@ -508,7 +506,6 @@ def get_by_name(name):
       else:
         return dp
     return construct_dp
-
 
 register_data_provider('cifar10', CifarDataProvider)
 register_data_provider('dummy', DummyDataProvider)
