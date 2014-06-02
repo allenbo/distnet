@@ -1,10 +1,10 @@
 import state
 
 class LayerDist(object):
-  def __init__(self, global_dist, group_state, workers_group):
+  def __init__(self, group_state, workers_group):
     self._workers_group = workers_group
     self._num_group = len(self._workers_group)
-    self._global_dist = global_dist
+    self._global_dist = self._num_group != 1
     self._group_state = group_state
 
   @property
