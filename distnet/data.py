@@ -19,7 +19,7 @@ from multigpu import uniformed_array, arr, rank, num_gpu, multi_gpu
 
 
 seed = arr.get_seed()
-seed = 0
+#seed = 0
 assert type(seed) == int
 random.seed(seed)
 np.random.seed(seed)
@@ -99,6 +99,7 @@ def _prepare_images(data_dir, category_range, batch_range, batch_meta):
   assert os.path.exists(data_dir), data_dir
 
   dirs = glob.glob(data_dir + '/n*')
+  dirs.sort()
   synid_to_dir = {}
   for d in dirs:
     synid_to_dir[basename(d)[1:]] = d
@@ -116,9 +117,11 @@ def _prepare_images(data_dir, category_range, batch_range, batch_meta):
   batch_dict = dict((k, k) for k in batch_range)
 
   for d in cat_dirs:
-    imgs = [v for i, v in enumerate(glob.glob(d + '/*.jpg')) if i in batch_dict]
+    imgs = glob.glob(d + '/*.jpg')
+    imgs.sort()
+    imgs = [v for i, v in enumerate(imgs) if i in batch_dict]
     images.extend(imgs)
-
+ 
   return np.array(images)
 
 
@@ -166,6 +169,8 @@ class ImageNetDataProvider(DataProvider):
       else:
         num_images = min(self.batch_size, len(image_index) - index)
         num_images = util.divup(num_images, num_gpu)
+        if num_images % num_gpu != 0:
+          break
         self.batches.append(image_index[index + rank * num_images: index + (rank+1) * num_images ])
       index += self.batch_size
 
