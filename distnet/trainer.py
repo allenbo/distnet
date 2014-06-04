@@ -65,9 +65,14 @@ class Trainer:
 
     checkpoint = self.checkpoint_dumper.get_checkpoint()
     if checkpoint and len(checkpoint['train_outputs']) != 0:
-      self.train_outputs = checkpoint['train_outputs']
-      self.test_outputs = checkpoint['test_outputs']
-      self.base_time = self.train_outputs[-1][-1]
+      try:
+        self.train_outputs = checkpoint['train_outputs']
+        self.test_outputs = checkpoint['test_outputs']
+        self.base_time = self.train_outputs[-1][-1]
+      except Exception, e:
+        self.train_outputs = []
+        self.test_outputs = []
+        self.base_time = 0
     else:
       self.train_outputs = []
       self.test_outputs = []
@@ -94,7 +99,7 @@ class Trainer:
     model['test_outputs'] = self.test_outputs
 
     log('---- save checkpoint ----')
-    self.print_net_summary()
+    #self.print_net_summary()
     self.checkpoint_dumper.dump(checkpoint=model, suffix=self.curr_epoch)
 
 
@@ -154,7 +159,7 @@ class Trainer:
       util.log('There is no dumper for test data')
 
   def train(self, num_epochs=1000):
-    self.print_net_summary()
+    #self.print_net_summary()
     util.log('Starting training...')
 
     start_epoch = self.curr_epoch
