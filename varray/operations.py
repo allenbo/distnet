@@ -100,7 +100,7 @@ def convert_from_data(input, output):
       if input.global_unique != output.global_unique:
         # must regroup the input
         input.regroup_like(output)
-      if input.group_slice_dim == output.global_slice_dim:
+      if input.group_slice_dim == output.group_slice_dim:
         garray.convert_from_data(input.local_data, output.local_data)
       else:
         group_output = garray.empty(shape = input.group_area.shape, dtype = np.float32)
