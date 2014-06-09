@@ -185,7 +185,6 @@ class CheckpointDumper(object):
           dict[k] = cPickle.loads(zf.read(k))
       return dict
 
-  @distlog
   def dump(self, checkpoint, suffix=0):
     if self.checkpoint_dir is None:
       return
