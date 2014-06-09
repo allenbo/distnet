@@ -344,7 +344,7 @@ if __name__ == '__main__':
     cost, states = find_best(model, state0, ConvFC.conv, -1)
   print '%s: Total cost is \033[44m%f\033[0m' % (model_basename.upper(), cost)
   print 'Number of worker is \033[32m%d\033[0m' % n
-  #states = [disw_b] * (len(model) - 6) + [sidw_f] * 4 + [sisw] * 2
+  #states = [disw_i] * (len(model) - 6) + [sidw_f] * 4 + [sisw] * 2
   print_details(model, states)
   
   strategy = {}
