@@ -54,14 +54,17 @@ class Trainer:
     self.test_dp = test_dp
     self.batch_size = batch_size
     self.net = net
-    self.curr_batch = self.curr_epoch = 0
     self.annealing_factor = 10
     self.multiview = False
     self.start_time = time.time()
+    self.train_outputs = []
+    self.test_outputs = []
+    self.curr_batch = 0
+    self.curr_epoch = 0
+    self.base_time = 0
 
     for k, v in kw.iteritems():
       setattr(self, k, v)
-
 
     checkpoint = self.checkpoint_dumper.get_checkpoint()
     if checkpoint and len(checkpoint['train_outputs']) != 0:
@@ -69,14 +72,16 @@ class Trainer:
         self.train_outputs = checkpoint['train_outputs']
         self.test_outputs = checkpoint['test_outputs']
         self.base_time = self.train_outputs[-1][-1]
+        try:
+          self.curr_batch = checkpoint['curr_batch']
+          self.curr_epoch = checkpoint['curr_epoch']
+          self.train_dp.recover_from_cp(checkpoint['train_dp'])
+          self.test_dp.recover_from_cp(checkpoint['test_dp'])
+        except KeyError, e:
+          pass
       except Exception, e:
         self.train_outputs = []
         self.test_outputs = []
-        self.base_time = 0
-    else:
-      self.train_outputs = []
-      self.test_outputs = []
-      self.base_time = 0
 
     self._finish_init()
 
@@ -97,6 +102,10 @@ class Trainer:
     model['layers'] = self.net.get_dumped_layers()
     model['train_outputs'] = self.train_outputs
     model['test_outputs'] = self.test_outputs
+    model['curr_batch'] = self.curr_batch
+    model['curr_epoch'] = self.curr_epoch
+    model['train_dp'] = self.train_dp.dump()
+    model['test_dp'] = self.test_dp.dump()
 
     log('---- save checkpoint ----')
     #self.print_net_summary()
@@ -234,8 +243,6 @@ class Trainer:
       log('current batch: %d, error rate: %f, overall error rate: %f', self.curr_batch, 1 - correct,
           1 - total_correct / total_case)
 
-    log('error: %f logreg: %f', 1 - correct, cost)
-
   def report(self):
     rep = self.net.get_report()
     if rep is not None:
@@ -257,9 +264,6 @@ class Trainer:
       return MiniBatchTrainer(**param_dict)
     else:
       raise Exception, 'No trainer found for name: %s' % name
-
-
-
 
 class MiniBatchTrainer(Trainer):
   def _finish_init(self):

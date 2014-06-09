@@ -17,9 +17,7 @@ import time
 
 from multigpu import uniformed_array, arr, rank, num_gpu, multi_gpu
 
-
 seed = arr.get_seed()
-#seed = 0
 assert type(seed) == int
 random.seed(seed)
 np.random.seed(seed)
@@ -94,6 +92,19 @@ class DataProvider(object):
   def data_dim(self):
     return self.inner_size ** 2 * 3
 
+  def recover_from_dp(self, dp_dict):
+    self.curr_batch_index = dp_dict['curr_batch_index']
+    self.curr_batch = dp_dict['curr_batch']
+    self.curr_epoch = dp_dict['curr_epoch']
+    self.batch_range = dp_dict['batch_range']
+
+  def dump(self):
+    dp = {}
+    dp['curr_batch_index'] = self.curr_batch_index
+    dp['curr_batch'] = self.curr_batch
+    dp['curr_epoch'] = self.curr_epoch
+    dp['batch_range'] = self.batch_range
+    return dp
 
 def _prepare_images(data_dir, category_range, batch_range, batch_meta):
   assert os.path.exists(data_dir), data_dir
@@ -123,7 +134,6 @@ def _prepare_images(data_dir, category_range, batch_range, batch_meta):
     images.extend(imgs)
  
   return np.array(images)
-
 
 class ImageNetDataProvider(DataProvider):
   img_size = 256
@@ -246,6 +256,14 @@ class ImageNetDataProvider(DataProvider):
 
     return BatchData(cropped, labels, epoch)
 
+  def recover_from_dp(self, dp_dict):
+    DataProvider.recover_from_dp(self, dp_dict)
+    self.batches = dp_dict['batches']
+
+  def dump(self):
+    dp = DataProvider.dump(self)
+    dp['batches'] = self.batches
+    return dp
 
 class DummyDataProvider(DataProvider):
   def __init__(self, inner_size, output_size, batch_size = 1024):
@@ -321,8 +339,6 @@ class IntermediateDataProvider(DataProvider):
     data = np.require(data, requirements='C', dtype=np.float32)
     return BatchData(data, labels, self.curr_epoch)
 
-
-
 class MemoryDataProvider(DataProvider):
   def __init__(self, data_holder, batch_range = None, data_name = 'fc'):
     data_holder.finish_push()
@@ -341,7 +357,6 @@ class MemoryDataProvider(DataProvider):
     labels = data['labels']
     img = np.require(data[self.data_name].transpose(), requirements='C', dtype=np.float32)
     return BatchData(img, labels, self.curr_epoch)
-
 
 class ReaderThread(threading.Thread):
   def __init__(self, queue, dp):
@@ -362,7 +377,6 @@ class ReaderThread(threading.Thread):
     self._stop = True
     while self._running:
       _ = self.queue.get(0.1)
-
 
 class ParallelDataProvider(DataProvider):
   def __init__(self, dp):
@@ -490,6 +504,11 @@ class ParallelDataProvider(DataProvider):
 
     return BatchData(data, labels, epoch)
 
+  def recover_from_dp(self, dp):
+    self.dp.recover_from_dp(dp)
+
+  def dump(self):
+    return self.dp.dump()
 
 dp_dict = {}
 def register_data_provider(name, _class):
