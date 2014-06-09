@@ -211,6 +211,31 @@ class Trainer:
     self.report()
     self._finished_training()
 
+  def predict(self):
+    util.log('Starting training...')
+    start_epoch = -1 
+    total_cost, total_correct, total_case = 0, 0, 0
+    while True:
+      batch_size = self.batch_size
+      test_data = self.test_dp.get_next_batch(batch_size)
+
+      self.curr_batch += 1
+      self.curr_epoch = test_data.epoch
+      if start_epoch == -1:
+        start_epoch = self.curr_epoch
+      if start_epoch != self.curr_epoch:
+        break
+      input, label = test_data.data, test_data.labels
+      self.net.train_batch(input, label, TEST)
+      cost , correct, numCase, = self.net.get_batch_information()
+      total_cost += cost
+      total_correct += correct * numCase
+      total_case += numCase
+      log('current batch: %d, error rate: %f, overall error rate: %f', self.curr_batch, 1 - correct,
+          1 - total_correct / total_case)
+
+    log('error: %f logreg: %f', 1 - correct, cost)
+
   def report(self):
     rep = self.net.get_report()
     if rep is not None:
