@@ -94,14 +94,14 @@ class DataProvider(object):
 
   def recover_from_dp(self, dp_dict):
     self.curr_batch_index = dp_dict['curr_batch_index']
-    self.curr_batch = dp_dict['curr_batch']
     self.curr_epoch = dp_dict['curr_epoch']
     self.batch_range = dp_dict['batch_range']
+    if self.curr_batch_index < 0:
+      self.curr_batch_index = 0
 
   def dump(self):
     dp = {}
-    dp['curr_batch_index'] = self.curr_batch_index
-    dp['curr_batch'] = self.curr_batch
+    dp['curr_batch_index'] = self.curr_batch_index - 3
     dp['curr_epoch'] = self.curr_epoch
     dp['batch_range'] = self.batch_range
     return dp
@@ -505,10 +505,13 @@ class ParallelDataProvider(DataProvider):
     return BatchData(data, labels, epoch)
 
   def recover_from_dp(self, dp):
+    self.index = dp['index']
     self.dp.recover_from_dp(dp)
 
   def dump(self):
-    return self.dp.dump()
+    dp = self.dp.dump()
+    dp['index'] = self.index
+    return dp
 
 dp_dict = {}
 def register_data_provider(name, _class):

@@ -75,11 +75,12 @@ class Trainer:
         try:
           self.curr_batch = checkpoint['curr_batch']
           self.curr_epoch = checkpoint['curr_epoch']
-          self.train_dp.recover_from_cp(checkpoint['train_dp'])
-          self.test_dp.recover_from_cp(checkpoint['test_dp'])
+          self.train_dp.recover_from_dp(checkpoint['train_dp'])
+          self.test_dp.recover_from_dp(checkpoint['test_dp'])
         except KeyError, e:
-          pass
+          log.debug('Can\'t recover curr_bacth, curr_epoch and data provider from checkpoint')
       except Exception, e:
+        log.debug('Can\'t recover train and test outputs from checkpoint')
         self.train_outputs = []
         self.test_outputs = []
 
