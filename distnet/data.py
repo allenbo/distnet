@@ -172,15 +172,17 @@ class ImageNetDataProvider(DataProvider):
     np.random.shuffle(image_index)
 
     self.batches = []
+    self.label_batches = []
     index = 0
     while index < len(self.images):
+      self.label_batches.append(image_index[index: index + self.batch_size])
       if not multi_gpu or not INPUT_SEG:
         self.batches.append(image_index[index: index + self.batch_size])
       else:
         num_images = min(self.batch_size, len(image_index) - index)
-        num_images = util.divup(num_images, num_gpu)
         if num_images % num_gpu != 0:
           break
+        num_images = util.divup(num_images, num_gpu)
         self.batches.append(image_index[index + rank * num_images: index + (rank+1) * num_images ])
       index += self.batch_size
 
@@ -217,8 +219,9 @@ class ImageNetDataProvider(DataProvider):
     epoch = self.curr_epoch
     batchnum = self.curr_batch
     names = self.images[self.batches[batchnum]]
+    label_names = self.images[self.label_batches[batchnum]]
     num_imgs = len(names)
-    labels = np.zeros((1, num_imgs))
+    labels = np.zeros((1, len(label_names)))
     cropped = np.ndarray((3, self.inner_size, self.inner_size, num_imgs * self.num_view), dtype=np.uint8)
     # _load in parallel for training
     st = time.time()
@@ -236,7 +239,7 @@ class ImageNetDataProvider(DataProvider):
 
     clabel = []
     # extract label from the filename
-    for idx, filename in enumerate(names):
+    for idx, filename in enumerate(label_names):
       filename = os.path.basename(filename)
       synid = filename[1:].split('_')[0]
       label = self.batch_meta['synid_to_label'][synid]
@@ -259,10 +262,12 @@ class ImageNetDataProvider(DataProvider):
   def recover_from_dp(self, dp_dict):
     DataProvider.recover_from_dp(self, dp_dict)
     self.batches = dp_dict['batches']
+    self.label_batches = dp_dict['label_batches']
 
   def dump(self):
     dp = DataProvider.dump(self)
     dp['batches'] = self.batches
+    dp['label_batches'] = self.label_batches
     return dp
 
 class DummyDataProvider(DataProvider):
@@ -310,8 +315,6 @@ class CifarDataProvider(DataProvider):
         pos_to = img.shape[-1]
 
       img = img[:, pos_from : pos_to]
-      label = label[pos_from: pos_to]
-      assert img.shape[-1] == len(label)
       num_image = img.shape[-1]
     img_size = CifarDataProvider.img_size
     return BatchData(np.require(img.reshape(3, img_size, img_size, num_image), requirements='C', dtype=np.float32),
@@ -425,6 +428,7 @@ class ParallelDataProvider(DataProvider):
     self._data_queue = Queue.Queue(1)
     self._gpu_batch = None
     self.index = 0
+    self.label_index = 0
 
   def _fill_reserved_data(self):
     batch_data = self._data_queue.get()
@@ -455,6 +459,7 @@ class ParallelDataProvider(DataProvider):
       epoch = self._gpu_batch.epoch
 
       # special case wheh the batch size is equal to the data provider batch size
+      label_batch_size = batch_size
       if INPUT_SEG:
         tmp_batch_size = batch_size / num_gpu
         if rank == num_gpu - 1:
@@ -468,19 +473,21 @@ class ParallelDataProvider(DataProvider):
       else:
         if self.index + batch_size >=  width:
           width = width - self.index
-          labels = gpu_labels[self.index:self.index + batch_size]
+          labels = gpu_labels[self.label_index:self.label_index + label_batch_size]
           data = gpu_data[:, :, :, self.index:self.index + batch_size]
 
           self.index = 0
+          self.label_index = 0
           self._fill_reserved_data()
         else:
-          labels = gpu_labels[self.index:self.index + batch_size]
+          labels = gpu_labels[self.label_index : self.label_index + label_batch_size]
           data = gpu_data[:, :, :, self.index:self.index + batch_size]
           self.index += batch_size
+          self.label_index += label_batch_size
 
       if INPUT_SEG:
         data = arr.assemble(data)
-        labels = arr.assemble(labels.reshape((1, labels.size)), flat = True)
+        #labels = arr.assemble(labels.reshape((1, labels.size)), flat = True)
       else:
         data = uniformed_array(data)
     else:
@@ -506,11 +513,13 @@ class ParallelDataProvider(DataProvider):
 
   def recover_from_dp(self, dp):
     self.index = dp['index']
+    self.label_index = dp['label_index']
     self.dp.recover_from_dp(dp)
 
   def dump(self):
     dp = self.dp.dump()
     dp['index'] = self.index
+    dp['label_index'] = self.label_index
     return dp
 
 dp_dict = {}
