@@ -262,7 +262,17 @@ class ImageNetDataProvider(DataProvider):
   def recover_from_dp(self, dp_dict):
     DataProvider.recover_from_dp(self, dp_dict)
     self.batches = dp_dict['batches']
-    self.label_batches = dp_dict['label_batches']
+    if 'label_batches' in dp_dict:
+      self.label_batches = dp_dict['label_batches']
+    else:
+      self.label_batches = self.batches
+    
+    # recover the image batch information from label batch list
+    if len(self.batches[0]) != len(self.label_batches[0]):
+      image_batch_size = len(self.label_batches[0] / num_gpu)
+      self.batches = []
+      for batch in self.label_batches:
+        self.batches.append(batch[rank * image_batch_size: (rank + 1) * image_batch_size].copy())
 
   def dump(self):
     dp = DataProvider.dump(self)
