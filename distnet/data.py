@@ -17,11 +17,12 @@ import time
 
 from multigpu import uniformed_array, arr, rank, num_gpu, multi_gpu
 
-seed = arr.get_seed()
-assert type(seed) == int
-random.seed(seed)
-np.random.seed(seed)
+def set_seed():
+  seed = arr.get_seed()
+  random.seed(seed)
+  np.random.seed(seed)
 
+set_seed()
 # determine whether we should split the input before training
 INPUT_SEG = True
 if num_gpu == 1:
@@ -67,11 +68,12 @@ class DataProvider(object):
   def get_next_index(self):
     self.curr_batch_index = self.curr_batch_index + 1
     if self.curr_batch_index == len(self.batch_range) + 1:
-      random.shuffle(self.batch_range)
+      set_seed()
       self.curr_epoch += 1
       self.curr_batch_index = 1
 
       self._handle_new_epoch()
+      random.shuffle(self.batch_range)
 
     self.curr_batch = self.batch_range[self.curr_batch_index - 1]
 
@@ -269,10 +271,13 @@ class ImageNetDataProvider(DataProvider):
     
     # recover the image batch information from label batch list
     if len(self.batches[0]) != len(self.label_batches[0]):
-      image_batch_size = len(self.label_batches[0] / num_gpu)
+      image_batch_size = len(self.label_batches[0]) / num_gpu
       self.batches = []
       for batch in self.label_batches:
-        self.batches.append(batch[rank * image_batch_size: (rank + 1) * image_batch_size].copy())
+        if len(batch) == self.batch_size:
+          self.batches.append(batch[rank * image_batch_size: (rank + 1) * image_batch_size].copy())
+    for batch in self.batches:
+      assert len(batch) == self.batch_size / num_gpu
 
   def dump(self):
     dp = DataProvider.dump(self)

@@ -8,6 +8,7 @@ import math
 import numpy as np
 import warnings
 import functools
+from mpi4py import MPI
 
 #if os.environ.get('MULTIGPU', 'no') == 'yes':
 #  from varray import distlog
@@ -42,7 +43,7 @@ def log(msg, *args, **kw):
       exc = ''.join(traceback.format_exc())
     else:
       exc = None
-    print >> sys.stderr, '%s %.3f:%s:%d: %s' % (level_to_char[level], now, os.path.basename(filename), lineno, msg % args)
+    print >> sys.stderr, '[%d:%s] %.3f:%s:%d: %s' % (MPI.COMM_WORLD.Get_rank(), level_to_char[level], now, os.path.basename(filename), lineno, msg % args)
     if exc:
       print >> sys.stderr, exc
 
@@ -260,7 +261,6 @@ PROFILER = None
 
 import cProfile
 import yappi
-from mpi4py import MPI
 def enable_profile():
   global PROFILER
   if PROFILER is None:
