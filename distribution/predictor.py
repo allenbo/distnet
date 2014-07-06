@@ -253,6 +253,7 @@ def print_details(model, states):
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
   parser.add_argument('--num-worker', help='Set number of workers', required=True, type=int)
+  parser.add_argument('--comp-dir', help='The directory of computation files')
   parser.add_argument('--backend', help='Computation backend, [cudaconv, caffe, mix](cudaconv default)', default = 'cudaconv', choices=['cudaconv', 'caffe', 'mix'])
   parser.add_argument('--model-path', help='Path of model file', required=True)
   parser.add_argument('--ideal', help='Assume the backend ideally scale to any number of GPUs', default=False, action='store_true')
@@ -260,7 +261,6 @@ if __name__ == '__main__':
   parser.add_argument('--bandwidth', help='Bandwidth of the underlying network', default=1.25, type = float)
   parser.add_argument('--single', help='Get the running time when the number of worker is 1', default=False, action = 'store_true')
   parser.add_argument('--batch-size', help='The size of group batch', default=128, type = int)
-  parser.add_argument('--global-batch-size', help='The size of global batch', default=1024, type = int)
 
   args = parser.parse_args()
 
@@ -273,8 +273,7 @@ if __name__ == '__main__':
   config['bandwidth'] = args.bandwidth / 2
   config['single'] = args.single
   config['batch-size'] = args.batch_size
-  config['global-batch-size'] = args.global_batch_size
-  config['num_group'] = config['global-batch-size'] / config['batch-size']
+  config['comp-dir'] = args.comp_dir
 
   name = device_name()
   latency = 0.000001
@@ -309,11 +308,13 @@ if __name__ == '__main__':
     filename = prat_filename
   else:
     filename = ideal_filename
+  filename = os.path.join(config['comp-dir'], filename)
 
 
   # print out the running time when the number of worker is 1
   if config['single']:
     glob_str = '%s-*.%s.%s.%d' % (name, model_basename, backend, batch_size)
+    glob_str = os.path.join(config['comp-dir'], glob_str)
     glob_str = [glob_str, glob_str + '.ideal']
     
     files = glob.glob(glob_str[0]) + glob.glob(glob_str[1])
