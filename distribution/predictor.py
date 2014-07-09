@@ -1,11 +1,11 @@
-import reader
 import request
 from execute import RequestExecuter
 from communicat import ConvFC, comm_cost
 from communicat_worker import comm_cost as comm_cost_worker
 
-from distbase.util import divup
-from distbase.state import State, combination_conv, combination_fc, state0, disw_i, sisw, sidw, sidw_f, disw_b
+from distbase.util import divup, parse_config_file
+from distbase.state import State, combination_conv, combination_fc
+from distbase.state import state0, disw_i, sisw, sidw, sidw_f, disw_b
 
 from pycuda import driver, autoinit
 import numpy as np
@@ -68,23 +68,23 @@ def computation_cost(model, image_shape, comp_cost, req = None):
       layer['weight_shape'] = (output_size, image_size)
       layer['weight_size'] = np.prod(layer['weight_shape']) * 4
       layer['output_shape'] = (output_size, batch_size)
-      
+
       conv_end = True
     elif layer['type'] == 'softmax':
       layer['output_shape'] = layer['input_shape']
-    
+
     else:
       assert False, 'Layer Type Error %s' % layer['type']
-    
+
     layer['input_size'] = np.prod(layer['input_shape']) * 4
     layer['output_size'] = np.prod(layer['output_shape']) * 4
     layer['comp_cost'] = {}
-    
+
     input_shape = layer['output_shape']
-    
+
     if conv_end == True:
       comb = combination_fc
-    
+
     if comp_cost is not None:
       for s in comb:
         layer['comp_cost'][s] = comp_cost[layer['name']][s]
@@ -144,7 +144,7 @@ def find_best(model, init_state, cfs, prev_nw):
 
   costs = []
   states = []
-  
+
   for s in comb:
     cur_nw = layer['comp_cost'][s][1]
     cost, state_list = find_best(model[1:], s, ncfs, cur_nw)
@@ -164,7 +164,7 @@ def find_best(model, init_state, cfs, prev_nw):
     cost = cm_cost + cp_cost + cost + cm_latency
     costs.append(cost)
     states.append(state_list)
-  
+
   index = np.array(costs).argmin()
   return (costs[index], [comb[index]] + states[index])
 
@@ -174,7 +174,7 @@ def print_details(model, states):
   total_comp_cost = 0
   total_comm_cost = 0
   cfs = ConvFC.conv
-  
+
   conv_weight_comm = 0
   conv_elapsed = 0
   fc_elapsed = 0
@@ -209,7 +209,7 @@ def print_details(model, states):
           cfs = ConvFC.conv_fc
         else:
           cfs = ConvFC.conv
-          
+
 
     if layer['type'] not in ['fc', 'conv', 'softmax']:
       if layer['type'] == 'pool' and curr_state == disw_i and cur_nw != prev_nw:
@@ -253,11 +253,11 @@ def print_details(model, states):
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
   parser.add_argument('--num-worker', help='Set number of workers', required=True, type=int)
-  parser.add_argument('--comp-dir', help='The directory of computation files')
+  parser.add_argument('--comp-dir', help='The directory of computation files', required=True)
   parser.add_argument('--backend', help='Computation backend, [cudaconv, caffe, mix](cudaconv default)', default = 'cudaconv', choices=['cudaconv', 'caffe', 'mix'])
   parser.add_argument('--model-path', help='Path of model file', required=True)
   parser.add_argument('--ideal', help='Assume the backend ideally scale to any number of GPUs', default=False, action='store_true')
-  parser.add_argument('--strategy-path', help='Path of generated strategy file', default='strategy')
+  parser.add_argument('--strategy-path', help='Path of generated strategy file', default='')
   parser.add_argument('--bandwidth', help='Bandwidth of the underlying network', default=1.25, type = float)
   parser.add_argument('--single', help='Get the running time when the number of worker is 1', default=False, action = 'store_true')
   parser.add_argument('--batch-size', help='The size of group batch', default=128, type = int)
@@ -298,12 +298,12 @@ if __name__ == '__main__':
   image_shape = cm_backend.get_image_shape(color, image_size, image_size,  batch_size)
 
   strategy_file = config['strategy-path']
-  model = reader.getmodel(model_file)
+  model = parse_config_file(model_file)
   model_basename = os.path.basename(model_file)
-  
+
   ideal_filename = '%s-%d.%s.%s.%d.ideal' % (name, n, model_basename, backend, batch_size)
   prat_filename = '%s-%d.%s.%s.%d' % (name, n, model_basename, backend, batch_size)
-   
+
   if not config['ideal']:
     filename = prat_filename
   else:
@@ -316,7 +316,7 @@ if __name__ == '__main__':
     glob_str = '%s-*.%s.%s.%d' % (name, model_basename, backend, batch_size)
     glob_str = os.path.join(config['comp-dir'], glob_str)
     glob_str = [glob_str, glob_str + '.ideal']
-    
+
     files = glob.glob(glob_str[0]) + glob.glob(glob_str[1])
     if len(files) != 0:
       with open(files[0]) as f:
@@ -325,7 +325,7 @@ if __name__ == '__main__':
         print_details(model, [sisw] * len(model))
       sys.exit(0)
 
-  # when the number of worker is not 1 
+  # when the number of worker is not 1
   if not os.path.exists(filename):
     req_filename = filename + '-req'
     with open(req_filename, 'w') as fout:
@@ -341,16 +341,15 @@ if __name__ == '__main__':
   if config['single']:
     states = [sisw] * len(model)
     cost = 10000
+  elif strategy_file != '':
+    with open(strategy_file) as f:
+      state_dict = pickle.load(f)
+    states = []
+    for layer in model:
+      states.append(state_dict[layer['name']])
+      cost = 10000
   else:
     cost, states = find_best(model, state0, ConvFC.conv, -1)
   print '%s: Total cost is \033[44m%f\033[0m' % (model_basename.upper(), cost)
   print 'Number of worker is \033[32m%d\033[0m' % n
-  #states = [disw_i] * (len(model) - 6) + [sidw_f] * 4 + [sisw] * 2
   print_details(model, states)
-  
-  strategy = {}
-  for i, layer in enumerate(model):
-    strategy[layer['name']] = states[i]
-
-  with open(strategy_file, 'w') as fout:
-      pickle.dump(strategy, fout)

@@ -53,6 +53,42 @@ def log_warn(msg, *args, **kw): log(msg, *args, level=WARN, caller_frame=2)
 def log_error(msg, *args, **kw): log(msg, *args, level=ERROR, caller_frame=2)
 def log_fatal(msg, *args, **kw): log(msg, *args, level=FATAL, caller_frame=2)
 
+def parse_config_file(filename):
+  rst = []
+  def_dict = {}
+  is_def = False
+  with open(filename) as f:
+    for line in f:
+      line = line.strip()
+      if line.startswith('#'):
+        continue
+      elif line.startswith('['):
+        name = line[1:line.find(']')]
+        if name == 'def':
+          is_def = True
+        else:
+          is_def = False
+          rst.append({'name':name})
+      elif len(line) == 0:
+        continue
+      else:
+        key = line[0:line.find('=')].strip()
+        value = line[line.find('=')+1: len(line)].strip()
+
+        if is_def:
+          def_dict[key] = value
+        else:
+          if value[0] == '!':
+            value = def_dict[value[1:]]
+          if value.isdigit():
+            value = int(value)
+          elif isfloat(value):
+            value = float(value)
+          elif islist(value):
+            value = eval(value)
+          rst[-1][key] = value
+  return rst
+
 class Timer:
   def __init__(self):
     self.func_time = {}
@@ -91,6 +127,9 @@ class EZTimer(object):
   def __del__(self):
     log('Operation %s finished in %.5f seconds', self.msg, time.time() - self.start) 
     
+class AttrDict(dict):
+  __getattr__ = dict.__getitem__
+  __setattr__ = dict.__setitem__
 
 def divup(x, base):
   if x / base * base == x:
@@ -121,6 +160,10 @@ def issquare(x):
   a = math.sqrt(x) 
   b = int(a)
   return a == b
+
+def islist(value):
+  value = value.strip()
+  return value[0] == '[' and value[-1] == ']'
 
 def string_to_int_list(str):
   if str is None: return []

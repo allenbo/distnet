@@ -9,6 +9,7 @@ from distnet.layer import TRAIN, TEST
 from distnet.net import FastNet
 from distnet.parser import parse_config_file, load_model
 from distnet.scheduler import Scheduler
+from distnet.multigpu import init_strategy
 import os
 import sys
 import time
@@ -65,6 +66,7 @@ class Trainer:
 
     for k, v in kw.iteritems():
       setattr(self, k, v)
+    init_strategy(dist_file = self.param_file + '.layerdist')
 
     checkpoint = self.checkpoint_dumper.get_checkpoint()
     if checkpoint and len(checkpoint['train_outputs']) != 0:
@@ -596,6 +598,7 @@ if __name__ == '__main__':
   if init_model is None:
     init_model = parse_config_file(args.param_file)
   param_dict['init_model'] = init_model
+  param_dict['param_file'] = args.param_file
 
   # create train dataprovider and test dataprovider
   dp_class = data.get_by_name(param_dict['data_provider'])

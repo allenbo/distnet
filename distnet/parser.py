@@ -5,31 +5,11 @@ from distnet.layer import ConvLayer, MaxPoolLayer, AvgPoolLayer, \
 import distnet
 from distbase import util
 from distbase.util import isfloat
+from distbase.util import parse_config_file
+
 import numpy as np
 
-def parse_config_file(parsing_file):
-  rst = []
-  with open(parsing_file) as f:
-    for line in f:
-      line = line.strip()
-      if line.startswith('#'):
-        continue
-      elif line.startswith('['):
-        name = line[1:line.find(']')]
-        rst.append({'name':name})
-      elif len(line) == 0:
-        continue
-      else:
-        key = line[0:line.find('=')]
-        value = line[line.find('=')+1: len(line)]
-
-        if value.isdigit():
-          value = int(value)
-        elif isfloat(value):
-          value = float(value)
-
-        rst[-1][key] = value
-  return rst
+parse_config_file = parse_config_file
 
 def load_model(net, model):
   if 'layers' in model:

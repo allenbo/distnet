@@ -5,7 +5,7 @@ import math
 
 from garray import ConvDataLayout, FCDataLayout, FilterLayout, WeightLayout
 from distbase import util
-from distbase.util import issquare
+from distbase.util import issquare, AttrDict
 
 multi_gpu = False
 
@@ -14,25 +14,24 @@ if os.environ.get('MULTIGPU', 'no') == 'yes':
   from varray import rank, size as num_gpu
   from varray.context import default_context, Context, CONTEXTMANAGER
   multi_gpu = True
-  import socket
   garray.device_init(arr.rank)
-  dist_file = 'config/imagenet.cfg.layerdist'
-  strategy = util.load(dist_file)
+  strategy = None
 else:
   import garray as arr
   garray.device_init()
-  rank = 0
-  num_gpu = 1
-  strategy = None
-  default_context = None
-  class _(object):
-    pass
-  fake_layerdist = _()
-  fake_layerdist.global_dist = False
-  fake_layerdist.group_state = None
-  fake_layerdist.group_size = None
-  fake_layerdist.workers_group = []
+  rank, num_gpu = 0, 1
+  strategy, default_context = None, None
+  fake_layerdict = AttrDict(global_dist = False,
+                            group_state = None,
+                            group_size = None,
+                            workers_group = [])
 
+
+def init_strategy(dist_file):
+  global strategy
+  if num_gpu == 1:
+    return
+  strategy = util.load(dist_file)
 
 def build_context(workers_group):
   if default_context is None or len(workers_group) == 1:
