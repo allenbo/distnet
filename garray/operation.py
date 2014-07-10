@@ -8,6 +8,7 @@ from new_gpuarray import sum, max, iexp, copy_to, to_gpu
 convert_from_data = cm_backend.convert_from_data
 convert_to_fc = cm_backend.convert_to_fc
 convert_to_conv = cm_backend.convert_to_conv
+convert_from_backend = cm_backend.convert_from_backend
 
 convolution = sync_function(cm_backend.convFilterActs)
 

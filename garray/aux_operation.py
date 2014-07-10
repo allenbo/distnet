@@ -4,7 +4,7 @@ from distbase.cuda_base import matrixmult, transpose
 from pycuda import driver
 from pycuda.gpuarray import GPUArray
 from distbase import cuda_base
-from distbase.util import divup, make_copy
+from distbase.util import divup, make_copy, reshape_first, reshape_last
 from distbase.cuda_base import *
 
 def sync_function(fn):
@@ -13,18 +13,6 @@ def sync_function(fn):
     driver.Context.synchronize()
     return result
   return make_copy(_wrapper, fn.__name__)
-
-def reshape_last(input):
-  shape = input.shape
-  row = int(np.prod(shape[:-1]))
-  col = shape[-1]
-  return input.reshape((row, col))
-
-def reshape_first(input):
-  shape = input.shape
-  row = shape[0]
-  col = int(np.prod(shape[1:]))
-  return input.reshape((row, col))
 
 def convert_shape_fn(fn):
 

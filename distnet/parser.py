@@ -14,7 +14,8 @@ parse_config_file = parse_config_file
 def load_model(net, model):
   if 'layers' in model:
     # Loading from a checkpoint
-    add_layers(FastNetBuilder(), net, model['layers'])
+    backend = model.get('backend', 'cudaconv')
+    add_layers(FastNetBuilder(backend), net, model['layers'])
   else:
     if is_cudaconvnet_config(model):
       # AlexK config file
@@ -64,6 +65,9 @@ class Builder(object):
 
 
 class FastNetBuilder(Builder):
+  def __init__(self, backend = 'cudaconv'):
+    self.backend = backend
+
   def conv_layer(self, ld):
     numFilter = Builder.set_val(ld, 'numFilter')
     filterSize = Builder.set_val(ld, 'filterSize')
@@ -89,7 +93,8 @@ class FastNetBuilder(Builder):
     disable_bprop = Builder.set_val(ld, 'disable_bprop', default = False)
     cv = ConvLayer(name, numFilter, (filterSize, filterSize), padding, stride, initW, initB,
         partialSum,sharedBiases, epsW, epsB, momW, momB, wc, bias, weight,
-        weightIncr = weightIncr, biasIncr = biasIncr, disable_bprop = disable_bprop, neuron = neuron)
+        weightIncr = weightIncr, biasIncr = biasIncr, disable_bprop = disable_bprop, neuron =
+        neuron, backend = self.backend)
     return cv
 
   def pool_layer(self, ld):

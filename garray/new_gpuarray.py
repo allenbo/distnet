@@ -2,7 +2,9 @@ from pycuda import gpuarray, driver
 from pycuda.gpuarray import GPUArray, to_gpu, zeros, zeros_like, empty, empty_like
 import numpy as np
 from aux_operation import *
+from .backend import backend_name
 from distbase.util import divup, make_copy, deprecated
+from distbase import cuda_base
 import time
 import traceback
 
@@ -451,9 +453,13 @@ def mem_free(self):
   self.gpudata.free()
 GPUArray.mem_free = mem_free
 
-def printout(self, name, row_from = 0, row_to = 0, col_from = 0, col_to = 0):
+def printout(self, name, row_from = 0, row_to = 0, col_from = 0, col_to = 0, fc = False):
   print name
-  x = reshape_last(self)
+  if backend_name == 'caffe' and fc == False:
+    x = reshape_first(self)
+    x = cuda_base.transpose(x)
+  else:
+    x = reshape_last(self)
   if row_to == 0:
     row_to = x.shape[0]
   if col_to == 0:
@@ -462,6 +468,6 @@ def printout(self, name, row_from = 0, row_to = 0, col_from = 0, col_to = 0):
 
   for rows in a:
     for i in rows:
-      print '%.15f' % i,
+      print '%.5f' % i,
     print ''
 GPUArray.printout = printout

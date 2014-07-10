@@ -111,6 +111,9 @@ def convert_from_data(input, output):
   driver.Context.synchronize()
   if not INNER: MONITOR.add_comm(time.time() - _)
 
+def convert_from_backend(weight, backend):
+  return garray.convert_from_backend(weight, backend)
+
 def fcforward(input, output, weight, bias, prev_conv):
   state = get_state_from_slice_dim(output.group_slice_dim, False, ConvDataLayout, FCDataLayout)
   _ = time.time()

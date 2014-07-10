@@ -7,17 +7,17 @@ import sys
 import numpy as np
 import time
 import garray
-from garray import ConvDataLayout, FilterLayout, FCDataLayout, WeightLayout
+from garray import ConvDataLayout, FilterLayout, FCDataLayout, WeightLayout, backend_name
 
 from multigpu import allocate, arr, uniformed_array, multi_gpu, get_layerdist, build_context, random_uniform
 from distbase import state
 
-PFout = False
+PFout = True
 PBout = False
 TEST = 0
 TRAIN = 1
 STOPITER = 1
-OUTINDEX = [1]
+OUTINDEX = [6]
 
 def col_rand(shape, dtype):
   return np.require(np.random.rand(*shape), dtype=dtype, requirements='C')
@@ -72,17 +72,17 @@ class Layer(object):
   def prev_bprop(self):
     MONITOR.set_name(self.name)
 
-  def _printout_forward(self, obj):
+  def _printout_forward(self, obj, fc = False):
     if PFout and self.index in OUTINDEX:
-      obj.printout(self.name)
+      obj.printout(self.name, fc = fc)
       if self.index == OUTINDEX[-1] and self.iteration == STOPITER:
         sys.exit(-1)
 
-  def _printout_backward(self, obj_list):
+  def _printout_backward(self, obj_list, fc = False):
     if PBout and self.index in OUTINDEX:
       for obj in obj_list:
         if obj:
-          obj.printout(self.name)
+          obj.printout(self.name, fc = fc)
       if self.index == OUTINDEX[0] and self.iteration == STOPITER:
         sys.exit(-1)
 
@@ -142,7 +142,7 @@ class DataLayer(Layer):
 
 class WeightedLayer(Layer):
   def __init__(self, name, type, epsW, epsB, initW, initB, momW, momB, wc, weight, bias,
-               weightIncr , biasIncr, disable_bprop=False):
+               weightIncr , biasIncr, disable_bprop=False, backend = 'cudaconv'):
     Layer.__init__(self, name, type, disable_bprop)
     self.initW = initW
     self.initB = initB
@@ -159,9 +159,15 @@ class WeightedLayer(Layer):
                               context = context)
 
     if weight is not None:
-      self.weight.set_weight(weight)
+      if backend == backend_name or self.type == 'fc':
+        self.weight.set_weight(weight)
+      else:
+        self.weight.set_weight(arr.convert_from_backend(weight, backend))
     if weightIncr is not None:
-      self.weight.set_incr(weightIncr)
+      if backend == backend_name or self.type == 'fc':
+        self.weight.set_incr(weightIncr)
+      else:
+        self.weight.set_incr(arr.convert_from_backend(weightIncr, backend))
 
     if bias is not None:
       self.bias.set_weight(bias)
@@ -237,7 +243,8 @@ class WeightedLayer(Layer):
 class ConvLayer(WeightedLayer):
   def __init__(self, name, num_filters, filter_shape, padding=2, stride=1, initW=None,
                initB=None, partialSum=0, sharedBiases=0, epsW=0.001, epsB=0.002, momW=0.9, momB=0.9, wc=0.004,
-               bias=None, weight=None, weightIncr=None, biasIncr=None, disable_bprop=False, neuron = None):
+               bias=None, weight=None, weightIncr=None, biasIncr=None, disable_bprop=False, neuron =
+               None, backend = 'cudaconv'):
 
     self.numFilter = num_filters
     assert filter_shape[0] == filter_shape[1], 'Non-square filters not yet supported.'
@@ -250,7 +257,7 @@ class ConvLayer(WeightedLayer):
 
     WeightedLayer.__init__(self, name, 'conv',
                            epsW, epsB, initW, initB, momW, momB, wc, weight,
-                           bias, weightIncr, biasIncr, disable_bprop)
+                           bias, weightIncr, biasIncr, disable_bprop, backend = backend)
 
     util.log('filter shape:%s padding:%s stride:%s initW:%s initB:%s, w: %s, b: %s',
              filter_shape, self.padding, self.stride, self.initW, self.initB, self.weight, self.bias)
@@ -486,7 +493,7 @@ class FCLayer(WeightedLayer):
 
     if self.neuron == 'relu':
       arr.relu_activate(self.output, self.output, 0)
-    self._printout_forward(output)
+    self._printout_forward(output, fc = True)
     garray.driver.Context.synchronize()
     MONITOR.add_comp(time.time() - _)
 
@@ -506,7 +513,7 @@ class FCLayer(WeightedLayer):
     arr.fcbackward(input, self.weight.wt, grad, outGrad, self.weight.grad, self.bias.grad, self.prev_conv)
 
     #self._printout_backward((self.bias.grad, self.weight.grad, outGrad))
-    self._printout_backward((outGrad, ))
+    self._printout_backward((outGrad, ), fc = True)
    
 class SoftmaxLayer(Layer):
   def __init__(self, name, disable_bprop=False):
@@ -536,7 +543,7 @@ class SoftmaxLayer(Layer):
   def fprop(self, input, output, train=TRAIN):
     arr.softmax(input, output)
 
-    self._printout_forward(output)
+    self._printout_forward(output, fc = True)
 
   def change_batch_size(self, batch_size):
     Layer.change_batch_size(self, batch_size)
@@ -544,7 +551,6 @@ class SoftmaxLayer(Layer):
 
   def logreg_cost(self, label, output):
     maxid = arr.argmax(output, axis = 0)
-    self._printout_forward(maxid)
     self.batchCorrect = arr.sum(maxid == label)
     assert np.isscalar(self.batchCorrect)
     arr.logreg_cost_col(output, label, self.cost)
@@ -563,7 +569,7 @@ class SoftmaxLayer(Layer):
   def bprop(self, label, input, output, outGrad):
     outGrad.fill(0)
     arr.softmax_bprop(output, label, outGrad)
-    self._printout_backward((outGrad,))
+    self._printout_backward((outGrad,), fc = True)
     
   def get_correct(self):
     return  1.0 * self.batchCorrect / self.batch_size

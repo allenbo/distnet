@@ -1,12 +1,13 @@
 # Get backend
-backend_name = 'cudaconv'
+import os
+backend_name = os.environ.get('BACKEND', 'cudaconv')
 
 if backend_name == 'cudaconv':
   import cudaconv as cm_backend
-  from cudaconv import ConvDataLayout, FilterLayout, FCDataLayout, WeightLayout
+  from cudaconv import ConvDataLayout, FilterLayout, FCDataLayout, WeightLayout, backend_name
 else:
   import caffe as cm_backend
-  from caffe import ConvDataLayout, FilterLayout, FCDataLayout, WeightLayout
+  from caffe import ConvDataLayout, FilterLayout, FCDataLayout, WeightLayout, backend_name
 
 make_buffer = cm_backend.make_buffer
 device_init = cm_backend.init

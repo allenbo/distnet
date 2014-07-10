@@ -5,7 +5,7 @@ from distnet import argparse, layer, data
 from collections import deque
 from distnet.data import PARALLEL_READ
 from distnet.checkpoint import CheckpointDumper, DataDumper, MemoryDataHolder
-from distnet.layer import TRAIN, TEST
+from distnet.layer import TRAIN, TEST, backend_name
 from distnet.net import FastNet
 from distnet.parser import parse_config_file, load_model
 from distnet.scheduler import Scheduler
@@ -109,6 +109,7 @@ class Trainer:
     model['curr_epoch'] = self.curr_epoch
     model['train_dp'] = self.train_dp.dump()
     model['test_dp'] = self.test_dp.dump()
+    model['backend'] = backend_name
 
     log('---- save checkpoint ----')
     #self.print_net_summary()

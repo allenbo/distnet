@@ -196,7 +196,18 @@ def abs_mean(x):
     return (gpuarray.sum(x.__abs__()) / x.size).get().item()
   if isinstance(x, np.ndarray):
     return np.mean(np.abs(x))
-  
+
+def reshape_last(input):
+  shape = input.shape
+  row = int(np.prod(shape[:-1]))
+  col = shape[-1]
+  return input.reshape((row, col))
+
+def reshape_first(input):
+  shape = input.shape
+  row = shape[0]
+  col = int(np.prod(shape[1:]))
+  return input.reshape((row, col))
 
 class Assert(object):
   @staticmethod

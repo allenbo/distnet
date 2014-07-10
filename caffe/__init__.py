@@ -1,5 +1,6 @@
 from .caffe import *
 from distbase import cuda_base
+from distbase.util import reshape_first, reshape_last
 from pycuda import gpuarray, driver
 import numpy as np
 
@@ -9,11 +10,11 @@ class ConvDataLayout(object):
   HEIGHT = 2
   WIDTH = 3
   DIM = 4
-  
+
   @staticmethod
   def get_output_shape(image_y, image_x, channel, batch_size):
     return (batch_size, channel, image_y, image_x)
-  
+
 
 class FilterLayout(object):
   NUM = 0
@@ -44,7 +45,7 @@ class WeightLayout(object):
   def get_weight_shape(input, output):
     return (output, input)
 
-backend = 'caffe'
+backend_name = 'caffe'
 
 
 def get_output_shape_4D(image_y, image_x, channel, batch_size):
@@ -56,11 +57,11 @@ def init(device=-1):
   global CONTEXT
   if CONTEXT is not None:
     return
-  
+
   # MAGIC MAGIC
   from pycuda import driver
   driver.init()
-  
+
   if device == -1:
     from pycuda.tools import make_default_context
     CONTEXT = make_default_context()
@@ -68,8 +69,8 @@ def init(device=-1):
   else:
     device = driver.Device(device % driver.Device.count())
     CONTEXT = device.make_context()
-  
-  #print 'Starting up using device: %s:%s' % (device.name(), device.pci_bus_id()) 
+
+  #print 'Starting up using device: %s:%s' % (device.name(), device.pci_bus_id())
   import atexit
   atexit.register(CONTEXT.detach)
   return CONTEXT
@@ -78,7 +79,7 @@ def convFilterActs(input, weight, output, bias, image_y, output_y, output_x, pad
   batch_size = input.shape[0]
   image_x = input.shape[-1]
   filter_size = weight.shape[-1]
-  num_filter = weight.shape[0] 
+  num_filter = weight.shape[0]
 
   assert group == 1, 'Group has to be 1, now it\'s %d' % group
   col_buffer = gpuarray.zeros(shape = (weight.size / weight.shape[0], output_y * output_x), dtype = np.float32)
@@ -116,7 +117,7 @@ def convWeightActs(input, ingrad, weight_grad, bias_grad, image_y, output_y, out
   batch_size = input.shape[0]
   image_x = input.shape[-1]
   filter_size = weight_grad.shape[-1]
-  num_filter = weight_grad.shape[0] 
+  num_filter = weight_grad.shape[0]
 
   assert group == 1, 'Group has to be 1, now it\'s %d' % group
   col_buffer = gpuarray.zeros(shape = (weight_grad.size / weight_grad.shape[0], output_y * output_x), dtype = np.float32)
@@ -140,4 +141,16 @@ def convert_to_conv(input):
   return cuda_base.transpose(input)
 
 def convert_from_data(input, output):
-  cuda_base.transpose(input, dst = output) 
+  cuda_base.transpose(reshape_last(input), dst = reshape_first(output))
+
+def convert_from_backend(weight, backend):
+  if backend == backend_name:
+    return weight
+  if backend == 'cudaconv':
+    old_shape = list(weight.shape)
+    new_shape = old_shape[-1:] + old_shape[:-1]
+    new_weight = reshape_last(weight)
+    new_weight = new_weight.transpose().copy()
+    return new_weight.reshape(tuple(new_shape))
+
+  assert False, 'Not implemented'
