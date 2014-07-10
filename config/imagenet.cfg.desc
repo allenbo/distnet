@@ -1,0 +1,103 @@
+[def]
+conv_dist = disw_i
+fc_dist = sidw_f
+fc_share = sisw
+conv_groups = [4, 4, 4, 4]
+fc_groups = [16]
+
+#------------first layer--------------
+[conv1]
+group_state = !conv_dist
+workers_group = !conv_groups
+
+[neuron1]
+group_state = !conv_dist
+workers_group = !conv_groups
+
+[pool1]
+group_state = !conv_dist
+workers_group = !conv_groups
+
+[rnorm1]
+group_state = !conv_dist
+workers_group = !conv_groups
+
+#------------second layer--------------
+[conv2]
+group_state = !conv_dist
+workers_group = !conv_groups
+
+[neuron2]
+group_state = !conv_dist
+workers_group = !conv_groups
+
+[pool2]
+group_state = !conv_dist
+workers_group = !conv_groups
+
+[rnorm2]
+group_state = !conv_dist
+workers_group = !conv_groups
+
+#------------third layer--------------
+[conv3]
+group_state = !conv_dist
+workers_group = !conv_groups
+
+[neuron3]
+group_state = !conv_dist
+workers_group = !conv_groups
+
+
+#------------forth layer--------------
+[conv4]
+group_state = !conv_dist
+workers_group = !conv_groups
+
+
+[neuron4]
+group_state = !conv_dist
+workers_group = !conv_groups
+
+#------------fifth layer--------------
+[conv5]
+group_state = !conv_dist
+workers_group = !conv_groups
+
+[neuron5]
+group_state = !conv_dist
+workers_group = !conv_groups
+
+[pool5]
+group_state = !conv_dist
+workers_group = !conv_groups
+
+#------------sixth layer--------------
+[fc6]
+group_state = !fc_dist
+workers_group = !fc_groups
+
+[neuron6]
+group_state = !fc_dist
+workers_group = !fc_groups
+
+
+
+#------------seventh layer--------------
+[fc7]
+group_state = !fc_dist
+workers_group = !fc_groups
+
+[neuron7]
+group_state = !fc_dist
+workers_group = !fc_groups
+
+
+#------------eighth layer----------------
+[fc8]
+group_state = !fc_share
+workers_group = !fc_groups
+
+[softmax]
+group_state = !fc_share
+workers_group = !fc_groups

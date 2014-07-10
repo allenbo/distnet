@@ -21,7 +21,7 @@ else:
   garray.device_init()
   rank, num_gpu = 0, 1
   strategy, default_context = None, None
-  fake_layerdict = AttrDict(global_dist = False,
+  fake_layerdist = AttrDict(global_dist = False,
                             group_state = None,
                             group_size = None,
                             workers_group = [])

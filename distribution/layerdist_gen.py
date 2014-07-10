@@ -16,7 +16,7 @@ if __name__ == '__main__':
 
   model_path = args.model_path
   desc_path = args.desc_path
-  strategy_path = model_path + 'layerdist'
+  strategy_path = model_path + '.layerdist'
   model = parse_config_file(model_path)
   desc = parse_config_file(desc_path)
   assert len(model) == len(desc)
