@@ -79,7 +79,7 @@ def fcbackward(input, weight, grad, out_grad, weight_grad, bias_grad, prev_conv)
   matrixmult(transpose(weight), grad, dest = out_grad)
   
   if prev_conv:
-    copy_to(convert_to_conv(reshape_last(out_grad)), out_grad)
+    copy_to(convert_to_conv(out_grad), out_grad)
     real_input = convert_to_fc(input)
   else:
     real_input = input

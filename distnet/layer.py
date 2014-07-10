@@ -12,12 +12,12 @@ from garray import ConvDataLayout, FilterLayout, FCDataLayout, WeightLayout, bac
 from multigpu import allocate, arr, uniformed_array, multi_gpu, get_layerdist, build_context, random_uniform
 from distbase import state
 
-PFout = True
+PFout = False
 PBout = False
 TEST = 0
 TRAIN = 1
 STOPITER = 1
-OUTINDEX = [6]
+OUTINDEX = [5]
 
 def col_rand(shape, dtype):
   return np.require(np.random.rand(*shape), dtype=dtype, requirements='C')
@@ -468,7 +468,6 @@ class FCLayer(WeightedLayer):
 
     bias_shape = (self.outputSize, 1)
     self._init_weights(weight_shape, bias_shape)
-    
 
   def get_input_size(self):
     return self.inputSize
@@ -513,7 +512,7 @@ class FCLayer(WeightedLayer):
     arr.fcbackward(input, self.weight.wt, grad, outGrad, self.weight.grad, self.bias.grad, self.prev_conv)
 
     #self._printout_backward((self.bias.grad, self.weight.grad, outGrad))
-    self._printout_backward((outGrad, ), fc = True)
+    self._printout_backward((self.weight.grad, ), fc = True)
    
 class SoftmaxLayer(Layer):
   def __init__(self, name, disable_bprop=False):

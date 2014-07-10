@@ -138,7 +138,10 @@ def convert_to_fc(input):
   return rst
 
 def convert_to_conv(input):
-  return cuda_base.transpose(input)
+  shape = reshape_first(input).shape
+  real_shape = tuple(shape[::-1])
+  real_input = input.reshape(real_shape)
+  return cuda_base.transpose(real_input)
 
 def convert_from_data(input, output):
   cuda_base.transpose(reshape_last(input), dst = reshape_first(output))
