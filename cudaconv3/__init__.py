@@ -1,5 +1,5 @@
-from .cudaconv2 import *
-import cudaconv2
+from .cudaconv3 import *
+import cudaconv3
 from distbase.util import reshape_first, reshape_last
 
 
@@ -44,7 +44,7 @@ class WeightLayout(object):
   def get_weight_shape(input, output):
     return (output, input)
 
-backend_name = 'cudaconv2'
+backend_name = 'cudaconv3'
 
 CONTEXT = None
 def init(device=-1):
@@ -71,7 +71,7 @@ def init(device=-1):
 
 def convFilterActs(input, weight, output, bias, image_y, output_y, output_x, padding, stride, color, group):
   from distbase import cuda_base
-  cudaconv2.convFilterActs(input, weight, output, image_y, output_y, output_x, padding, stride,
+  cudaconv3.convFilterActs(input, weight, output, image_y, output_y, output_x, padding, stride,
       color, group)
   batch_size = output.shape[ConvDataLayout.BATCH]
   channel = output.shape[ConvDataLayout.CHANNEL]
@@ -80,11 +80,11 @@ def convFilterActs(input, weight, output, bias, image_y, output_y, output_x, pad
   cuda_base.add_vec_to_rows(output.reshape((channel, output_y * output_x * batch_size)), bias)
 
 def convWeightActs(input, ingrad, weight_grad, bias_grad, image_y, output_y, output_x, filter_size, padding, stride, color, group, partial_sum):
-  cudaconv2.convWeightActs(input, ingrad, weight_grad, image_y, output_y, output_x, filter_size, padding, stride, color, group, partial_sum)
+  cudaconv3.convWeightActs(input, ingrad, weight_grad, image_y, output_y, output_x, filter_size, padding, stride, color, group, partial_sum)
   batch_size = ingrad.shape[ConvDataLayout.BATCH]
   channel = ingrad.shape[ConvDataLayout.CHANNEL]
 
-  cudaconv2.sum(ingrad.reshape((channel, output_y * output_x * batch_size)), 1, bias_grad)
+  cudaconv3.sum(ingrad.reshape((channel, output_y * output_x * batch_size)), 1, bias_grad)
 
 def convert_to_fc(input):
   return input
