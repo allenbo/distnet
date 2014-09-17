@@ -138,13 +138,6 @@ class FastNet(object):
 
     self.print_learning_rates()
 
-  def set_learning_rate(self, eps_w, eps_b):
-    for layer in self.layers:
-      if isinstance(layer, WeightedLayer):
-        layer.weight.epsilon = eps_w
-        layer.bias.epsilon = eps_w
-    self.print_learning_rates()
-
   def print_learning_rates(self):
     util.log('Learning rates:')
     for layer in self.layers:
