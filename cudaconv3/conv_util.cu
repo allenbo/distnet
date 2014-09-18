@@ -2275,8 +2275,8 @@ void convLocalAvgUndo(NVMatrix& avgGrads, NVMatrix& target,
     getLastCudaError("convLocalAvgUndo: kernel execution failed");
 }
 
-void convResponseNorm(NVMatrix& images, NVMatrix& denoms, NVMatrix& target, int numFilters, int sizeX, int imageY, float addScale, float powScale, float minDiv) {
-    convContrastNorm(images, images, denoms, target, numFilters, sizeX, imageY, addScale, powScale, minDiv);
+void convResponseNorm(NVMatrix& images, NVMatrix& denoms, NVMatrix& target, int numFilters, int sizeX, int imageY, float addScale, float powScale) {
+    convContrastNorm(images, images, denoms, target, numFilters, sizeX, imageY, addScale, powScale);
 }
 
 /*
@@ -2285,7 +2285,8 @@ void convResponseNorm(NVMatrix& images, NVMatrix& denoms, NVMatrix& target, int 
  * denoms:      (numFilters, imgPixels, numImages) (out)
  * target:      (numFilters, imgPixels, numImages) (out)
  */
-void convContrastNorm(NVMatrix& images, NVMatrix& meanDiffs, NVMatrix& denoms, NVMatrix& target, int numFilters, int sizeX, int imageY, float addScale, float powScale, float minDiv) {
+void convContrastNorm(NVMatrix& images, NVMatrix& meanDiffs, NVMatrix& denoms, NVMatrix& target, int numFilters, int sizeX, int imageY, float addScale, float powScale) {
+    float minDiv = 2;
     int numImages = images.getNumCols();
     int imgPixels = images.getNumRows() / numFilters;
     assert(images.getNumRows() == numFilters * imgPixels);
@@ -2832,7 +2833,8 @@ void convCrop(NVMatrix& imgs, NVMatrix& target, int imgSize, int tgtSize, int st
  * just response normalization.
  */
 void convContrastNormCrossMap(NVMatrix& images, NVMatrix& meanDiffs, NVMatrix& target,
-                             int numFilters, int sizeF, int imageY, float addScale, float powScale, float minDiv, bool blocked) {
+                             int numFilters, int sizeF, int imageY, float addScale, float powScale, bool blocked) {
+    float minDiv = 2;
     int numImages = images.getNumCols();
     int imgPixels = images.getNumRows() / numFilters;
     assert(images.getNumRows() == numFilters * imgPixels);
@@ -2893,7 +2895,8 @@ void convContrastNormCrossMap(NVMatrix& images, NVMatrix& meanDiffs, NVMatrix& t
  * THIS WILL OVERWRITE THE ACTS MATRIX.
  */
 void convResponseNormCrossMapUndo(NVMatrix& outGrads, NVMatrix& inputs, NVMatrix& acts, NVMatrix& target, int numFilters,
-                         int sizeF, int imageY, float addScale, float powScale, float minDiv, bool blocked, float scaleTargets, float scaleOutput) {
+                         int sizeF, int imageY, float addScale, float powScale, bool blocked, float scaleTargets, float scaleOutput) {
+    float minDiv = 2;
     int numImages = outGrads.getNumCols();
     int imgPixels = outGrads.getNumRows() / numFilters;
 
@@ -2975,8 +2978,8 @@ void convResponseNormCrossMapUndo(NVMatrix& outGrads, NVMatrix& inputs, NVMatrix
     getLastCudaError("convResponseNormCrossMapUndo: kernel execution failed");
 }
 
-void convResponseNormCrossMap(NVMatrix& images, NVMatrix& target, int numFilters, int sizeF, int imageY, float addScale, float powScale, float minDiv, bool blocked) {
-    convContrastNormCrossMap(images, images, target, numFilters, sizeF, imageY, addScale, powScale, minDiv, blocked);
+void convResponseNormCrossMap(NVMatrix& images, NVMatrix& target, int numFilters, int sizeF, int imageY, float addScale, float powScale, bool blocked) {
+    convContrastNormCrossMap(images, images, target, numFilters, sizeF, imageY, addScale, powScale, blocked);
 }
 
 /*
@@ -2984,9 +2987,7 @@ void convResponseNormCrossMap(NVMatrix& images, NVMatrix& target, int numFilters
  * denoms:      (numFilters, imgPixels, numImages) (out)
  * target:      (numFilters, imgPixels, numImages) (out)
  */
-void convResponseNormCrossMap(NVMatrix& images, NVMatrix& target, int numFilters, int sizeF, int imageY, float addScale, float powScale, bool blocked) {
-    convContrastNormCrossMap(images, images, target, numFilters, sizeF, imageY, addScale, powScale, 1, blocked);
-}
+
 void convLocalMaxPool(NVMatrix& images, NVMatrix& target, int numFilters,
                    int subsX, int startX, int strideX, int imageY, int outputsY, int outputsX) {
   convLocalPool(images, target, numFilters, subsX, startX, strideX, imageY, outputsY, outputsX, MaxPooler());

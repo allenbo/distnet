@@ -44,10 +44,10 @@ void convLocalAvgUndo(NVMatrix& avgGrads, NVMatrix& target,
                       int subsX, int startX, int strideX, int outputsY, int outputsX, int imageY, int imageX,
                       float scaleTargets, float scaleOutput);
 
-void convResponseNorm(NVMatrix& images, NVMatrix& denoms, NVMatrix& target, int numFilters, int sizeX, int imageY, float addScale, float powScale, float minDiv);
+void convResponseNorm(NVMatrix& images, NVMatrix& denoms, NVMatrix& target, int numFilters, int sizeX, int imageY, float addScale, float powScale);
 void convResponseNormUndo(NVMatrix& outGrads, NVMatrix& denoms, NVMatrix& inputs, NVMatrix& acts, NVMatrix& target, int numFilters,
                          int sizeX, int imageY, float addScale, float powScale, float scaleTargets, float scaleOutput);
-void convContrastNorm(NVMatrix& images, NVMatrix& meanDiffs, NVMatrix& denoms, NVMatrix& target, int numFilters, int sizeX, int imageY, float addScale, float powScale, float minDiv);
+void convContrastNorm(NVMatrix& images, NVMatrix& meanDiffs, NVMatrix& denoms, NVMatrix& target, int numFilters, int sizeX, int imageY, float addScale, float powScale);
 void convContrastNormUndo(NVMatrix& outGrads, NVMatrix& denoms, NVMatrix& meanDiffs, NVMatrix& acts, NVMatrix& target, int numFilters,
                          int sizeX, int imageY, float addScale, float powScale, float scaleTargets, float scaleOutput);
 
@@ -64,13 +64,11 @@ void convRGBToLAB(NVMatrix& images, NVMatrix& target, bool center);
 void convCrop(NVMatrix& imgs, NVMatrix& target, int imgSize, int tgtSize, int startY, int startX);
 void normalizeLocalWeights(NVMatrix& weights, int numModules, float norm);
 void convContrastNormCrossMap(NVMatrix& images, NVMatrix& meanDiffs, NVMatrix& target,
-                             int numFilters, int sizeF, int imageY, float addScale, float powScale, float minDiv, bool blocked);
+                             int numFilters, int sizeF, int imageY, float addScale, float powScale, bool blocked);
 void convResponseNormCrossMapUndo(NVMatrix& outGrads, NVMatrix& inputs, NVMatrix& acts, NVMatrix& target, int numFilters,
-                         int sizeF, int imageY, float addScale, float powScale, float minDiv, bool blocked, float scaleTargets, float scaleOutput);
+                         int sizeF, int imageY, float addScale, float powScale, bool blocked, float scaleTargets, float scaleOutput);
 void convResponseNormCrossMap(NVMatrix& images, NVMatrix& target, int numFilters, int sizeF, int imageY, float addScale,
                               float powScale, bool blocked);
-void convResponseNormCrossMap(NVMatrix& images, NVMatrix& target, int numFilters, int sizeF, int imageY, float addScale,
-                              float powScale, float minDiv, bool blocked);
 void convReflectHorizontal(NVMatrix& images, NVMatrix& targets, int imgSize);
 
 void convCrossMapMaxPoolUndo(NVMatrix& images, NVMatrix& maxGrads, NVMatrix& maxActs, NVMatrix& target,
