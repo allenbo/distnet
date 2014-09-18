@@ -1,4 +1,4 @@
-%module cudaconv2
+%module cudaconv3
 %{
 #include "cudaconv2.cuh"
 #include "conv_util.cuh"
@@ -59,45 +59,35 @@
 
 %include "cudaconv2.cuh"
 %include "nvmatrix.cuh"
-/*
+
 void sum(NVMatrix& src, int axis, NVMatrix& target);
 void addVector(NVMatrix& target, NVMatrix& vec);
+
 void convLocalMaxPool(NVMatrix& images, NVMatrix& target, int numFilters,
                    int subsX, int startX, int strideX, int imageY, int outputsY, int outputsX);
 void convLocalAvgPool(NVMatrix& images, NVMatrix& target, int numFilters,
-                   int subsX, int startX, int strideX, int imageY, int outputsY, int PoutputsX);
+                   int subsX, int startX, int strideX, int imageY, int outputsY, int outputsX);
+
 void convLocalMaxUndo(NVMatrix& images, NVMatrix& maxGrads, NVMatrix& maxActs, NVMatrix& target,
                       int subsX, int startX, int strideX, int outputsY, int outputsX, int imageY);
 void convLocalMaxUndo(NVMatrix& images, NVMatrix& maxGrads, NVMatrix& maxActs, NVMatrix& target,
                       int subsX, int startX, int strideX, int outputsY, int outputsX, int imageY, float scaleTargets, float scaleOutput);
+
 void convLocalAvgUndo(NVMatrix& avgGrads, NVMatrix& target,
                       int subsX, int startX, int strideX, int outputsY, int outputsX, int imageY, int imageX);
+
 void convLocalAvgUndo(NVMatrix& avgGrads, NVMatrix& target,
                       int subsX, int startX, int strideX, int outputsY, int outputsX, int imageY, int imageX,
                       float scaleTargets, float scaleOutput);
 
-void convResponseNorm(NVMatrix& images, NVMatrix& denoms, NVMatrix& target, int numFilters, int sizeX, int imageY, float addScale, float powScale);
+void convResponseNorm(NVMatrix& images, NVMatrix& denoms, NVMatrix& target, int numFilters, int sizeX, int imageY, float addScale, float powScale, float minDiv);
 void convResponseNormUndo(NVMatrix& outGrads, NVMatrix& denoms, NVMatrix& inputs, NVMatrix& acts, NVMatrix& target, int numFilters,
                          int sizeX, int imageY, float addScale, float powScale, float scaleTargets, float scaleOutput);
-void convResponseNormCrossMapUndo(NVMatrix& outGrads, NVMatrix& denoms, NVMatrix& inputs, NVMatrix& acts, NVMatrix& target, int numFilters,
-                         int sizeF, int imageY, float addScale, float powScale, bool blocked, float scaleTargets, float scaleOutput);
-void convResponseNormCrossMap(NVMatrix& images, NVMatrix& denoms, NVMatrix& target, int numFilters, int sizeF, int imageY, float addScale,
-                              float powScale, bool blocked);
-void convGaussianBlur(NVMatrix& images, NVMatrix& filter, NVMatrix& target, bool horiz, int numChannels,
-                      float scaleTargets, float scaleOutputs);
-void convBedOfNails(NVMatrix& images, NVMatrix& target, int numChannels, int imgSize, int startX,
-                    int strideX, float scaleTargets, float scaleOutput);
-void convBedOfNailsUndo(NVMatrix& actsGrad, NVMatrix& target, int numChannels, int imgSize,
-                        int startX, int strideX, float scaleTargets, float scaleOutput);
 
-void convResizeBilinear(NVMatrix& images, NVMatrix& target, int imgSize, int tgtSize, float scale);
-void convRGBToYUV(NVMatrix& images, NVMatrix& target);
-void convRGBToLAB(NVMatrix& images, NVMatrix& target, bool center);
-void convCrop(NVMatrix& imgs, NVMatrix& target, int imgSize, int tgtSize, int startY, int startX);
-void normalizeLocalWeights(NVMatrix& weights, int numModules, float norm);
-void convTICAGrad(NVMatrix& images, NVMatrix& ticas, NVMatrix& target, int numFilters, int sizeX, float scaleTarget, float scaleOutput);
-void convTICA(NVMatrix& images, NVMatrix& target, int numFilters, int sizeX, float scaleTarget, float scaleOutput);
-*/
+void convResponseNormCrossMap(NVMatrix& images, NVMatrix& target, int numFilters, int sizeF, int imageY, float addScale,
+                              float powScale, float minDiv, bool blocked);
+void convResponseNormCrossMapUndo(NVMatrix& outGrads, NVMatrix& inputs, NVMatrix& acts, NVMatrix& target, int numFilters,
+                         int sizeF, int imageY, float addScale, float powScale, float minDiv, bool blocked, float scaleTargets, float scaleOutput);
 
 %inline %{
 PyObject* make_buffer(long offset, long size) {

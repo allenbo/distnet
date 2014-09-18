@@ -1858,7 +1858,7 @@ __global__ void kLocalAvgUndo(float* avgGrads, float* target, const int imageY, 
   const int imgPixels = imageX * imageY;
 
   const int startOutputY = blockPxY - startX < subsX ? 0 : 1 + (blockPxY - startX - subsX) / strideX;
-  const int endOutputY = MIN(outputsX, 1 + (blockPxY - startX) / strideX);
+  const int endOutputY = MIN(outputsY, 1 + (blockPxY - startX) / strideX);
   const int startOutputX = blockPxX - startX < subsX ? 0 : 1 + (blockPxX - startX - subsX) / strideX;
   const int endOutputX = MIN(outputsX, 1 + (blockPxX - startX) / strideX);
 
