@@ -11,16 +11,20 @@ from garray import ConvDataLayout
 from distbase import util
 
 
-test_id = 'imagenet-simple-0.1'
+test_id = 'imagenet-simple'
 
-checkpoint_dir = '/ssd/justin/checkpoints/'
+#checkpoint_dir = '/ssd/justin/checkpoints/'
+checkpoint_dir = './checkpoints/'
 param_file = './config/imagenet.cfg'
 output_dir = ''
 output_method = 'disk'
 
-data_dir = '/ssd/nn-data/imagenet/'
-train_range = range(101, 1301) #1,2,3,....,40
-test_range = range(1, 101) #41, 42, ..., 48
+#data_dir = '/ssd/nn-data/imagenet/'
+#train_range = range(101, 1301) #1,2,3,....,40
+#test_range = range(1, 101) #41, 42, ..., 48
+data_dir = '/ssd/justin/part-imagenet-category/'
+train_range = range(11, 100) #1,2,3,....,40
+test_range = range(1, 10) #41, 42, ..., 48
 data_provider = 'imagenet'
 
 

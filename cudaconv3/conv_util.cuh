@@ -65,9 +65,9 @@ void convCrop(NVMatrix& imgs, NVMatrix& target, int imgSize, int tgtSize, int st
 void normalizeLocalWeights(NVMatrix& weights, int numModules, float norm);
 void convContrastNormCrossMap(NVMatrix& images, NVMatrix& meanDiffs, NVMatrix& target,
                              int numFilters, int sizeF, int imageY, float addScale, float powScale, bool blocked);
-void convResponseNormCrossMapUndo(NVMatrix& outGrads, NVMatrix& inputs, NVMatrix& acts, NVMatrix& target, int numFilters,
+void convResponseNormCrossMapUndo(NVMatrix& outGrads,NVMatrix& denoms, NVMatrix& inputs, NVMatrix& acts, NVMatrix& target, int numFilters,
                          int sizeF, int imageY, float addScale, float powScale, bool blocked, float scaleTargets, float scaleOutput);
-void convResponseNormCrossMap(NVMatrix& images, NVMatrix& target, int numFilters, int sizeF, int imageY, float addScale,
+void convResponseNormCrossMap(NVMatrix& images,NVMatrix& denoms, NVMatrix& target, int numFilters, int sizeF, int imageY, float addScale,
                               float powScale, bool blocked);
 void convReflectHorizontal(NVMatrix& images, NVMatrix& targets, int imgSize);
 

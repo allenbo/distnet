@@ -25,6 +25,7 @@ struct NVMatrix {
     _devData(gpuarray), _numRows(num_rows), _numCols(num_cols) {
       _stride = stride;
       _numElements = _numRows * _numCols;
+      _texObj = 0;
     }
 
   int getNumRows() const {
