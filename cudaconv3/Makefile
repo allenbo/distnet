@@ -4,7 +4,9 @@ OBJ = $(patsubst %.cu,%.o,${SRC})
 NVCC_OPTS := --pre-include undef.h
 CXX_FLAGS := --compiler-options='-fPIC -ggdb2'
 PYTHON_INCLUDE := $(shell python-config --includes)
-INCLUDES := ${PYTHON_INCLUDE} -I. -I./cutil
+#CUDA_SDK_INC := -I/usr/local/cuda/samples/common/inc
+CUDA_SDK_INC := -I/usr/local/cuda/samples/common/inc -I./cutil/
+INCLUDES := ${PYTHON_INCLUDE} -I. ${CUDA_SDK_INC}
 
 all: _cudaconv3.so
 
