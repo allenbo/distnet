@@ -2894,7 +2894,7 @@ void convContrastNormCrossMap(NVMatrix& images, NVMatrix& meanDiffs, NVMatrix& t
  *
  * THIS WILL OVERWRITE THE ACTS MATRIX.
  */
-void convResponseNormCrossMapUndo(NVMatrix& outGrads, NVMatrix& inputs, NVMatrix& acts, NVMatrix& target, int numFilters,
+void convResponseNormCrossMapUndo(NVMatrix& outGrads,NVMatrix& denoms, NVMatrix& inputs, NVMatrix& acts, NVMatrix& target, int numFilters,
                          int sizeF, int imageY, float addScale, float powScale, bool blocked, float scaleTargets, float scaleOutput) {
     float minDiv = 2;
     int numImages = outGrads.getNumCols();
@@ -2978,7 +2978,7 @@ void convResponseNormCrossMapUndo(NVMatrix& outGrads, NVMatrix& inputs, NVMatrix
     getLastCudaError("convResponseNormCrossMapUndo: kernel execution failed");
 }
 
-void convResponseNormCrossMap(NVMatrix& images, NVMatrix& target, int numFilters, int sizeF, int imageY, float addScale, float powScale, bool blocked) {
+void convResponseNormCrossMap(NVMatrix& images,NVMatrix& denoms, NVMatrix& target, int numFilters, int sizeF, int imageY, float addScale, float powScale, bool blocked) {
     convContrastNormCrossMap(images, images, target, numFilters, sizeF, imageY, addScale, powScale, blocked);
 }
 
