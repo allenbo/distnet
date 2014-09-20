@@ -76,6 +76,7 @@ struct NVMatrix {
 
 
   static cudaStream_t getDefaultStream() {
+    return 0;
     return getDefaultStream(getDeviceID());
   }
 

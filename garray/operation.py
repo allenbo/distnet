@@ -19,7 +19,7 @@ def bconvolution(*args):
 
 @sync_function
 def wconvolution(*args):
-  args = args + (1, 0)
+  args = args + (1, 1000 if cm_backend.backend_name == 'cudaconv3' else 0)
   cm_backend.convWeightActs(*args)
 
 # PoolLayer

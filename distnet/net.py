@@ -98,7 +98,7 @@ class FastNet(object):
   def fprop(self, data, train=TRAIN):
     assert len(self.layers) > 0, 'No outputs: uninitialized network!'
     input = data
-    for layer in self.layers:
+    for i, layer in enumerate(self.layers):
       self._monitor.set_name(layer.name)
       _ = time.time()
       layer.prev_fprop()
