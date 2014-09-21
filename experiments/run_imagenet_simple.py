@@ -15,7 +15,7 @@ test_id = 'imagenet-simple'
 
 checkpoint_dir = '/ssd/checkpoint/'
 #checkpoint_dir = '/proj/FastNet/checkpoint/'
-param_file = './config/imagenet.cfg'
+param_file = './config/imagenet_eps.cfg'
 output_dir = ''
 output_method = 'disk'
 
@@ -39,16 +39,14 @@ model = checkpoint_dumper.get_checkpoint()
 if model is None:
   model = parser.parse_config_file(param_file)
 
-save_freq = 100
-test_freq = 100
+save_freq = 10
+test_freq = 10
 adjust_freq = 100
-factor = 1
-num_epoch = 30
+num_epochs = 4
 image_color = 3
 image_shape = ConvDataLayout.get_output_shape(image_size, image_size, image_color, batch_size)
 net = parser.load_model(net.FastNet(image_shape), model)
-
 param_dict = globals()
 t = trainer.Trainer(**param_dict)
 
-t.train(num_epoch)
+t.train()

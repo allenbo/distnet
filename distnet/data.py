@@ -277,8 +277,6 @@ class ImageNetDataProvider(DataProvider):
       for batch in self.label_batches:
         if len(batch) == self.batch_size:
           self.batches.append(batch[rank * image_batch_size: (rank + 1) * image_batch_size].copy())
-    for batch in self.batches:
-      assert len(batch) == self.batch_size / num_gpu
 
   def dump(self):
     dp = DataProvider.dump(self)
@@ -426,6 +424,10 @@ class ParallelDataProvider(DataProvider):
       return self.dp.batch_size
     else:
       return 0
+
+  @property
+  def batch_num(self):
+    return self.dp.get_batch_num()
 
   @property
   def num_view(self):

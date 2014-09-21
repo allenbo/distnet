@@ -1,4 +1,5 @@
 from distnet import net
+from distnet.lr import LearningRate
 from distnet.layer import ConvLayer, MaxPoolLayer, AvgPoolLayer, \
   CrossMapResponseNormLayer, SoftmaxLayer, NeuronLayer, ResponseNormLayer, FCLayer, \
   DataLayer
@@ -75,10 +76,8 @@ class FastNetBuilder(Builder):
     stride = Builder.set_val(ld, 'stride')
     initW = Builder.set_val(ld, 'initW', 0.01)
     initB = Builder.set_val(ld, 'initB', 0.00)
-    epsW = Builder.set_val(ld, 'epsW', 0.001)
-    epsB = Builder.set_val(ld, 'epsB', 0.002)
-    if epsB == 0:
-      epsB = 0.002
+    epsW = LearningRate.build_learning_rate(Builder.set_val(ld, 'epsW', 0.001))
+    epsB = LearningRate.build_learning_rate(Builder.set_val(ld, 'epsB', 0.002))
     momW = Builder.set_val(ld, 'momW', 0.0)
     momB = Builder.set_val(ld, 'momB', 0.0)
     sharedBiases = Builder.set_val(ld, 'sharedBiases', default = 1)
@@ -148,10 +147,8 @@ class FastNetBuilder(Builder):
 
 
   def fc_layer(self, ld):
-    epsB = Builder.set_val(ld, 'epsB', 0.002)
-    if epsB == 0:
-      epsB = 0.002
-    epsW = Builder.set_val(ld ,'epsW', 0.001)
+    epsB = LearningRate.build_learning_rate(Builder.set_val(ld, 'epsB', 0.002))
+    epsW = LearningRate.build_learning_rate(Builder.set_val(ld ,'epsW', 0.001))
     initB = Builder.set_val(ld, 'initB', 0.00)
     initW = Builder.set_val(ld, 'initW', 0.01)
     momB = Builder.set_val(ld, 'momB', 0.0)
@@ -183,8 +180,8 @@ class CudaconvNetBuilder(FastNetBuilder):
     initW = ld['initW']
     initB = ld.get('initB', 0.0)
     name = ld['name']
-    epsW = ld['epsW']
-    epsB = ld['epsB']
+    epsW = LearningRate.build_learning_rate(ld['epsW'])
+    epsB = LearningRate.build_learning_rate(ld['epsB'])
 
     momW = ld['momW']
     momB = ld['momB']
@@ -224,8 +221,8 @@ class CudaconvNetBuilder(FastNetBuilder):
 
 
   def fc_layer(self, ld):
-    epsB = ld['epsB']
-    epsW = ld['epsW']
+    epsB = LearningRate.build_learning_rate(ld['epsB'])
+    epsW = LearningRate.build_learning_rate(ld['epsW'])
     initB = ld.get('initB', 0.0)
     initW = ld['initW']
     momB = ld['momB']

@@ -76,9 +76,9 @@ class Weight(object):
       Assert.eq(self._wt.shape, self.shape)
     return self._wt
 
-  def update(self, batch_size):
+  def update(self, stat):
     return update(self.wt, self.grad, self.incr,
-                  self.epsilon, self.momentum, self.decay, batch_size)
+                  self.epsilon.get_value(stat), self.momentum, self.decay, stat.batch_size)
 
   def __repr__(self):
     return 'Weight(eps=%s mom=%s decay=%s)' % (self.epsilon, self.momentum, self.decay)
@@ -101,13 +101,13 @@ class WeightManager(object):
     w.name = name
     w.shape = None
     w.decay = np.float32(decay)
-    w.epsilon = np.float32(epsilon)
+    w.epsilon = epsilon
     w.momentum = np.float32(momentum)
     w._grad = w._wt = w._incr = None
     self._weights.append(w)
     return w
 
-  def update(self, batch_size):
+  def update(self, stat):
     for w in self._weights:
-      update(w, batch_size)
+      update(w, stat)
 WEIGHTS = WeightManager()

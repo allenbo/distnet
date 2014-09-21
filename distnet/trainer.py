@@ -7,6 +7,7 @@ from distnet.data import PARALLEL_READ
 from distnet.checkpoint import CheckpointDumper, DataDumper, MemoryDataHolder
 from distnet.layer import TRAIN, TEST, backend_name
 from distnet.net import FastNet
+from distnet.lr import Stat
 from distnet.parser import parse_config_file, load_model
 from distnet.scheduler import Scheduler
 from distnet.multigpu import init_strategy
@@ -49,43 +50,40 @@ def cache_outputs(net, dp, dumper, layer_name = 'pool5', index = -1):
 
 # Trainer should take: (training dp, test dp, distnet, checkpoint dir)
 class Trainer:
-  def __init__(self, checkpoint_dumper, train_dp, test_dp, batch_size, net=None, **kw):
+  def __init__(self, checkpoint_dumper, train_dp, test_dp, batch_size, num_epochs, net=None, **kw):
     self.checkpoint_dumper = checkpoint_dumper
     self.train_dp = train_dp
     self.test_dp = test_dp
     self.batch_size = batch_size
+    self.num_epochs = num_epochs
     self.net = net
-    self.annealing_factor = 10
     self.multiview = False
     self.start_time = time.time()
     self.train_outputs = []
     self.test_outputs = []
-    self.curr_batch = 0
-    self.curr_epoch = 0
     self.base_time = 0
 
     for k, v in kw.iteritems():
       setattr(self, k, v)
     init_strategy(dist_file = self.param_file + '.layerdist')
 
+    # recover from checkpoint
     checkpoint = self.checkpoint_dumper.get_checkpoint()
     if checkpoint and len(checkpoint['train_outputs']) != 0:
-      try:
-        self.train_outputs = checkpoint['train_outputs']
-        self.test_outputs = checkpoint['test_outputs']
-        self.base_time = self.train_outputs[-1][-1]
-        try:
-          self.curr_batch = checkpoint['curr_batch']
-          self.curr_epoch = checkpoint['curr_epoch']
-          self.train_dp.recover_from_dp(checkpoint['train_dp'])
-          self.test_dp.recover_from_dp(checkpoint['test_dp'])
-        except KeyError, e:
-          util.log_debug('Can\'t recover curr_bacth, curr_epoch and data provider from checkpoint')
-      except Exception, e:
-        util.log_debug('Can\'t recover train and test outputs from checkpoint')
-        self.train_outputs = []
-        self.test_outputs = []
+      self.train_outputs = checkpoint['train_outputs']
+      self.test_outputs = checkpoint['test_outputs']
+      self.base_time = self.train_outputs[-1][-1]
 
+      self.train_dp.recover_from_dp(checkpoint['train_dp'])
+      self.test_dp.recover_from_dp(checkpoint['test_dp'])
+
+      self.num_epochs = checkpoint.get('num_epochs', num_epochs)
+      self.stat = checkpoint.get('stat', None)
+
+    if not hasattr(self, 'stat') or self.stat is None:
+      total_batch = self.num_epochs * (self.train_dp.batch_size  / self.batch_size) * self.train_dp.batch_num
+      self.stat = Stat(self.num_epochs, total_batch, 0, 0, self.batch_size)
+    print self.stat
     self._finish_init()
 
   def _finish_init(self):
@@ -95,25 +93,20 @@ class Trainer:
     self.train_dp.reset()
     self.test_dp.reset()
 
-
-  def annealing(self):
-    self.net.adjust_learning_rate( 1.0 / self.annealing_factor)
-    self.net.print_learning_rates()
-
   def save_checkpoint(self):
     model = {}
     model['layers'] = self.net.get_dumped_layers()
     model['train_outputs'] = self.train_outputs
     model['test_outputs'] = self.test_outputs
-    model['curr_batch'] = self.curr_batch
-    model['curr_epoch'] = self.curr_epoch
+    model['num_epochs'] = self.num_epochs
+    model['stat'] = self.stat
     model['train_dp'] = self.train_dp.dump()
     model['test_dp'] = self.test_dp.dump()
     model['backend'] = backend_name
 
     log('---- save checkpoint ----')
     #self.print_net_summary()
-    self.checkpoint_dumper.dump(checkpoint=model, suffix=self.curr_epoch)
+    self.checkpoint_dumper.dump(checkpoint=model, suffix=self.stat.curr_epoch)
 
 
   def elapsed(self):
@@ -129,7 +122,7 @@ class Trainer:
       self.net.test_batch_multiview(input, label, num_view)
       cost , correct, numCase = self.net.get_batch_information_multiview(num_view)
     else:
-      self.net.train_batch(input, label, TEST)
+      self.net.train_batch(input, label, self.stat, TEST)
       cost , correct, numCase, = self.net.get_batch_information()
 
     self.test_outputs += [({'logprob': [cost, 1 - correct]}, numCase, self.elapsed())]
@@ -144,10 +137,10 @@ class Trainer:
       log("Layer '%s' bias: %e [%e] @ [%e]", name, values[2], values[3],values[5])
 
   def check_test_data(self):
-    return self.curr_batch % self.test_freq == 0
+    return self.stat.curr_batch % self.test_freq == 0
 
   def check_save_checkpoint(self):
-    return self.curr_batch % self.save_freq == 0
+    return self.stat.curr_batch % self.save_freq == 0
 
   def should_continue_training(self):
     return True
@@ -164,22 +157,22 @@ class Trainer:
     else:
       util.log('There is no dumper for test data')
 
-  def train(self, num_epochs=1000):
+  def train(self):
     #self.print_net_summary()
     util.log('Starting training...')
 
-    start_epoch = self.curr_epoch
+    start_epoch = self.stat.curr_epoch
     last_print_time = time.time()
 
     min_time = 12
-    while (self.curr_epoch - start_epoch <= num_epochs and self.should_continue_training()):
+    while (self.stat.curr_epoch - start_epoch <= self.num_epochs and self.should_continue_training()):
       #util.dump_profile()
       if PARALLEL_READ == True:
         batch_start = time.time()
       train_data = self.train_dp.get_next_batch(self.batch_size)
 
-      self.curr_epoch = train_data.epoch
-      self.curr_batch += 1
+      self.stat.curr_epoch = train_data.epoch
+      self.stat.curr_batch += 1
 
       input, label = train_data.data, train_data.labels
 
@@ -192,12 +185,12 @@ class Trainer:
       if PARALLEL_READ == False:
         batch_start = time.time()
 
-      self.net.train_batch(input, label)
+      self.net.train_batch(input, label, self.stat)
       cost, correct, numCase = self.net.get_batch_information()
       self.train_outputs += [({'logprob': [cost, 1 - correct]}, numCase, self.elapsed())]
 
       if time.time() - last_print_time > 1:
-        log('%d.%d: error: %f logreg: %f time: %f', self.curr_epoch, self.curr_batch, 1 - correct, cost, time.time() - batch_start)
+        log('%d.%d: error: %f logreg: %f time: %f', self.stat.curr_epoch, self.stat.curr_batch, 1 - correct, cost, time.time() - batch_start)
         MONITOR.report()
         self.net.batch_report()
         min_time = time.time() - batch_start
@@ -222,11 +215,11 @@ class Trainer:
       batch_size = self.batch_size
       test_data = self.test_dp.get_next_batch(batch_size)
 
-      self.curr_batch += 1
-      self.curr_epoch = test_data.epoch
+      self.stat.curr_batch += 1
+      self.stat.curr_epoch = test_data.epoch
       if start_epoch == -1:
-        start_epoch = self.curr_epoch
-      if start_epoch != self.curr_epoch:
+        start_epoch = self.stat.curr_epoch
+      if start_epoch != self.stat.curr_epoch:
         break
       input, label = test_data.data, test_data.labels
       self.net.train_batch(input, label, TEST)
@@ -234,7 +227,7 @@ class Trainer:
       total_cost += cost
       total_correct += correct * numCase
       total_case += numCase
-      log('current batch: %d, error rate: %f, overall error rate: %f', self.curr_batch, 1 - correct,
+      log('current batch: %d, error rate: %f, overall error rate: %f', self.stat.curr_batch, 1 - correct,
           1 - total_correct / total_case)
 
   def report(self):

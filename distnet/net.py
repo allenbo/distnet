@@ -122,11 +122,11 @@ class FastNet(object):
       grad = prev.output_grad
       self._monitor.add_comp(time.time() - _)
 
-  def update(self):
+  def update(self, stat):
     for layer in self.layers:
       self._monitor.set_name(layer.name)
       _ = time.time()
-      layer.update()
+      layer.update(stat)
       self._monitor.add_comp(time.time() - _)
 
   def adjust_learning_rate(self, factor=1.0):
@@ -197,8 +197,9 @@ class FastNet(object):
 
     return data, label
 
-  def train_batch(self, data, label, train=TRAIN):
+  def train_batch(self, data, label, stat, train=TRAIN):
     data, label = self.prepare_for_train(data, label)
+    stat.batch_size = self.batch_size
     prediction = self.fprop(data, train)
     cost, correct = self.get_cost(label, prediction)
     self.cost += cost
@@ -206,7 +207,7 @@ class FastNet(object):
 
     if train == TRAIN:
       self.bprop(label)
-      self.update()
+      self.update(stat)
     
     driver.Context.synchronize()
 

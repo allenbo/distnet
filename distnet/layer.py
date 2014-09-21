@@ -1,3 +1,4 @@
+from lr import ConstantLearningRate
 from distbase import util
 from distbase.monitor import MONITOR
 from distbase.util import divup
@@ -62,7 +63,7 @@ class Layer(object):
   def attach(self, prev):
     self.init_output()
 
-  def update(self):
+  def update(self, stat):
     pass
 
   def prev_fprop(self):
@@ -200,13 +201,13 @@ class WeightedLayer(Layer):
     self.clear_weight_incr()
     self.clear_bias_incr()
 
-  def update(self):
+  def update(self, stat):
     MONITOR.set_name(self.name)
     _ = time.time()
     if self.disable_bprop: return
 
-    self.weight.update(self.batch_size)
-    self.bias.update(self.batch_size)
+    self.weight.update(stat)
+    self.bias.update(stat)
     garray.driver.Context.synchronize()
 
     MONITOR.add_comp(time.time() - _)
@@ -242,7 +243,8 @@ class WeightedLayer(Layer):
 
 class ConvLayer(WeightedLayer):
   def __init__(self, name, num_filters, filter_shape, padding=2, stride=1, initW=None,
-               initB=None, partialSum=0, sharedBiases=0, epsW=0.001, epsB=0.002, momW=0.9, momB=0.9, wc=0.004,
+               initB=None, partialSum=0, sharedBiases=0, epsW=ConstantLearningRate(0.001),
+               epsB=ConstantLearningRate(0.002), momW=0.9, momB=0.9, wc=0.004,
                bias=None, weight=None, weightIncr=None, biasIncr=None, disable_bprop=False, neuron =
                None, backend = 'cudaconv'):
 
@@ -439,7 +441,7 @@ class CrossMapResponseNormLayer(ResponseNormLayer):
 class FCLayer(WeightedLayer):
   ''' When the backend is caffe, we have to transpose the input to make batch as the second
   dimension of matrix'''
-  def __init__(self, name, n_out, epsW=0.001, epsB=0.002, initW=None, initB=None,
+  def __init__(self, name, n_out, epsW=ConstantLearningRate(0.001), epsB=ConstantLearningRate(0.002), initW=None, initB=None,
       momW=0.9, momB=0.9, wc=0.004, dropRate=0.0, weight=None, bias=None, weightIncr=None,
       biasIncr=None, disable_bprop=False, neuron = None):
     self.outputSize = n_out
