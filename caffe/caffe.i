@@ -28,6 +28,9 @@
   $1 = new Blob(batch_size, channel, rows, cols, batch_size* channel* rows* cols, gpudata);
 }
 
+%typemap(freearg) Blob& {
+  delete ($1);
+}
 %typemap(in) float* {
   $1 = (float*)PyInt_AsLong($input);
 }

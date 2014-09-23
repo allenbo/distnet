@@ -13,18 +13,14 @@ from distbase import util
 
 test_id = 'imagenet-simple'
 
-#checkpoint_dir = '/ssd/justin/checkpoints/'
-checkpoint_dir = './checkpoints/'
-param_file = './config/imagenet.cfg'
+checkpoint_dir = '/ssd/justin/checkpoints/'
+param_file = './config/imagenet_eps.cfg'
 output_dir = ''
 output_method = 'disk'
 
-#data_dir = '/ssd/nn-data/imagenet/'
-#train_range = range(101, 1301) #1,2,3,....,40
-#test_range = range(1, 101) #41, 42, ..., 48
-data_dir = '/ssd/justin/part-imagenet-category/'
-train_range = range(11, 100) #1,2,3,....,40
-test_range = range(1, 10) #41, 42, ..., 48
+data_dir = '/ssd/justin/imagenet-category/'
+train_range = range(101, 1300) #1,2,3,....,40
+test_range = range(1, 100) #41, 42, ..., 48
 data_provider = 'imagenet'
 
 
@@ -41,7 +37,7 @@ if model is None:
 
 save_freq = 100
 test_freq = 100
-num_epoch = 30
+num_epochs = 90
 image_color = 3
 image_shape = ConvDataLayout.get_output_shape(image_size, image_size, image_color, batch_size)
 net = parser.load_model(net.FastNet(image_shape), model)
@@ -49,4 +45,4 @@ net = parser.load_model(net.FastNet(image_shape), model)
 param_dict = globals()
 t = trainer.Trainer(**param_dict)
 
-t.train(num_epoch)
+t.train()

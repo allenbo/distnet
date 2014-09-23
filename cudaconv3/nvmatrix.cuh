@@ -28,6 +28,13 @@ struct NVMatrix {
       _texObj = 0;
     }
 
+  ~NVMatrix() {
+    if (_texObj != 0) {
+      checkCudaErrors(cudaDestroyTextureObject(_texObj));
+      _texObj = 0;
+    }
+  }
+
   int getNumRows() const {
     return _numRows;
   }

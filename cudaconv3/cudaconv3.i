@@ -39,6 +39,10 @@
   $1 = new NVMatrix(gpudata, rows, cols, stride);
 }
 
+%typemap(freearg) NVMatrix& {
+  delete ($1);
+}
+
 %typemap(typecheck,precedence=SWIG_TYPECHECK_INTEGER) NVMatrix& {
   if (PyObject_HasAttrString($input, "shape") && PyObject_HasAttrString($input, "gpudata")) {
     $1 = 1;

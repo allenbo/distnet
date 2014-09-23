@@ -15,7 +15,7 @@ if find_executable('nvcc') is None:
   sys.exit(1)
 
 log('About to build cudaconv extension.')
-cmd = 'cd cudaconv && make PYTHON_INCLUDE="%s"' % sysconfig.get_python_inc()
+cmd = 'cd cudaconv && make'
 
 log(cmd)
 if os.system(cmd) != 0:
