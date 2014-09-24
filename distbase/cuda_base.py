@@ -1066,23 +1066,6 @@ def add_row_sum_to_vec(vec, mat, alpha=1.0, beta=1.0):
     gpu_partial_copy_to(mat, tmp, 0, mh, 0, 1)
 
   matrix_add(vec, tmp, alpha = alpha, beta = beta) 
-  # if mat.shape[1] <= INTERNAL_SIZE:
-  #  grid = (1, mh)
-  #  block = (mw, 1,  1)
-  #  leading = mat.strides[0] /4
-  #  _add_row_sum_to_vec_(mat, F(alpha), vec, F(beta),I(leading), I(mh), I(mw), block = block, grid= grid)
-  # else:
-  #  block = (INTERNAL_SIZE, 1, 1)
-  #  grid = (divup(mw, INTERNAL_SIZE), mh)
-  #  #tmp  = gpuarray.to_gpu(np.zeros((mh, divup(mw, INTERNAL_SIZE)) ).astype(np.float32))
-  #  tmp = gpuarray.zeros((mh, divup(mw, INTERNAL_SIZE)), dtype=np.float32)
-  #  #print 'TOGPU', tmp.shape
-
-  #  leading = mat.strides[0]/4
-  #  _add_row_sum_to_vec_(mat, F(alpha), tmp, F(beta), I(leading), I(mh),I(mw), block = block, grid = grid)
-  #  add_row_sum_to_vec(vec, tmp)
-  
-
 
 @util.timed_fn
 def add_col_sum_to_vec(vec, mat, alpha=1.0, beta=1.0):

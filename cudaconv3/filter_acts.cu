@@ -1242,7 +1242,7 @@ __global__ void filterActs_YxX_sparse2(float* images, float* filters, float* tar
     // Auto-generated calling code...
     // NOTE: The calling code is set up such that if checkImgBounds is true, then imgsPerThread = 1. 
     // In principle it doesn't have to be this way, and you may want to optimize for that case.
-
+  
     if (scale == false) {
         if (checkImgBounds == false) {
             if (numFilterColors % 8 == 0) {

@@ -15,7 +15,7 @@ test_id = 'imagenet-simple'
 
 checkpoint_dir = '/ssd/checkpoint/'
 #checkpoint_dir = '/proj/FastNet/checkpoint/'
-param_file = './config/imagenet_eps.cfg'
+param_file = './config/imagenet_cudaconv.cfg'
 output_dir = ''
 output_method = 'disk'
 
@@ -39,8 +39,8 @@ model = checkpoint_dumper.get_checkpoint()
 if model is None:
   model = parser.parse_config_file(param_file)
 
-save_freq = 10
-test_freq = 10
+save_freq = 100
+test_freq = 100
 adjust_freq = 100
 num_epochs = 4
 image_color = 3

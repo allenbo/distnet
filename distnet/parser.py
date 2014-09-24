@@ -82,6 +82,7 @@ class FastNetBuilder(Builder):
     momB = Builder.set_val(ld, 'momB', 0.0)
     sharedBiases = Builder.set_val(ld, 'sharedBiases', default = 1)
     partialSum = Builder.set_val(ld, 'partialSum', default = 0)
+    sumWidth = Builder.set_val(ld, 'sumWidth', default=100000)
     wc = Builder.set_val(ld, 'wc', 0.0)
     bias = Builder.set_val(ld, 'bias')
     weight = Builder.set_val(ld, 'weight')
@@ -91,7 +92,7 @@ class FastNetBuilder(Builder):
     neuron = Builder.set_val(ld, 'neuron')
     disable_bprop = Builder.set_val(ld, 'disable_bprop', default = False)
     cv = ConvLayer(name, numFilter, (filterSize, filterSize), padding, stride, initW, initB,
-        partialSum,sharedBiases, epsW, epsB, momW, momB, wc, bias, weight,
+        partialSum, sumWidth, sharedBiases, epsW, epsB, momW, momB, wc, bias, weight,
         weightIncr = weightIncr, biasIncr = biasIncr, disable_bprop = disable_bprop, neuron =
         neuron, backend = self.backend)
     return cv

@@ -88,6 +88,10 @@ class DataProvider(object):
     return len(self.batch_range)
 
   @property
+  def batch_num(self):
+    return self.get_batch_num()
+
+  @property
   def image_shape(self):
     return (3, self.inner_size, self.inner_size)
 

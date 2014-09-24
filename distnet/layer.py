@@ -243,7 +243,7 @@ class WeightedLayer(Layer):
 
 class ConvLayer(WeightedLayer):
   def __init__(self, name, num_filters, filter_shape, padding=2, stride=1, initW=None,
-               initB=None, partialSum=0, sharedBiases=0, epsW=ConstantLearningRate(0.001),
+               initB=None, partialSum=0, sumWidth=1000, sharedBiases=0, epsW=ConstantLearningRate(0.001),
                epsB=ConstantLearningRate(0.002), momW=0.9, momB=0.9, wc=0.004,
                bias=None, weight=None, weightIncr=None, biasIncr=None, disable_bprop=False, neuron =
                None, backend = 'cudaconv'):
@@ -255,6 +255,7 @@ class ConvLayer(WeightedLayer):
     self.stride = stride
 
     self.partialSum = partialSum
+    self.sumWidth = sumWidth
     self.sharedBiases = sharedBiases
 
     WeightedLayer.__init__(self, name, 'conv',
@@ -302,7 +303,8 @@ class ConvLayer(WeightedLayer):
       arr.relu_compute_grad(grad, output, grad, 0)
     # bprop weight
     arr.wconvolution(input, grad, self.weight.grad, self.bias.grad, self.img_size, self.outputSize,
-        self.outputSize, self.filterSize, -self.padding, self.stride, self.numColor)
+        self.outputSize, self.filterSize, -self.padding, self.stride, self.numColor,
+        self.partialSum, self.sumWidth)
 
     if self._prev_layer.type != 'data':
       # bprop to next layer
