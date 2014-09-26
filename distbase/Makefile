@@ -5,7 +5,7 @@ INCLUDE := ${PYTHON_INCLUDE} ${NUMPY_INCLUDE}
 all: _matrix.so
 
 _matrix.so: matrix.o matrix_wrap.o
-	g++ -shared -o $@ $^ -lpthread
+	g++ -shared -o $@ $^ -lpthread -ljpeg
 
 matrix_wrap.cpp: matrix.i Makefile
 	swig -python -threads -c++ -o $@ ${PYTHON_INCLUDE} $<
@@ -14,4 +14,4 @@ matrix_wrap.cpp: matrix.i Makefile
 	g++ -O3 -m64 -c -o $@ $< -fPIC ${INCLUDE}
 
 clean:
-	rm -f *.o *.so
+	rm -f *.o *.so matrix_wrap.cpp matrix.py*

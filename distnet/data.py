@@ -43,7 +43,6 @@ class LoadThread(threading.Thread):
     def __init__(self, filename):
         super(LoadThread, self).__init__()
         self.filename = filename
-        self.out = None
 
     def run(self):
         self.out = util.load(self.filename)
@@ -335,33 +334,53 @@ class ImageNetBatchDataProvider(DataProvider):
         else:
             matrix.trim_images(images, target, self.img_size, self.border_size)
 
+    def __decode_trim_images(self, images, target):
+        matrix.decode_trim_images(images, target, self.img_size, self.border_size)
+
     def get_next_batch(self, _ = 128):
         self.get_next_index()
         epoch = self.curr_epoch
         filename = os.path.join(self.data_dir, 'data_batch_%d' % (self.curr_batch))
+        start = time.time()
         if os.path.isdir(filename):
             images = []
             labels = []
-            threads = [LoadThread(os.path.join(filename, x)) for x in os.listdir(filename)]
-            for thread in threads:
-                thread.start()
-            for thread in threads:
-                thread.join()
-                data = thread.get_value()
+
+            #threads = [LoadThread(os.path.join(filename, x)) for x in os.listdir(filename)]
+            #for thread in threads:
+            #    print thread.filename
+            #    thread.start()
+            #for thread in threads:
+            #    thread.join()
+            #    data = thread.get_value()
+            #    images.extend(data['data'])
+            #    labels.extend(data['labels'])
+            for sub_filename in os.listdir(filename):
+                path = os.path.join(filename, sub_filename)
+                data = util.load(path)
                 images.extend(data['data'])
                 labels.extend(data['labels'])
             data['data'] = images
             data['labels'] = labels
         else:
             data = util.load(filename)
-        images = []
-        for raw_data in data['data']:
-            file = StringIO.StringIO(raw_data)
-            jpeg = Image.open(file)
-            images.append(np.asarray(jpeg, np.float32).transpose(2, 0, 1))
+        print 'loading from disk', time.time() - start
+        start = time.time()
 
+        #images = []
+        #cropped = np.ndarray((3, self.inner_size, self.inner_size, len(images) * self.num_view), dtype = np.float32)
+        #for raw_data in data['data']:
+        #    file = StringIO.StringIO(raw_data)
+        #    jpeg = Image.open(file)
+        #    images.append(np.asarray(jpeg, np.float32).transpose(2, 0, 1))
+
+        #self.__trim_borders(images, cropped)
+
+        images = data['data']
         cropped = np.ndarray((3, self.inner_size, self.inner_size, len(images) * self.num_view), dtype = np.float32)
-        self.__trim_borders(images, cropped)
+        self.__decode_trim_images(images, cropped)
+        print 'decode and trim images', time.time() - start
+
         cropped = garray.reshape_last(cropped) - self.data_mean
         cropped = np.require(cropped.reshape((3, self.inner_size, self.inner_size, len(images) * self.num_view)), dtype = np.single, requirements='C')
 

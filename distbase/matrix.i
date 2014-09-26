@@ -36,4 +36,22 @@
 %typemap(freearg) std::vector<Matrix>& {
   delete []($1);
 }
+
+%typemap(in) std::vector<JpegData>& {
+  int batch_size = PySequence_Size($input);
+  $1 = new std::vector<JpegData>[batch_size];
+  for(int i = 0; i < batch_size; i ++ ) {
+    PyObject* pySrc = PyList_GET_ITEM($input, i);
+    unsigned char* data = (unsigned char*)PyString_AsString(pySrc);
+    unsigned int data_size = PyString_GET_SIZE(pySrc);
+    JpegData jd(data, data_size);
+    $1->push_back(jd);
+    Py_DECREF(pySrc);
+  }
+}
+
+%typemap(freearg) std::vector<JpegData>& {
+  delete [] ($1);
+}
+
 %include "matrix.hpp"
