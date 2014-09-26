@@ -39,6 +39,19 @@ class BatchData(object):
     self.labels = labels
     self.epoch = epoch
 
+class LoadThread(threading.Thread):
+    def __init__(self, filename):
+        super(LoadThread, self).__init__()
+        self.filename = filename
+        self.out = None
+
+    def run(self):
+        self.out = util.load(self.filename)
+
+    def get_value(self):
+        return self.out
+
+
 class DataProvider(object):
   def __init__(self, data_dir='.', batch_range=None):
     self.data_dir = data_dir
@@ -334,24 +347,31 @@ class ImageNetBatchDataProvider(DataProvider):
         self.get_next_index()
         epoch = self.curr_epoch
         filename = os.path.join(self.data_dir, 'data_batch_%d' % (self.curr_batch))
+        start = time.time()
         if os.path.isdir(filename):
             images = []
             labels = []
-            for sub_filename in os.listdir(filename):
-                path_name = os.path.join(filename, sub_filename)
-                data = util.load(path_name)
+            threads = [LoadThread(os.path.join(filename, x)) for x in os.listdir(filename)]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
+                data = thread.get_value()
                 images.extend(data['data'])
                 labels.extend(data['labels'])
             data['data'] = images
             data['labels'] = labels
         else:
             data = util.load(filename)
-
+        print 'reading from disk', time.time() - start
+        start = time.time()
         images = []
         for raw_data in data['data']:
             file = StringIO.StringIO(raw_data)
             jpeg = Image.open(file)
             images.append(np.asarray(jpeg, np.uint8).transpose(2, 0, 1))
+        print 'decoding jpeg files', time.time() - start
+        start = time.time()
         cropped = np.ndarray((3, self.inner_size, self.inner_size, len(images) * self.num_view), dtype = np.uint8)
         self.__trim_borders(images, cropped)
         cropped = np.require(cropped, dtype = np.single, requirements='C')
@@ -362,9 +382,9 @@ class ImageNetBatchDataProvider(DataProvider):
         labels = np.array(labels)
         labels = labels.reshape(labels.size, )
         labels = np.require(labels, dtype=np.single, requirements='C')
+        print 'crop images', time.time() - start
 
         return BatchData(cropped, labels, epoch)
-
 
 class DummyDataProvider(DataProvider):
   def __init__(self, inner_size, output_size, batch_size = 1024):
