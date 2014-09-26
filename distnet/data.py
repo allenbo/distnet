@@ -1,4 +1,5 @@
 from PIL import Image
+import cStringIO as StringIO
 import garray
 from garray import partial_copy_to
 from os.path import basename
@@ -139,7 +140,7 @@ def _prepare_images(data_dir, category_range, batch_range, batch_meta):
     imgs.sort()
     imgs = [v for i, v in enumerate(imgs) if i in batch_dict]
     images.extend(imgs)
- 
+
   return np.array(images)
 
 class ImageNetDataProvider(DataProvider):
@@ -257,7 +258,7 @@ class ImageNetDataProvider(DataProvider):
     old_shape = cropped.shape
     cropped = garray.reshape_last(cropped) - self.data_mean
     cropped = cropped.reshape(old_shape)
-    
+
     align_time = time.time() - st
 
     labels = np.array(labels)
@@ -273,7 +274,7 @@ class ImageNetDataProvider(DataProvider):
       self.label_batches = dp_dict['label_batches']
     else:
       self.label_batches = self.batches
-    
+
     # recover the image batch information from label batch list
     if len(self.batches[0]) != len(self.label_batches[0]):
       image_batch_size = len(self.label_batches[0]) / num_gpu
@@ -287,6 +288,83 @@ class ImageNetDataProvider(DataProvider):
     dp['batches'] = self.batches
     dp['label_batches'] = self.label_batches
     return dp
+
+class ImageNetBatchDataProvider(DataProvider):
+    img_size = 256
+    border_size = 16
+    inner_size = 224
+
+    def __init__(self, data_dir, batch_range, multiview = False):
+        DataProvider.__init__(self, data_dir, batch_range)
+        self.multiview = multiview
+        self.batch_size = self.batch_meta['batch_size']
+        self.num_view = 5 * 2 if self.multiview else 1
+        data_mean = self.batch_meta['data_mean']
+        self.data_mean = (data_mean
+            .astype(np.single)
+            .T
+            .reshape((3, 256, 256))[:,
+                                self.border_size:self.border_size + self.inner_size,
+                                self.border_size:self.border_size + self.inner_size]
+            .reshape((self.data_dim,1))
+        )
+
+    def __trim_borders(self, images, target):
+        if self.multiview:
+            start_positions = [(0, 0), (0, self.border_size * 2), (self.border_size, self.border_size), (self.border_size *2 , 0), (self.border_size * 2 , self.border_size * 2)]
+            end_positions = [(x + self.inner_size, y + self.inner_size) for (x, y) in start_positions]
+            for i in xrange(self.num_view / 2):
+                startY , startX = start_positions[i][0], start_positions[i][1]
+                endY, endX = end_positions[i][0], end_positions[i][1]
+                num_image = len(images)
+                for idx, img in enumerate(images):
+                    pic = img[:, startY:endY, startX:endX]
+                    target[:, :, :, i * num_image + idx] = pic
+                    target[:, :, :, (self.num_view/2 +i) * num_image + idx] = pic[:, :, ::-1]
+        else:
+            for idx, img in enumerate(images):
+                startY, startX = np.random.randint(0, self.border_size * 2 + 1), np.random.randint(0, self.border_size * 2 + 1)
+                endY, endX = startY + self.inner_size, startX + self.inner_size
+                pic = img[:, startY:endY, startX:endX]
+                if np.random.randint(2) == 0:  # also flip the image with 50% probability
+                    pic = pic[:, :, ::-1]
+                target[:,:, :, idx] = pic
+
+    def get_next_batch(self, _ = 128):
+        self.get_next_index()
+        epoch = self.curr_epoch
+        filename = os.path.join(self.data_dir, 'data_batch_%d' % (self.curr_batch))
+        if os.path.isdir(filename):
+            images = []
+            labels = []
+            for sub_filename in os.listdir(filename):
+                path_name = os.path.join(filename, sub_filename)
+                data = util.load(path_name)
+                images.extend(data['data'])
+                labels.extend(data['labels'])
+            data['data'] = images
+            data['labels'] = labels
+        else:
+            data = util.load(filename)
+
+        images = []
+        for raw_data in data['data']:
+            file = StringIO.StringIO(raw_data)
+            jpeg = Image.open(file)
+            images.append(np.asarray(jpeg, np.uint8).transpose(2, 0, 1))
+        cropped = np.ndarray((3, self.inner_size, self.inner_size, len(images) * self.num_view), dtype = np.uint8)
+        self.__trim_borders(images, cropped)
+        cropped = np.require(cropped, dtype = np.single, requirements='C')
+        old_shape = cropped.shape
+        cropped = garray.reshape_last(cropped) - self.data_mean
+        cropped = cropped.reshape(old_shape)
+
+        labels = np.array(labels)
+        labels = labels.reshape(labels.size, )
+        labels = np.require(labels, dtype=np.single, requirements='C')
+
+        return BatchData(cropped, labels, epoch)
+
 
 class DummyDataProvider(DataProvider):
   def __init__(self, inner_size, output_size, batch_size = 1024):
@@ -568,5 +646,6 @@ def get_by_name(name):
 register_data_provider('cifar10', CifarDataProvider)
 register_data_provider('dummy', DummyDataProvider)
 register_data_provider('imagenet', ImageNetDataProvider)
+register_data_provider('imagenet-batch', ImageNetBatchDataProvider)
 register_data_provider('intermediate', IntermediateDataProvider)
 register_data_provider('memory', MemoryDataProvider)

@@ -22,7 +22,7 @@ from garray import ConvDataLayout, GPUArray
 
 def cache_outputs(net, dp, dumper, layer_name = 'pool5', index = -1):
   '''
-  fprop ``net`` through an entire epoch, saving the output of ``layer_name`` into ``dumper``. 
+  fprop ``net`` through an entire epoch, saving the output of ``layer_name`` into ``dumper``.
   :param net:
   :param layer_name:
   :param dp:
@@ -32,10 +32,10 @@ def cache_outputs(net, dp, dumper, layer_name = 'pool5', index = -1):
   curr_batch = 0
   batch = dp.get_next_batch(128)
   epoch = batch.epoch
-  
+
   if layer_name != '':
     index = net.get_output_index_by_name(layer_name)
-  
+
   while epoch == batch.epoch:
     batch_start = time.time()
     net.train_batch(batch.data, batch.labels, TEST)
@@ -209,7 +209,7 @@ class Trainer:
 
   def predict(self):
     util.log('Starting training...')
-    start_epoch = -1 
+    start_epoch = -1
     total_cost, total_correct, total_case = 0, 0, 0
     while True:
       batch_size = self.batch_size
