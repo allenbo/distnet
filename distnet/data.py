@@ -317,7 +317,7 @@ class ImageNetBatchDataProvider(DataProvider):
             .reshape((3, 256, 256))[:,
                                 self.border_size:self.border_size + self.inner_size,
                                 self.border_size:self.border_size + self.inner_size]
-            .reshape((1, self.data_dim))
+            .reshape((self.data_dim, 1))
         )
 
     def __trim_borders(self, images, target):
@@ -339,7 +339,6 @@ class ImageNetBatchDataProvider(DataProvider):
         self.get_next_index()
         epoch = self.curr_epoch
         filename = os.path.join(self.data_dir, 'data_batch_%d' % (self.curr_batch))
-        start = time.time()
         if os.path.isdir(filename):
             images = []
             labels = []
@@ -360,15 +359,15 @@ class ImageNetBatchDataProvider(DataProvider):
             file = StringIO.StringIO(raw_data)
             jpeg = Image.open(file)
             images.append(np.asarray(jpeg, np.float32).transpose(2, 0, 1))
-        cropped = np.ndarray((len(images) * self.num_view, 3, self.inner_size, self.inner_size), dtype = np.float32)
+
+        cropped = np.ndarray((3, self.inner_size, self.inner_size, len(images) * self.num_view), dtype = np.float32)
         self.__trim_borders(images, cropped)
-        cropped = garray.reshape_first(cropped) - self.data_mean
-        cropped = cropped.T.reshape((3, self.inner_size, self.inner_size, len(images) * self.num_view))
+        cropped = garray.reshape_last(cropped) - self.data_mean
+        cropped = np.require(cropped.reshape((3, self.inner_size, self.inner_size, len(images) * self.num_view)), dtype = np.single, requirements='C')
 
         labels = np.array(labels)
         labels = labels.reshape(labels.size, )
         labels = np.require(labels, dtype=np.single, requirements='C')
-
         return BatchData(cropped, labels, epoch)
 
 class DummyDataProvider(DataProvider):

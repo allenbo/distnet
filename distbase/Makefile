@@ -5,7 +5,7 @@ INCLUDE := ${PYTHON_INCLUDE} ${NUMPY_INCLUDE}
 all: _matrix.so
 
 _matrix.so: matrix.o matrix_wrap.o
-	g++ -shared -o $@ $^
+	g++ -shared -o $@ $^ -lpthread
 
 matrix_wrap.cpp: matrix.i Makefile
 	swig -python -threads -c++ -o $@ ${PYTHON_INCLUDE} $<

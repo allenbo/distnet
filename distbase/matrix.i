@@ -8,8 +8,8 @@
   PyObject* shape = PyObject_GetAttrString($input, "shape");
   long  color, rows, cols, batch_size;
   float* data = (float*)(PyArray_DATA((PyArrayObject*)$input));
-  PyArg_ParseTuple(shape, "llll", &batch_size, &color, &rows, &cols);
-  $1 = new Matrix(batch_size, color * rows * cols, data);
+  PyArg_ParseTuple(shape, "llll",&color, &rows, &cols, &batch_size);
+  $1 = new Matrix(color * rows * cols, batch_size, data);
   Py_DECREF(shape);
 }
 
