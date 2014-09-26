@@ -39,18 +39,6 @@ class BatchData(object):
     self.labels = labels
     self.epoch = epoch
 
-class LoadThread(threading.Thread):
-    def __init__(self, filename):
-        super(LoadThread, self).__init__()
-        self.filename = filename
-
-    def run(self):
-        self.out = util.load(self.filename)
-
-    def get_value(self):
-        return self.out
-
-
 class DataProvider(object):
   def __init__(self, data_dir='.', batch_range=None):
     self.data_dir = data_dir
@@ -346,15 +334,6 @@ class ImageNetBatchDataProvider(DataProvider):
             images = []
             labels = []
 
-            #threads = [LoadThread(os.path.join(filename, x)) for x in os.listdir(filename)]
-            #for thread in threads:
-            #    print thread.filename
-            #    thread.start()
-            #for thread in threads:
-            #    thread.join()
-            #    data = thread.get_value()
-            #    images.extend(data['data'])
-            #    labels.extend(data['labels'])
             for sub_filename in os.listdir(filename):
                 path = os.path.join(filename, sub_filename)
                 data = util.load(path)

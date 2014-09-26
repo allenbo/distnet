@@ -2,6 +2,7 @@
 %{
 #include "matrix.hpp"
 #include "arrayobject.h"
+#include <assert.h>
 %}
 
 %typemap(in) Matrix& {
@@ -19,7 +20,7 @@
 
 %typemap(in) std::vector<Matrix>& {
   int batch_size = PySequence_Size($input);
-  $1 = new std::vector<Matrix>[batch_size];
+  $1 = new std::vector<Matrix>(batch_size);
   for(int i = 0; i < batch_size; i ++ ) {
     PyArrayObject* mobj = (PyArrayObject*)PySequence_GetItem($input, i);
     PyObject* shape = PyObject_GetAttrString((PyObject*)mobj, "shape");
@@ -34,24 +35,26 @@
 }
 
 %typemap(freearg) std::vector<Matrix>& {
-  delete []($1);
+  delete ($1);
 }
 
-%typemap(in) std::vector<JpegData>& {
-  int batch_size = PySequence_Size($input);
-  $1 = new std::vector<JpegData>[batch_size];
+%typemap(in) std::vector<JpegData*>& {
+  int batch_size = PyList_GET_SIZE($input);
+  $1 = new std::vector<JpegData*>();
   for(int i = 0; i < batch_size; i ++ ) {
     PyObject* pySrc = PyList_GET_ITEM($input, i);
     unsigned char* data = (unsigned char*)PyString_AsString(pySrc);
     unsigned int data_size = PyString_GET_SIZE(pySrc);
-    JpegData jd(data, data_size);
+    JpegData *jd = new JpegData(data, data_size);
     $1->push_back(jd);
-    Py_DECREF(pySrc);
   }
 }
 
-%typemap(freearg) std::vector<JpegData>& {
-  delete [] ($1);
+%typemap(freearg) std::vector<JpegData*>& {
+  for(int i = 0; i < ($1)->size(); i ++ ) {
+    delete (*($1))[i];
+  }
+  delete ($1);
 }
 
 %include "matrix.hpp"

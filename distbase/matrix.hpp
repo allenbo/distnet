@@ -14,19 +14,19 @@ class JpegData {
     JpegData(unsigned char* data, unsigned int data_size)
       :_data(data), _data_size(data_size) {
     }
-    JpegData() {
-      _data = NULL;
+    JpegData()
+      :_data(NULL) {
       _data_size = 0;
     }
-    JpegData(const JpegData& other) {
-      _data = other._data;
+    JpegData(const JpegData& other)
+      :_data(other._data){
       _data_size = other._data_size;
     }
-    inline unsigned char* data() { return _data;}
+    inline const unsigned char* data() const { return _data;}
     inline unsigned int data_size() const { return _data_size;}
 
   private:
-    unsigned char* _data;
+    const unsigned char* _data;
     unsigned int _data_size;
 };
 
@@ -129,7 +129,7 @@ class TrimThread {
 
 class DecodeTrimThread {
   public:
-    DecodeTrimThread(std::vector<JpegData>& jpegs, Matrix& target, int image_size, int border_size, int start, int end)
+    DecodeTrimThread(std::vector<JpegData*>& jpegs, Matrix& target, int image_size, int border_size, int start, int end)
       :_jpegs(jpegs), _target(target), _image_size(image_size), _border_size(border_size) , _start(start), _end(end){
         _inner_size = _image_size - _border_size;
         _target_pixel = _inner_size * _inner_size;
@@ -153,8 +153,8 @@ class DecodeTrimThread {
     }
 
     void decode(int i) {
-      unsigned char* data = _jpegs[i].data();
-      unsigned int data_size = _jpegs[i].data_size();
+      const unsigned char* data = _jpegs[i]->data();
+      unsigned int data_size = _jpegs[i]->data_size();
 
       struct jpeg_decompress_struct cinf;
       struct jpeg_error_mgr jerr;
@@ -162,7 +162,7 @@ class DecodeTrimThread {
       cinf.err = jpeg_std_error(&jerr);
       jpeg_create_decompress(&cinf);
 
-      jpeg_mem_src(&cinf, data, data_size);
+      jpeg_mem_src(&cinf, (unsigned char*)data, data_size);
 
       assert(jpeg_read_header(&cinf, TRUE));
 
@@ -216,7 +216,7 @@ class DecodeTrimThread {
 
     }
   private:
-    std::vector<JpegData>& _jpegs;
+    std::vector<JpegData*>& _jpegs;
     Matrix& _target;
     unsigned char* _decoded_data;
     unsigned int _decoded_size;
@@ -232,5 +232,5 @@ class DecodeTrimThread {
 };
 
 void trim_images(std::vector<Matrix>& images, Matrix& target, int image_size, int border_size);
-void decode_trim_images(std::vector<JpegData>& jpegs, Matrix& target, int iamge_size, int border_size);
+void decode_trim_images(std::vector<JpegData*>& jpegs, Matrix& target, int iamge_size, int border_size);
 #endif
