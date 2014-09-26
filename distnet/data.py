@@ -3,7 +3,7 @@ import cStringIO as StringIO
 import garray
 from garray import partial_copy_to
 from os.path import basename
-from distbase import util
+from distbase import util, matrix
 import Queue
 import cPickle
 import collections
@@ -314,12 +314,10 @@ class ImageNetBatchDataProvider(DataProvider):
         self.num_view = 5 * 2 if self.multiview else 1
         data_mean = self.batch_meta['data_mean']
         self.data_mean = (data_mean
-            .astype(np.single)
-            .T
             .reshape((3, 256, 256))[:,
                                 self.border_size:self.border_size + self.inner_size,
                                 self.border_size:self.border_size + self.inner_size]
-            .reshape((self.data_dim,1))
+            .reshape((1, self.data_dim))
         )
 
     def __trim_borders(self, images, target):
@@ -335,13 +333,7 @@ class ImageNetBatchDataProvider(DataProvider):
                     target[:, :, :, i * num_image + idx] = pic
                     target[:, :, :, (self.num_view/2 +i) * num_image + idx] = pic[:, :, ::-1]
         else:
-            for idx, img in enumerate(images):
-                startY, startX = np.random.randint(0, self.border_size * 2 + 1), np.random.randint(0, self.border_size * 2 + 1)
-                endY, endX = startY + self.inner_size, startX + self.inner_size
-                pic = img[:, startY:endY, startX:endX]
-                if np.random.randint(2) == 0:  # also flip the image with 50% probability
-                    pic = pic[:, :, ::-1]
-                target[:,:, :, idx] = pic
+            matrix.trim_images(images, target, self.img_size, self.border_size)
 
     def get_next_batch(self, _ = 128):
         self.get_next_index()
@@ -363,26 +355,19 @@ class ImageNetBatchDataProvider(DataProvider):
             data['labels'] = labels
         else:
             data = util.load(filename)
-        print 'reading from disk', time.time() - start
-        start = time.time()
         images = []
         for raw_data in data['data']:
             file = StringIO.StringIO(raw_data)
             jpeg = Image.open(file)
-            images.append(np.asarray(jpeg, np.uint8).transpose(2, 0, 1))
-        print 'decoding jpeg files', time.time() - start
-        start = time.time()
-        cropped = np.ndarray((3, self.inner_size, self.inner_size, len(images) * self.num_view), dtype = np.uint8)
+            images.append(np.asarray(jpeg, np.float32).transpose(2, 0, 1))
+        cropped = np.ndarray((len(images) * self.num_view, 3, self.inner_size, self.inner_size), dtype = np.float32)
         self.__trim_borders(images, cropped)
-        cropped = np.require(cropped, dtype = np.single, requirements='C')
-        old_shape = cropped.shape
-        cropped = garray.reshape_last(cropped) - self.data_mean
-        cropped = cropped.reshape(old_shape)
+        cropped = garray.reshape_first(cropped) - self.data_mean
+        cropped = cropped.T.reshape((3, self.inner_size, self.inner_size, len(images) * self.num_view))
 
         labels = np.array(labels)
         labels = labels.reshape(labels.size, )
         labels = np.require(labels, dtype=np.single, requirements='C')
-        print 'crop images', time.time() - start
 
         return BatchData(cropped, labels, epoch)
 

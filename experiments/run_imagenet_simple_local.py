@@ -14,7 +14,7 @@ from distbase import util
 test_id = 'imagenet-simple'
 
 checkpoint_dir = '/ssd/justin/checkpoints/'
-param_file = './config/imagenet_eps.cfg'
+param_file = './config/imagenet_cudaconv.cfg'
 output_dir = ''
 output_method = 'disk'
 
@@ -35,8 +35,8 @@ model = checkpoint_dumper.get_checkpoint()
 if model is None:
   model = parser.parse_config_file(param_file)
 
-save_freq = 100
-test_freq = 100
+save_freq = 800
+test_freq = 800
 num_epochs = 90
 image_color = 3
 image_shape = ConvDataLayout.get_output_shape(image_size, image_size, image_color, batch_size)
