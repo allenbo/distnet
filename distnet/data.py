@@ -199,6 +199,16 @@ class ImageNetDataProvider(DataProvider):
   def _handle_new_epoch(self):
     self._shuffle_batches()
 
+  def __decode_trim_images1(self, image_filenames, cropped):
+    images = []
+    for idx, filename in enumerate(image_filenames):
+      jpeg = Image.open(filename)
+      if jpeg.mode != "RGB": jpeg = jpeg.convert("RGB")
+      img = np.asarray(jpeg, np.float32).transpose(2, 0, 1).astype(np.float32)
+      images.append(img)
+
+    self.__trim_borders(images, cropped)
+
   def __trim_borders(self, images, target):
     if self.multiview:
       start_positions = [(0, 0), (0, self.border_size * 2), (self.border_size, self.border_size),
@@ -213,13 +223,13 @@ class ImageNetDataProvider(DataProvider):
           target[:, :, :, i * num_image + idx] = pic
           target[:, :, :, (self.num_view/2 +i) * num_image + idx] = pic[:, :, ::-1]
     else:
-      for idx, img in enumerate(images):
-        startY, startX = np.random.randint(0, self.border_size * 2 + 1), np.random.randint(0, self.border_size * 2 + 1)
-        endY, endX = startY + self.inner_size, startX + self.inner_size
-        pic = img[:, startY:endY, startX:endX]
-        if np.random.randint(2) == 0:  # also flip the image with 50% probability
-          pic = pic[:, :, ::-1]
-        target[:,:, :, idx] = pic
+      matrix.trim_images(images, target, self.img_size, self.border_size)
+
+  def __decode_trim_images2(self, image_filenames, cropped):
+    images = []
+    for filename in image_filenames:
+      images.append(open(filename).read())
+    matrix.decode_trim_images(images, cropped, self.img_size, self.border_size)
 
   def get_next_batch(self, _ = 128):
     self.get_next_index()
@@ -230,20 +240,12 @@ class ImageNetDataProvider(DataProvider):
     label_names = self.images[self.label_batches[batchnum]]
     num_imgs = len(names)
     labels = np.zeros((1, len(label_names)))
-    cropped = np.ndarray((3, self.inner_size, self.inner_size, num_imgs * self.num_view), dtype=np.uint8)
+    cropped = np.ndarray((3, self.inner_size, self.inner_size, num_imgs * self.num_view),
+            dtype=np.float32)
     # _load in parallel for training
-    st = time.time()
-    images = []
-    for idx, filename in enumerate(names):
-      jpeg = Image.open(filename)
-      if jpeg.mode != "RGB": jpeg = jpeg.convert("RGB")
-      # starts as rows * cols * rgb, tranpose to rgb * rows * cols
-      img = np.asarray(jpeg, np.uint8).transpose(2, 0, 1)
-      images.append(img)
-
-    self.__trim_borders(images, cropped)
-
-    load_time = time.time() - st
+    start = time.time()
+    self.__decode_trim_images2(names, cropped)
+    print 'loading, decoding and triming images', time.time() - start
 
     clabel = []
     # extract label from the filename
@@ -253,13 +255,10 @@ class ImageNetDataProvider(DataProvider):
       label = self.batch_meta['synid_to_label'][synid]
       labels[0, idx] = label
 
-    st = time.time()
     cropped = np.require(cropped, dtype=np.single, requirements='C')
     old_shape = cropped.shape
     cropped = garray.reshape_last(cropped) - self.data_mean
     cropped = cropped.reshape(old_shape)
-
-    align_time = time.time() - st
 
     labels = np.array(labels)
     labels = labels.reshape(labels.size,)
@@ -306,6 +305,15 @@ class ImageNetBatchDataProvider(DataProvider):
                                 self.border_size:self.border_size + self.inner_size]
             .reshape((self.data_dim, 1))
         )
+    def __decode_trim_images1(self, data, target):
+        images = []
+        for raw_data in data:
+            file = StringIO.StringIO(raw_data)
+            jpeg = Image.open(file)
+            images.append(np.asarray(jpeg, np.float32).transpose(2, 0, 1))
+
+        cropped = np.ndarray((3, self.inner_size, self.inner_size, len(images) * self.num_view), dtype = np.float32)
+        self.__trim_borders(images, cropped)
 
     def __trim_borders(self, images, target):
         if self.multiview:
@@ -322,7 +330,7 @@ class ImageNetBatchDataProvider(DataProvider):
         else:
             matrix.trim_images(images, target, self.img_size, self.border_size)
 
-    def __decode_trim_images(self, images, target):
+    def __decode_trim_images2(self, images, target):
         matrix.decode_trim_images(images, target, self.img_size, self.border_size)
 
     def get_next_batch(self, _ = 128):
@@ -343,22 +351,9 @@ class ImageNetBatchDataProvider(DataProvider):
             data['labels'] = labels
         else:
             data = util.load(filename)
-        print 'loading from disk', time.time() - start
-        start = time.time()
-
-        #images = []
-        #cropped = np.ndarray((3, self.inner_size, self.inner_size, len(images) * self.num_view), dtype = np.float32)
-        #for raw_data in data['data']:
-        #    file = StringIO.StringIO(raw_data)
-        #    jpeg = Image.open(file)
-        #    images.append(np.asarray(jpeg, np.float32).transpose(2, 0, 1))
-
-        #self.__trim_borders(images, cropped)
-
         images = data['data']
         cropped = np.ndarray((3, self.inner_size, self.inner_size, len(images) * self.num_view), dtype = np.float32)
-        self.__decode_trim_images(images, cropped)
-        print 'decode and trim images', time.time() - start
+        self.__decode_trim_images2(images, cropped)
 
         cropped = garray.reshape_last(cropped) - self.data_mean
         cropped = np.require(cropped.reshape((3, self.inner_size, self.inner_size, len(images) * self.num_view)), dtype = np.single, requirements='C')
@@ -540,9 +535,11 @@ class ParallelDataProvider(DataProvider):
       if self._gpu_batch is not None:
         self._gpu_batch.data.mem_free()
         del self._gpu_batch
+      start = time.time()
       batch_data.data = garray.array(batch_data.data, dtype = np.float32)
       batch_data.labels = garray.array(batch_data.labels, dtype = np.float32)
       self._gpu_batch = batch_data
+      print 'copy to devide', time.time() - start
     else:
       self._cpu_batch = batch_data
 

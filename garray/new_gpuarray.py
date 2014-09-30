@@ -9,15 +9,20 @@ import time
 import traceback
 
 curr_mem = 0
+default_stream = None
 
 @sync_function
 def array(obj, dtype = None, to2dim = False):
+  global default_stream
+  if default_stream is None:
+      default_stream = driver.Stream()
   if dtype is None:
     dtype = obj.dtype
   if not isinstance(obj, GPUArray):
     obj = to_gpu(obj).astype(dtype)
   if len(obj.shape) != 2 and len(obj.shape) != 1 and to2dim:
     obj = reshape_last(obj)
+  obj.stream = default_stream
   return obj
 
 copy_to = sync_function(gpu_copy_to)
@@ -30,6 +35,9 @@ def get_mem_info():
 
 old_init = GPUArray.__init__
 def new_init(self, *args, **kw):
+  global default_stream
+  if default_stream is None:
+      default_stream = driver.Stream()
   #global curr_mem
   #if 'shape' in kw:
   #  shape = kw['shape']
@@ -45,6 +53,7 @@ def new_init(self, *args, **kw):
   #traceback.print_stack()
   result = old_init(self, *args, **kw)
   driver.Context.synchronize()
+  self.stream = default_stream
   return result
 GPUArray.__init__ = new_init
 
@@ -329,7 +338,7 @@ def object_add(self, other, dst = None, shape = None, axis = 0):
     shape = self.shape
   assert len(shape) >= len(other.shape), (shape, other, shape)
   assert axis >= 0 and axis < len(shape)
-  
+
   tmp = self.reshape(shape) if self.shape != shape else self
 
   if dst is None:

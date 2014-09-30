@@ -20,7 +20,7 @@
 
 %typemap(in) std::vector<Matrix>& {
   int batch_size = PySequence_Size($input);
-  $1 = new std::vector<Matrix>(batch_size);
+  $1 = new std::vector<Matrix>();
   for(int i = 0; i < batch_size; i ++ ) {
     PyArrayObject* mobj = (PyArrayObject*)PySequence_GetItem($input, i);
     PyObject* shape = PyObject_GetAttrString((PyObject*)mobj, "shape");

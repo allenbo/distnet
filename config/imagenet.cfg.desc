@@ -2,8 +2,8 @@
 conv_dist = disw_i
 fc_dist = sidw_f
 fc_share = sisw
-conv_groups = [4, 4, 4, 4]
-fc_groups = [16]
+conv_groups = [1, 1, 1, 1]
+fc_groups = [4]
 
 #------------first layer--------------
 [conv1]

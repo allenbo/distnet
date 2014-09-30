@@ -84,17 +84,15 @@ class TrimThread {
     }
     static void* run(void* context) {
       TrimThread* self = (TrimThread*)context;
-      int inner_size = self->_image_size - self->_border_size;
+      int inner_size = self->_image_size - 2 * self->_border_size;
       int target_pixel = inner_size * inner_size;
       int image_pixel = self->_image_size * self->_image_size;
       int color = self->_target.getNumRows() / target_pixel;
-
       for (int i = self->_start; i < self->_end; i ++ ) {
         int startY = rand() % (self->_border_size * 2 + 1);
         int startX = rand() % (self->_border_size * 2 + 1);
         int flip = rand() % 2;
         if (flip == 0) {
-
           for(int c = 0; c < color; c ++) {
             for(int row = 0; row < inner_size; row++) {
               for(int col  = 0; col < inner_size; col ++ ) {
@@ -131,7 +129,7 @@ class DecodeTrimThread {
   public:
     DecodeTrimThread(std::vector<JpegData*>& jpegs, Matrix& target, int image_size, int border_size, int start, int end)
       :_jpegs(jpegs), _target(target), _image_size(image_size), _border_size(border_size) , _start(start), _end(end){
-        _inner_size = _image_size - _border_size;
+        _inner_size = _image_size - 2 * _border_size;
         _target_pixel = _inner_size * _inner_size;
         _image_pixel = _image_size * _image_size;
         _color = _target.getNumRows() / _target_pixel;

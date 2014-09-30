@@ -1,3 +1,3 @@
 #include "nvmatrix.cuh"
-std::map<int, cudaStream_t> NVMatrix::_defaultStreams;
+cudaStream_t NVMatrix::_defaultStream = 0;
 pthread_mutex_t NVMatrix::_streamMutex;

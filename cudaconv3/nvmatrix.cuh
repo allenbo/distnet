@@ -19,13 +19,16 @@ struct NVMatrix {
   float* _devData;
   cudaTextureObject_t _texObj;
   static pthread_mutex_t _streamMutex;
-  static std::map<int,cudaStream_t> _defaultStreams;
+  static cudaStream_t _defaultStream;
 
-  NVMatrix(float* gpuarray, int num_rows, int num_cols, int stride) :
+  NVMatrix(float* gpuarray, int num_rows, int num_cols, int stride, cudaStream_t stream) :
     _devData(gpuarray), _numRows(num_rows), _numCols(num_cols) {
       _stride = stride;
       _numElements = _numRows * _numCols;
       _texObj = 0;
+      if (NVMatrix::_defaultStream == 0) {
+        NVMatrix::_defaultStream = stream;
+      }
     }
 
   ~NVMatrix() {
@@ -70,7 +73,7 @@ struct NVMatrix {
    assert(_texObj != 0);
    return _texObj;
   }
- 
+
   static int getDeviceID() {
     int d;
     checkCudaErrors(cudaGetDevice(&d));
@@ -83,10 +86,12 @@ struct NVMatrix {
 
 
   static cudaStream_t getDefaultStream() {
-    return 0;
-    return getDefaultStream(getDeviceID());
+    //return 0;
+    return _defaultStream;
+    //return getDefaultStream(getDeviceID());
   }
 
+  /*
   static cudaStream_t getDefaultStream(int deviceID) {
     if (deviceID >= 0) {
         pthread_mutex_lock(&_streamMutex);
@@ -102,6 +107,7 @@ struct NVMatrix {
     }
     return 0;
   }
+  */
 
   int getStride() const {
     return _stride;
