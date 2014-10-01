@@ -372,7 +372,7 @@ class AvgPoolLayer(Layer):
     arr.avgundo(input, grad, outGrad, self.poolSize,
         self.start, self.stride, self.outputSize, self.outputSize, self.img_size, self.img_size)
     self._printout_backward((outGrad,))
-    
+
 class ResponseNormLayer(Layer):
   def __init__(self, name, pow=0.75, size=9, scale=0.001, disable_bprop=False):
     Layer.__init__(self, name, 'rnorm', disable_bprop)
@@ -417,7 +417,7 @@ class ResponseNormLayer(Layer):
         self.size, self.img_size, self.scalar, self.pow)
 
     self._printout_backward((outGrad,))
-    
+
 class CrossMapResponseNormLayer(ResponseNormLayer):
   def __init__(self, name, pow=0.75, size=9, scale=0.001, blocked=False, disable_bprop=
       False):
@@ -438,7 +438,7 @@ class CrossMapResponseNormLayer(ResponseNormLayer):
     arr.rnormcrossmapundo(grad, self.denom, input, output, outGrad, self.numColor,
         self.size, self.img_size,self.scalar, self.pow, self.blocked)
     self._printout_backward((outGrad,))
-    
+
 
 class FCLayer(WeightedLayer):
   ''' When the backend is caffe, we have to transpose the input to make batch as the second
@@ -510,14 +510,14 @@ class FCLayer(WeightedLayer):
       arr.relu_compute_grad(grad, output, grad, 0)
     if self.dropRate > 0.0:
       arr.copy_to(grad * self.dropMask, grad)
-    
+
     garray.driver.Context.synchronize()
     MONITOR.add_comp(time.time() - _)
     arr.fcbackward(input, self.weight.wt, grad, outGrad, self.weight.grad, self.bias.grad, self.prev_conv)
 
     #self._printout_backward((self.bias.grad, self.weight.grad, outGrad))
     self._printout_backward((self.weight.grad, ), fc = True)
-   
+
 class SoftmaxLayer(Layer):
   def __init__(self, name, disable_bprop=False):
     Layer.__init__(self, name, "softmax", disable_bprop)
@@ -573,7 +573,7 @@ class SoftmaxLayer(Layer):
     outGrad.fill(0)
     arr.softmax_bprop(output, label, outGrad)
     self._printout_backward((outGrad,), fc = True)
-    
+
   def get_correct(self):
     return  1.0 * self.batchCorrect / self.batch_size
 

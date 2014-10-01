@@ -42,7 +42,7 @@ class CompiledSource(object):
 
   def __call__(self, *args, **kw):
     if self.module is None:
-      #util.log('Compiling... %s', self.kernel_name)
+      util.log('Compiling... %s', self.kernel_name)
       self.module = SourceModule(self.src)
       self.kernel = self.module.get_function(self.kernel_name)
 

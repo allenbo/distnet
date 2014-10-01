@@ -13,6 +13,7 @@ from mpi4py import MPI
 import numpy as np
 
 import garray
+from distbase import util
 from distbase.util import issquare
 from distbase.monitor import MONITOR
 from garray import ConvDataLayout, FCDataLayout, FilterLayout, WeightLayout
@@ -85,7 +86,9 @@ class VArray(object):
     self.global_area_dict = {}
     self.group_area_dict = {}
     self.all_area_dict = {}
-    
+
+    self._async_flag = False
+
     # attributes for array
     self.dtype = np.float32
     if shape is not None:
@@ -154,7 +157,7 @@ class VArray(object):
 
       self.local_area = self.group_area_dict[self.group_rank]
       self.local_data = to_gpu(group_array[self.local_area.offset(self.group_area._from).slice])
-      
+
       if self.num_group == 1:
         self.all_area_dict = self.group_area_dict
       else:
@@ -171,10 +174,31 @@ class VArray(object):
           offset += self.group_size
 
     assert self.local_area.shape == self.local_data.shape
-    
+
     self.use_cache = False
     self.cache = Cache()
-  
+
+  def _sync(self):
+    for req in self._async_reqs:
+      req.wait()
+    for data in self._recv_data:
+      if data is not None:
+        self.local_data += data
+    self._async_reqs = None
+    self._recv_data = None
+    self._async_flag = False
+
+  @property
+  def DATA(self):
+    if self._async_flag:
+      self._sync()
+    return self.local_data
+
+  @DATA.setter
+  def DATA(self, value):
+    self.local_data = value
+
+
   def get_gpuarray(self, area, zeroed = False):
     if self.use_cache:
       array = self.cache.get(area)
@@ -330,7 +354,7 @@ class VArray(object):
     garray.stride_copy(self.local_data, data, area.slice)
     return data
 
-  def _communicate(self, send_data, recv_data, communicator):
+  def _communicate(self, send_data, recv_data, communicator, async = False):
     _ = time.time()
     send_req = []
     recv_req = []
@@ -342,7 +366,11 @@ class VArray(object):
       if data is None:continue
       recv_req.append(communicator.Irecv(tobuffer(data), source = i))
 
-    for req in send_req + recv_req: req.wait()
+    if async:
+      self._async_reqs = send_req + recv_req
+      self._recv_data = recv_data
+    else:
+      for req in send_req + recv_req: req.wait()
     if INNER: MONITOR.add_comm(time.time() - _)
 
   def fetch_remote(self, reqs, communicator, self_id):
@@ -454,7 +482,7 @@ class VArray(object):
       if data is gpu_data: return
       gpu_data[area.slice] =  data
 
-  def write_remote(self, reqs, sub_data, communicator):
+  def write_remote(self, reqs, sub_data, communicator, async = False):
     _ = time.time()
     req_list = reqs[:]
     num_worker = len(req_list)
@@ -468,21 +496,22 @@ class VArray(object):
 
     send_data = sub_data
     if INNER: MONITOR.add_marshall(time.time() - _)
-    self._communicate(send_data, recv_data, communicator)
-    
-    _ = time.time()
-    if self.global_unique == False and self.group_unique == False:
-      for data in recv_data:
-        if data is not None:
-          self.local_data += data
-    else:
-      for rank in range(num_worker):
-        if req_list[rank] is None: continue
-        else:
-          self.write_local(req_list[rank], recv_data[rank], acc = True)
-    if INNER: MONITOR.add_merge(time.time() - _)
+    self._communicate(send_data, recv_data, communicator, async)
+
+    if not async:
+      _ = time.time()
+      if self.global_unique == False and self.group_unique == False:
+        for data in recv_data:
+          if data is not None:
+            self.local_data += data
+      else:
+        for rank in range(num_worker):
+          if req_list[rank] is None: continue
+          else:
+            self.write_local(req_list[rank], recv_data[rank], acc = True)
+      if INNER: MONITOR.add_merge(time.time() - _)
     barrier(communicator)
-  
+
   def _partial_write(self, area, data):
     if data is self.local_data: return
 
@@ -495,8 +524,8 @@ class VArray(object):
       sub_data = data.__getitem__(sub_area.offset(area._from).slice)
 
     self.write_local(sub_area, sub_data)
-  
-  def _write(self, area, data, propagate, unique, self_id, num_worker, area_dict, communicator):
+
+  def _write(self, area, data, propagate, unique, self_id, num_worker, area_dict, communicator, async = False):
     barrier(communicator)
     if not propagate:
       _ = time.time()
@@ -528,8 +557,8 @@ class VArray(object):
           reqs[rank] = sub_area
           local_subs[rank] = sub_data
     if INNER: MONITOR.add_marshall(time.time() - _)
-    self.write_remote(reqs, local_subs, communicator)
-    
+    self.write_remote(reqs, local_subs, communicator, async)
+
   def group_write(self, area, data, propagate = True):
     self._write(area = area,
                 data = data,
@@ -610,7 +639,7 @@ class VArray(object):
         data += tmp
       if INNER: MONITOR.add_comp(time.time() - _)
 
-  
+
   def group_synchronize(self):
     assert self.group_unique == False
     self._synchronize(self.group_comm, self.local_data, self.group_size)
@@ -622,9 +651,13 @@ class VArray(object):
       assert self.global_unique == False
       if self.group_rank == 0:
         self._synchronize(self.master_comm, self.local_data, self.num_group)
-    
+
 
   def write(self, area, data, propagate = True, debug = False):
+    if self.num_group > 1 and self.group_size == 1 and propagate and not self.global_unique:
+      self.write_async(area, data)
+      return
+
     if self.global_unique:
       if self.global_area.cmp(area):
         self.global_write(area, data, propagate)
@@ -645,7 +678,21 @@ class VArray(object):
             self.group_bcast()
       else:
         self.group_write(area, data, propagate)
-    
+
+  def write_async(self, area, data):
+    barrier(self.master_comm)
+    self._async_flag = True
+
+    send_data = [self.local_data] * self.num_group
+    send_data[self.group_id] = None
+
+    recv_data = [None] * self.num_group
+    for i in range(self.num_group):
+      if i == self.group_id: continue
+      recv_data[i] = self.get_gpuarray(area)
+
+    self._communicate(send_data, recv_data, self.global_comm, async = True)
+
   def check_param(self, other):
     return self.global_slice_dim == other.global_slice_dim and self.group_slice_dim == other.group_slice_dim
 
@@ -707,7 +754,7 @@ class VArray(object):
   def __eq__(self, other):
     c = allocate_like(self)
     if isinstance(other, garray.GPUArray):
-      if self.group_unique == False:  
+      if self.group_unique == False:
         assert other.shape == self.local_shape
         c.local_data = self.local_data == other
         return c
@@ -764,7 +811,7 @@ class VArray(object):
     r, c = slice_dim
     if filter_size != 0:
       half_filter_size = (filter_size - 1) /2
-    
+
       from_point = output_area._from
       to_point = output_area._to
 
@@ -777,7 +824,7 @@ class VArray(object):
       row_end = min(row_end_centroid + half_filter_size, self.group_shape[r] - 1)
       col_begin = max(col_begin_centroid - half_filter_size, 0)
       col_end = min(col_end_centroid + half_filter_size, self.group_shape[c] - 1)
-      
+
       _from = self.group_area._from[:]
       _to = self.group_area._to[:]
 
@@ -798,7 +845,7 @@ class VArray(object):
     sub_area = self.local_area & self.tmp_local_are
     sub_data = data.__getitem__(sub_area.offset(area._from).slice)
     self.write_local(sub_area, sub_data)
-    
+
   def get_pad_info(self, padding, old_shape, old_area, slice_dim = None):
     #row, col = self.slice_dim
     row, col = slice_dim
@@ -874,7 +921,7 @@ class VArray(object):
     if u or d or l or r:
       data = data[new_area.offset(old_area._from).slice]
     return data
-  
+
   def fill(self, scalar):
     self.local_data.fill(scalar)
 
@@ -902,7 +949,7 @@ class VArray(object):
       x = self.local_data
     else:
       x = self.fetch(self.global_area)
-    
+
     if self.global_rank == 0:
       x.printout(name, row_from = row_from, row_to = row_to, col_from =  col_from, col_to = col_to)
     barrier(self.global_comm)
@@ -948,7 +995,7 @@ def random_uniform(shape, global_slice_dim, group_slice_dim, context = default_c
                 context = context)
   va.local_data = garray.random_uniform(va.local_shape)
   return va
-  
+
 
 def assemble(local_data, flat = False, axis = -1):
   assert len(local_data.shape) == 2 or len(local_data.shape) == 4

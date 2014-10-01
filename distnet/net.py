@@ -144,7 +144,7 @@ class FastNet(object):
     util.log('Learning rates:')
     for layer in self.layers:
       if isinstance(layer, WeightedLayer):
-        util.log('%s: %s %s %s', layer.name, layer.__class__.__name__, 
+        util.log('%s: %s %s %s', layer.name, layer.__class__.__name__,
                  layer.weight.epsilon, layer.bias.epsilon)
       else:
         util.log('%s: %s', layer.name, layer.__class__.__name__)
@@ -172,7 +172,7 @@ class FastNet(object):
     correct = self.correct
     self.cost = self.numCase = self.correct = 0.0
     return cost / numCase , correct / numCase, int(numCase)
-  
+
   def get_batch_information_multiview(self, num_view):
     cost = self.cost
     numCase = self.numCase / num_view
@@ -210,7 +210,7 @@ class FastNet(object):
     if train == TRAIN:
       self.bprop(label)
       self.update(stat)
-    
+
     driver.Context.synchronize()
 
   def test_batch_multiview(self, data, label, num_view):
@@ -233,7 +233,7 @@ class FastNet(object):
       l.enable_bprop()
 
   def batch_report(self):
-   self._monitor.report() 
+   self._monitor.report()
 
   def get_report(self):
     pass

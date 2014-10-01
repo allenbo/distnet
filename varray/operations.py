@@ -20,11 +20,11 @@ def copy_to(input, output):
   distribution. However, there is one exception. When copy to conv-related grad, the input is
   shared, while the output is distributed.'''
   if input.check_param(output):
-    garray.copy_to(input.local_data, output.local_data)
+    garray.copy_to(input.DATA, output.DATA)
   else:
     if output.global_unique or output.group_unique:
       assert not input.global_unique and not input.group_unique
-      output.copy_from_global(input.local_data.reshape(output.shape))
+      output.copy_from_global(input.DATA.reshape(output.shape))
     else:
       assert False
 
@@ -37,15 +37,15 @@ def partial_copy1(input, f, t):
                  slice_dim = input.slice_dim,
                  slice_method = input.slice_method)
   old_shape = rst.local_shape
-  rst.local_data = garray.partial_copy1(garray.reshape_last(input.local_data), f, t)
-  rst.local_data = rst.local_data.reshape(old_shape)
+  rst.DATA = garray.partial_copy1(garray.reshape_last(input.DATA), f, t)
+  rst.DATA = rst.DATA.reshape(old_shape)
   return rst
 
 def bigger_than_scalar(input, scalar):
-  garray.bigger_than_scalar(input.local_data, scalar)
+  garray.bigger_than_scalar(input.DATA, scalar)
 
 def matrix_add(incr, grad ,alpha = 1.0, beta = 1.0):
-  garray.matrix_add(incr.local_data, grad.local_data, alpha = alpha, beta = beta)
+  garray.matrix_add(incr.DATA, grad.DATA, alpha = alpha, beta = beta)
 
 def sum(input, axis = None):
   ''' This function is used when getting the batch correctness '''
@@ -57,29 +57,29 @@ def argmax(input, axis):
   ''' This function is only used in logreg_cost function, in which the output is a synchronized
   varray or splitted across batch '''
   if input.group_unique == False and input.global_unique == False:
-    return VArray(garray.argmax(input.local_data, axis = axis), context = input.context)
+    return VArray(garray.argmax(input.DATA, axis = axis), context = input.context)
 
   assert input.group_slice_dim == FCDataLayout.BATCH and input.global_unique == False
   rst = VArray(shape = (1, input.shape[1]),
                group_slice_dim = FCDataLayout.BATCH,
                context = input.context)
-  rst.local_data = garray.argmax(input.local_data, axis = axis)
+  rst.DATA = garray.argmax(input.DATA, axis = axis)
   return rst
 
 def exp(input):
   c = allocate_like(input)
-  garray.copy_to(input.local_data, c.local_data)
+  garray.copy_to(input.DATA, c.DATA)
   return c
 
 def iexp(input):
-  garray.iexp(input.local_data)
+  garray.iexp(input.DATA)
 
 def logreg_cost_col(output, label, cost):
   assert output.global_unique == False
   if output.group_unique == False:
-    garray.logreg_cost_col(output.local_data, label, cost.local_data)
+    garray.logreg_cost_col(output.DATA, label, cost.DATA)
   else:
-    garray.logreg_cost_col(output.local_data, label[cost.local_area.slice], cost.local_data)
+    garray.logreg_cost_col(output.DATA, label[cost.local_area.slice], cost.DATA)
 
 def convert_from_data(input, output):
   ''' input has to be a GPUArray, and output has to be a VArray '''
@@ -92,20 +92,20 @@ def convert_from_data(input, output):
     return
 
   if input.check_param(output):
-    garray.convert_from_data(input.local_data, output.local_data)
+    garray.convert_from_data(input.DATA, output.DATA)
   else:
     if not input.global_unique and not input.group_unique:
-      output.copy_from_global(input.local_data)
+      output.copy_from_global(input.DATA)
     else:
       if input.global_unique != output.global_unique:
         # must regroup the input
         input.regroup_like(output)
       if input.group_slice_dim == output.group_slice_dim:
-        garray.convert_from_data(input.local_data, output.local_data)
+        garray.convert_from_data(input.DATA, output.DATA)
       else:
         group_output = garray.empty(shape = input.group_area.shape, dtype = np.float32)
         input.group_gather()
-        garray.convert_from_data(input.local_data, group_output)
+        garray.convert_from_data(input.DATA, group_output)
         output.copy_from_group(group_output)
 
   driver.Context.synchronize()
@@ -125,8 +125,8 @@ def fcforward(input, output, weight, bias, prev_conv):
 
   _ = time.time()
   input_data = input.tmp_local_data
-  garray.matrixmult(weight.local_data, input_data, dest = output.local_data)
-  garray.copy_to(output.local_data + bias.local_data , output.local_data)
+  garray.matrixmult(weight.DATA, input_data, dest = output.DATA)
+  garray.copy_to(output.DATA + bias.DATA , output.DATA)
   driver.Context.synchronize()
   MONITOR.add_comp(time.time() - _)
 
@@ -150,7 +150,7 @@ def fcbackward(input, weight, grad, out_grad, weight_grad, bias_grad, prev_conv)
     tmp_out_grad = out_grad.tmp_local_data
   else:
     if input.tmp_local_area.cmp(out_grad.local_area):
-      tmp_out_grad = out_grad.local_data
+      tmp_out_grad = out_grad.DATA
     else:
       if not hasattr(out_grad, 'tmp_local_data'):
         out_grad.tmp_local_data = garray.empty_like(input.tmp_local_data)
@@ -160,18 +160,18 @@ def fcbackward(input, weight, grad, out_grad, weight_grad, bias_grad, prev_conv)
 
   if state in [disw_b]:
     if not hasattr(weight_grad, 'tmp_local_data'):
-      weight_grad.tmp_local_data = garray.empty_like(weight_grad.local_data)
+      weight_grad.tmp_local_data = garray.empty_like(weight_grad.DATA)
     tmp_weight_grad = weight_grad.tmp_local_data
   else:
-    tmp_weight_grad = weight_grad.local_data
+    tmp_weight_grad = weight_grad.DATA
     weight_propagate = False
 
   _ = time.time()
   tmp_out_grad.fill(0)
   tmp_weight_grad.fill(0)
-  garray.matrixmult(garray.transpose(weight.local_data), grad.local_data, dest = tmp_out_grad)
-  garray.matrixmult(grad.local_data, garray.transpose(input.tmp_local_data), dest = tmp_weight_grad)
-  garray.copy_to(garray.sum(grad.local_data, axis = 1), bias_grad.local_data)
+  garray.matrixmult(garray.transpose(weight.DATA), grad.DATA, dest = tmp_out_grad)
+  garray.matrixmult(grad.DATA, garray.transpose(input.tmp_local_data), dest = tmp_weight_grad)
+  garray.copy_to(garray.sum(grad.DATA, axis = 1), bias_grad.DATA)
   driver.Context.synchronize()
   MONITOR.add_comp(time.time() - _)
   _ = time.time()
@@ -188,9 +188,9 @@ def softmax(input, output):
     if not INNER: MONITOR.add_comm(time.time() - _)
     local_input = input.tmp_local_data
   else:
-    local_input = input.local_data
+    local_input = input.DATA
   _ = time.time()
-  local_output = output.local_data
+  local_output = output.DATA
   max_rst = garray.max(local_input, axis = 0)
   garray.copy_to(local_input - max_rst, local_output)
   garray.iexp(local_output)
@@ -203,10 +203,10 @@ def softmax_bprop(output, label, out_grad):
   if state == sisw:
     _ = time.time()
     if not hasattr(out_grad, 'tmp_local_data'):
-      out_grad.tmp_local_data = garray.empty_like(output.local_data)
+      out_grad.tmp_local_data = garray.empty_like(output.DATA)
     tmp_out_grad = out_grad.tmp_local_data
     tmp_out_grad.fill(0)
-    garray.softmax_bprop(output.local_data, label, tmp_out_grad)
+    garray.softmax_bprop(output.DATA, label, tmp_out_grad)
     MONITOR.add_comp(time.time() - _)
     _ = time.time()
     out_grad.write(area = out_grad.global_area, data = tmp_out_grad, propagate = False)
@@ -217,20 +217,20 @@ def softmax_bprop(output, label, out_grad):
     idx = output.group_slice_dim
     f = output.local_area._from[idx]
     t = output.local_area._to[idx] + 1
-    garray.softmax_bprop(output.local_data, label[0:1, f:t], out_grad.local_data)
+    garray.softmax_bprop(output.DATA, label[0:1, f:t], out_grad.DATA)
     MONITOR.add_comp(time.time() - _)
 
 def relu_activate(input, output, e):
-  garray.relu_activate(input.local_data, output.local_data, e)
+  garray.relu_activate(input.DATA, output.DATA, e)
 
 def relu_compute_grad(grad, output, out_grad, e):
-  garray.relu_compute_grad(grad.local_data, output.local_data, out_grad.local_data, e)
+  garray.relu_compute_grad(grad.DATA, output.DATA, out_grad.DATA, e)
 
 def tanh_activate(input, output, a, b):
-  garray.tanh_avtivate(input.local_data, output.local_data, a, b)
+  garray.tanh_avtivate(input.DATA, output.DATA, a, b)
 
 def tanh_compute_grad(grad, output, out_grad, a, b):
-  garray.tanh_compute_grad(grad.local_data, output.local_data, out_grad.local_data, a, b)
+  garray.tanh_compute_grad(grad.DATA, output.DATA, out_grad.DATA, a, b)
 
 def convolution(input, filter ,output, bias, image_y, output_y, output_x, padding, stride, channel, group):
   filter_size_index = FilterLayout.HEIGHT
@@ -261,9 +261,9 @@ def convolution(input, filter ,output, bias, image_y, output_y, output_x, paddin
   _ = time.time()
   garray.convolution(
       input_data,
-      filter.local_data,
-      output.local_data,
-      bias.local_data,
+      filter.DATA,
+      output.DATA,
+      bias.DATA,
       image_y, output_y, output_x, padding, stride, channel, group)
 
   MONITOR.add_comp(time.time() - _)
@@ -312,8 +312,8 @@ def bconvolution(input, grad, filter, out_grad, image_y, image_x, output_size, p
 
   garray.bconvolution(
       input_data,
-      grad.local_data,
-      filter.local_data,
+      grad.DATA,
+      filter.DATA,
       tmp_out_grad,
       image_y, image_x, output_size, padding, stride, channel)
 
@@ -359,14 +359,14 @@ def wconvolution(input, grad, weight_grad, bias_grad, image_y, output_y, output_
   if not INNER: MONITOR.add_comm(time.time() - _)
 
   if state in [disw_i, disw_b]:
-    tmp_weight_grad = weight_grad.local_data
+    tmp_weight_grad = weight_grad.DATA
     if not hasattr(bias_grad, 'tmp_local_data'):
       bias_grad.tmp_local_data = garray.GPUArray(bias_grad.shape, dtype = bias_grad.dtype)
     tmp_bias_grad = bias_grad.tmp_local_data
   else:
     propagate = False
-    tmp_weight_grad = weight_grad.local_data
-    tmp_bias_grad = bias_grad.local_data
+    tmp_weight_grad = weight_grad.DATA
+    tmp_bias_grad = bias_grad.DATA
 
   image_y = input_data.shape[r]
   output_y = grad.local_shape[r]
@@ -380,7 +380,7 @@ def wconvolution(input, grad, weight_grad, bias_grad, image_y, output_y, output_
 
   garray.wconvolution(
       input_data,
-      grad.local_data,
+      grad.DATA,
       tmp_weight_grad,
       tmp_bias_grad,
       image_y, output_y, output_x, filter_size, padding, stride, channel, group, partial_sum)
@@ -419,7 +419,7 @@ def maxpool(input, output, channel, pool_size, start, stride, input_y, output_y,
   _ = time.time()
   garray.maxpool(
       input_data,
-      output.local_data,
+      output.DATA,
       channel, pool_size, start, stride, input_y, output_y, output_x)
 
   MONITOR.add_comp(time.time() - _)
@@ -451,15 +451,15 @@ def maxundo(input, grad, output, out_grad, pool_size, start, stride, output_y, o
 
   input_data = input.tmp_local_data
 
-  if input_data.shape != out_grad.local_data.shape:
+  if input_data.shape != out_grad.DATA.shape:
     if not hasattr(out_grad, 'tmp_local_data'):
       out_grad.tmp_local_data = garray.empty_like(input_data)
   else:
-    out_grad.tmp_local_data = out_grad.local_data
+    out_grad.tmp_local_data = out_grad.DATA
   tmp_out_grad = out_grad.tmp_local_data
 
-  output_y = output.local_data.shape[r]
-  output_x = output.local_data.shape[c]
+  output_y = output.DATA.shape[r]
+  output_x = output.DATA.shape[c]
   input_y = input_data.shape[r]
   channel = input_data.shape[ch]
 
@@ -467,8 +467,8 @@ def maxundo(input, grad, output, out_grad, pool_size, start, stride, output_y, o
   tmp_out_grad.fill(0)
   garray.maxundo(
       input_data,
-      grad.local_data,
-      output.local_data,
+      grad.DATA,
+      output.DATA,
       tmp_out_grad,
       pool_size, start, stride, output_y, output_x, input_y)
 
@@ -506,7 +506,7 @@ def avgpool(input, output, channel, pool_size, start, stride, input_y, output_y,
   _ = time.time()
   garray.avgpool(
       input_data,
-      output.local_data,
+      output.DATA,
       channel, pool_size, start, stride, input_y, output_y, output_x)
 
   MONITOR.add_comp(time.time() - _)
@@ -541,8 +541,8 @@ def avgundo(input, grad, out_grad, pool_size, start, stride, output_y, output_x,
     out_grad.tmp_local_data = garray.empty_like(input_data)
   tmp_out_grad = out_grad.tmp_local_data
 
-  output_y = grad.local_data.shape[r]
-  output_x = grad.local_data.shape[c]
+  output_y = grad.DATA.shape[r]
+  output_x = grad.DATA.shape[c]
   image_y = input_data.shape[r]
   image_x = input_data.shape[c]
   channel = input_data.shape[ch]
@@ -551,7 +551,7 @@ def avgundo(input, grad, out_grad, pool_size, start, stride, output_y, output_x,
   tmp_out_grad.fill(0)
   garray.avgundo(
       input_data,
-      grad.local_data,
+      grad.DATA,
       tmp_out_grad,
       pool_size, start, stride, output_y, output_x, image_y, image_x)
 
@@ -581,8 +581,8 @@ def rnorm(input, denom, output, channel, size, image_y, scalar, pow):
   input_data = input.tmp_local_data
 
   if input.tmp_local_area.cmp(denom.local_area):
-    denom.tmp_local_data = denom.local_data
-    output.tmp_local_data = output.local_data
+    denom.tmp_local_data = denom.DATA
+    output.tmp_local_data = output.DATA
   else:
     # only happens when state == disw_i
     denom.tmp_local_data = garray.empty_like(input_data)
@@ -654,9 +654,9 @@ def rnormundo(grad, denom, input, output, out_grad, channel, size, image_y, scal
   input_data = input.tmp_local_data
 
   if denom.local_area.cmp(input.tmp_local_area):
-    denom_data = denom.local_data
-    output_data = output.local_data
-    grad_data = grad.local_data
+    denom_data = denom.DATA
+    output_data = output.DATA
+    grad_data = grad.DATA
   else:
     denom_data = denom.tmp_local_data
     output_data = output.tmp_local_data
@@ -708,15 +708,15 @@ def rnormcrossmap(input, denom, output, channel, size,image_y, scalar, pow, bloc
 
   input_data = input.tmp_local_data
   if input.tmp_local_area.cmp(denom.local_area):
-    denom.tmp_local_data = denom.local_data
-    output.tmp_local_data = output.local_data
+    denom.tmp_local_data = denom.DATA
+    output.tmp_local_data = output.DATA
   else:
     denom.tmp_local_data = garray.empty_like(input_data)
     output.tmp_local_data = garray.empty_like(input_data)
   tmp_denom_data = denom.tmp_local_data
   tmp_output_data = output.tmp_local_data
 
-  image_y = input.local_data.shape[r]
+  image_y = input.DATA.shape[r]
   channel = input_data.shape[ch]
 
   _ = time.time()
@@ -769,22 +769,22 @@ def rnormcrossmapundo(grad, denom, input, output, out_grad, channel, size, image
   input_data = input.tmp_local_data
 
   if denom.local_area.cmp(input.tmp_local_area):
-    denom_data = denom.local_data
-    output_data = output.local_data
-    grad_data = grad.local_data
+    denom_data = denom.DATA
+    output_data = output.DATA
+    grad_data = grad.DATA
   else:
     denom_data = denom.tmp_local_data
     output_data = output.tmp_local_data
     grad_data = grad.tmp_local_data
 
-  if input_data.shape != out_grad.local_data.shape:
+  if input_data.shape != out_grad.DATA.shape:
     if not hasattr(out_grad, 'tmp_local_data'):
       out_grad.tmp_local_data = garray.empty_like(input_data)
     tmp_out_grad = out_grad.tmp_local_data
   else:
-    tmp_out_grad = out_grad.local_data
+    tmp_out_grad = out_grad.DATA
 
-  image_y = input.local_data.shape[r]
+  image_y = input.DATA.shape[r]
   channel = input_data.shape[ch]
 
   _ = time.time()
