@@ -169,7 +169,9 @@ class Trainer:
       #util.dump_profile()
       if PARALLEL_READ == True:
         batch_start = time.time()
+      #start = time.time()
       train_data = self.train_dp.get_next_batch(self.batch_size)
+      #util.log_info('Trainer get data %f', time.time() - start)
 
       self.stat.curr_epoch = train_data.epoch
       self.stat.curr_batch += 1
@@ -184,11 +186,11 @@ class Trainer:
 
       if PARALLEL_READ == False:
         batch_start = time.time()
-
+      #start = time.time()
       self.net.train_batch(input, label, self.stat)
       cost, correct, numCase = self.net.get_batch_information()
       self.train_outputs += [({'logprob': [cost, 1 - correct]}, numCase, self.elapsed())]
-
+      #util.log_info('Trainer train one minibatch %f', time.time() - start)
       if time.time() - last_print_time > 0:
         log('%d.%d: error: %f logreg: %f time: %f', self.stat.curr_epoch, self.stat.curr_batch, 1 - correct, cost, time.time() - batch_start)
         MONITOR.report()

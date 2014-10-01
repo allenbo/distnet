@@ -1,5 +1,5 @@
 from pycuda import gpuarray, driver
-from pycuda.gpuarray import GPUArray, to_gpu, zeros, zeros_like, empty, empty_like
+from pycuda.gpuarray import GPUArray, to_gpu, zeros, zeros_like, empty, empty_like, to_gpu_async
 import numpy as np
 from aux_operation import *
 from .backend import backend_name
