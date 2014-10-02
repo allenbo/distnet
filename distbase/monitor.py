@@ -10,7 +10,7 @@ class Monitor(object):
     self._name = name
     self._active = active
     self._clear()
-  
+
   def set_name(self, name):
     if self._active == False: return
     if name not in self._list:
@@ -25,16 +25,16 @@ class Monitor(object):
     if self._active == False: return
     if self._curr_name is None:
       assert 'Have\'t specified the item name'
-    
+
     name = self._curr_name
     self._list[name][Monitor.COMP] += elapsed
     self._comp += elapsed
-  
+
   def add_comm(self, elapsed):
     if self._active == False: return
     if self._curr_name is None:
       assert 'Have\'t specified the item name'
-    
+
     name = self._curr_name
     self._list[name][Monitor.COMM] += elapsed
     self._comm += elapsed
@@ -43,7 +43,7 @@ class Monitor(object):
     if self._active == False: return
     if self._curr_name is None:
       assert 'Have\'t specified the item name'
-    
+
     name = self._curr_name
     self._list[name][Monitor.MARSHALL] += elapsed
     self._marshall += elapsed
@@ -52,7 +52,7 @@ class Monitor(object):
     if self._active == False: return
     if self._curr_name is None:
       assert 'Have\'t specified the item name'
-    
+
     name = self._curr_name
     self._list[name][Monitor.MERGE] += elapsed
     self._merge += elapsed

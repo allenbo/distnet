@@ -2,6 +2,7 @@ from distbase.state import sisw, disw_i
 from distbase.util import issquare
 
 import cudaconv
+import cudaconv3
 import caffe
 import json
 from pycuda import gpuarray, driver, autoinit
@@ -48,13 +49,19 @@ class ConvExecuter(Executer):
       output_shape = tuple(param['output_shape'])
       filter_shape = tuple(param['filter_shape'])
       backend = param['backend']
+      weight_sum = param['weight_sum']
 
       if backend == 'cudaconv':
         import cudaconv_backend as cm_backend
         operation = cudaconv
+        if weight_sum == -1: weight_sum = 0
       elif backend == 'caffe':
         import caffe_backend as cm_backend
         operation = caffe
+      elif backend == 'cudaconv3':
+        import cudaconv3_backend as cm_backend
+        operation = cudaconv3
+        if weight_sum == -1: weight_sum = 10000
       else:
         assert False, 'There is no such backend %s' % (backend)
 
@@ -86,11 +93,11 @@ class ConvExecuter(Executer):
       filter = gpuarray.to_gpu(np.ndarray(filter_shape).astype(np.float32))
 
       filter_grad = gpuarray.to_gpu(np.ndarray(filter_shape).astype(np.float32))
-       
+
       ingrad = gpuarray.to_gpu(np.ndarray(output_shape).astype(np.float32))
       outgrad = gpuarray.to_gpu(np.ndarray(input_shape).astype(np.float32))
       bias = gpuarray.to_gpu(np.ndarray((num_filter, 1)).astype(np.float32))
-    
+
       padding = param['padding']
       stride = param['stride']
 
@@ -101,7 +108,7 @@ class ConvExecuter(Executer):
           -padding, stride, channel, 1)
       driver.Context.synchronize()
       operation.convWeightActs(input, ingrad, filter, bias, image_y, output_y, output_x, filter_size,
-          -padding, stride, channel, 1, 0)
+          -padding, stride, channel, 1, weight_sum)
       driver.Context.synchronize()
 
       start = time.time()
@@ -113,7 +120,7 @@ class ConvExecuter(Executer):
             -padding, stride, channel, 1)
         driver.Context.synchronize()
         operation.convWeightActs(input, ingrad, filter, bias, image_y, output_y, output_x, filter_size,
-            -padding, stride, channel, 1, 0)
+            -padding, stride, channel, 1, weight_sum)
         driver.Context.synchronize()
 
         garray.matrix_add(filter_grad, filter)
@@ -125,7 +132,7 @@ class ConvExecuter(Executer):
 
       elapsed = (time.time() - start) / self.count
       times.append(elapsed)
-    
+
     if self.num_test == 0:
       return 100.0
     if self.num_test != 1:
@@ -146,6 +153,9 @@ class PoolExecuter(Executer):
       if backend == 'cudaconv':
         import cudaconv_backend as cm_backend
         operation = cudaconv
+      elif backend == 'cudaconv3':
+        import cudaconv3_backend as cm_backend
+        operation = cudaconv3
       elif backend == 'caffe':
         import caffe_backend as cm_backend
         operation = caffe
@@ -168,7 +178,7 @@ class PoolExecuter(Executer):
         input_shape = cm_backend.get_image_shape(num_filter, input_y, input_x, input_shape[batch_idx])
         output_shape = cm_backend.get_image_shape(num_filter, output_y, output_x, output_shape[batch_idx])
         print '\033[33mChange the number of filters to %d and  make it a multiple of 16\033[0m' % num_filter
-      
+
       channel = input_shape[channel_idx]
       #input_shape = (input_shape[channel_idx], input_y, input_x, input_shape[batch_idx])
       #output_shape = (output_shape[channel_idx], output_y, output_x, output_shape[batch_idx])
@@ -201,14 +211,14 @@ class PoolExecuter(Executer):
 
       elapsed = (time.time() - s) / self.count
       times.append(elapsed)
-    
+
     if self.num_test == 0:
       return 100.0
     if self.num_test != 1:
       assert self.type == 'max'
       return max(times)
     return times[0]
-      
+
 
 class RNormExecuter(Executer):
   def execute(self):
@@ -225,6 +235,9 @@ class RNormExecuter(Executer):
       elif backend == 'caffe':
         import caffe_backend as cm_backend
         operation = caffe
+      elif backend == 'cudaconv3':
+        import cudaconv3_backend as cm_backend
+        operation = cudaconv3
       else:
         assert False, 'There is no such backend %s' % (backend)
 
@@ -239,25 +252,25 @@ class RNormExecuter(Executer):
       output_y = output_shape[height_idx]
       output_x = output_shape[width_idx]
 
- 
+
       if input_shape[channel_idx] % 16 != 0 and backend == 'cudaconv':
         num_filter = (input_shape[channel_idx] + 16 -1 ) / 16 * 16
         input_shape = cm_backend.get_image_shape(num_filter, input_y, input_x, input_shape[batch_idx])
         output_shape = cm_backend.get_image_shape(num_filter, output_y, output_x, output_shape[batch_idx])
         print '\033[33mChange the number of filters to %d and  make it a multiple of 16\033[0m' % num_filter
-     
+
       input = gpuarray.to_gpu(np.ndarray(input_shape).astype(np.float32))
       outgrad = gpuarray.to_gpu(np.ndarray(input_shape).astype(np.float32))
       output = gpuarray.to_gpu(np.ndarray(output_shape).astype(np.float32))
       ingrad = gpuarray.to_gpu(np.ndarray(output_shape).astype(np.float32))
-      
+
       denom = gpuarray.to_gpu(np.ndarray(output_shape).astype(np.float32))
 
       channel = input_shape[channel_idx]
       size = param['size']
       scalar = param['scale']
       pow = param['pow']
-      
+
       operation.convResponseNorm(input, denom, output, channel, size, input_y, scalar, pow)
       driver.Context.synchronize()
       operation.convResponseNormUndo(ingrad, denom, input, output, outgrad, channel, size, input_y,
@@ -274,14 +287,14 @@ class RNormExecuter(Executer):
 
       elapsed = (time.time() - start) / self.count
       times.append(elapsed)
-    
+
     if self.num_test == 0:
       return 100.0
     if self.num_test != 1:
       assert self.type == 'max'
       return max(times)
     return times[0]
-   
+
 class CMRNormExecuter(Executer):
   def execute(self):
     times = []
@@ -297,6 +310,9 @@ class CMRNormExecuter(Executer):
       elif backend == 'caffe':
         import caffe_backend as cm_backend
         operation = caffe
+      elif backend == 'cudaconv3':
+        import cudaconv3_backend as cm_backend
+        operation = cudaconv3
       else:
         assert False, 'There is no such backend %s' % (backend)
 
@@ -311,13 +327,13 @@ class CMRNormExecuter(Executer):
       output_y = output_shape[height_idx]
       output_x = output_shape[width_idx]
 
- 
+
       if input_shape[channel_idx] % 16 != 0 and backend == 'cudaconv':
         num_filter = (input_shape[channel_idx] + 16 -1 ) / 16 * 16
         input_shape = cm_backend.get_image_shape(num_filter, input_y, input_x, input_shape[batch_idx])
         output_shape = cm_backend.get_image_shape(num_filter, output_y, output_x, output_shape[batch_idx])
         print '\033[33mChange the number of filters to %d and  make it a multiple of 16\033[0m' % num_filter
-     
+
       channel = input_shape[channel_idx]
       #input_shape = (input_shape[channel_idx], input_y, input_x, input_shape[batch_idx])
       #output_shape = (output_shape[channel_idx], output_y, output_x, output_shape[batch_idx])
@@ -325,7 +341,7 @@ class CMRNormExecuter(Executer):
       outgrad = gpuarray.to_gpu(np.ndarray(input_shape).astype(np.float32))
       output = gpuarray.to_gpu(np.ndarray(output_shape).astype(np.float32))
       ingrad = gpuarray.to_gpu(np.ndarray(output_shape).astype(np.float32))
-      
+
       denom = gpuarray.to_gpu(np.ndarray(output_shape).astype(np.float32))
 
       size = param['size']
@@ -337,7 +353,7 @@ class CMRNormExecuter(Executer):
       operation.convResponseNormCrossMapUndo(ingrad, denom, input, output, outgrad, channel, size, input_y,
           scalar, pow, False, 0.0, 1.0)
       driver.Context.synchronize()
-      
+
       start = time.time()
       for i in range(self.count):
         operation.convResponseNormCrossMap(input, denom, output, channel, size, input_y, scalar, pow, False)
@@ -347,14 +363,14 @@ class CMRNormExecuter(Executer):
         driver.Context.synchronize()
       elapsed = (time.time() - start) / self.count
       times.append(elapsed)
-    
+
     if self.num_test == 0:
       return 100.0
     if self.num_test != 1:
       assert self.type == 'max'
       return max(times)
     return times[0]
-   
+
 class FCExecuter(Executer):
   def execute(self):
     times = []
@@ -363,12 +379,12 @@ class FCExecuter(Executer):
       input_shape = tuple(param['input_shape'])
       output_shape = tuple(param['output_shape'])
       weight_shape = tuple(param['weight_shape'])
-      
+
       input = gpuarray.to_gpu(np.ndarray(input_shape).astype(np.float32))
       output = gpuarray.to_gpu(np.ndarray(output_shape).astype(np.float32))
       weight = gpuarray.to_gpu(np.ndarray(weight_shape).astype(np.float32))
       weight_grad = gpuarray.to_gpu(np.ndarray(weight_shape).astype(np.float32))
-       
+
       ingrad = gpuarray.to_gpu(np.ndarray(output_shape).astype(np.float32))
       outgrad = gpuarray.to_gpu(np.ndarray(input_shape).astype(np.float32))
 
@@ -435,7 +451,7 @@ class SoftmaxExecuter(Executer):
       garray.iexp(output)
       sum = garray.sum(output, axis = 0)
       garray.copy_to(output/sum, output)
-      
+
       garray.softmax_bprop(output, ingrad, outgrad)
 
       start = time.time()
@@ -445,7 +461,7 @@ class SoftmaxExecuter(Executer):
         garray.iexp(output)
         sum = garray.sum(output, axis = 0)
         garray.copy_to(output/sum, output)
-        
+
         garray.softmax_bprop(output, ingrad, outgrad)
       elapsed = (time.time() - start) / self.count
       times.append(elapsed)
@@ -468,9 +484,12 @@ class NeuronExecuter(Executer):
         import cudaconv_backend as cm_backend
       elif backend == 'caffe':
         import caffe_backend as cm_backend
+      elif backend == 'cudaconv3':
+        import cudaconv3_backend as cm_backend
+        operation = cudaconv3
       else:
         assert False, 'There is no such backend %s' % (backend)
-      
+
       input_shape = tuple(param['input_shape'])
 
       if len(input_shape) == 2: # fc layer
@@ -481,12 +500,12 @@ class NeuronExecuter(Executer):
       input_shape = (np.prod(input_shape)/input_shape[batch_idx], input_shape[batch_idx])
       output_shape = tuple(param['output_shape'])
       output_shape = (np.prod(output_shape)/output_shape[batch_idx], output_shape[batch_idx])
-      
+
       input = gpuarray.to_gpu(np.ndarray(input_shape).astype(np.float32))
       outgrad = gpuarray.to_gpu(np.ndarray(input_shape).astype(np.float32))
       output = gpuarray.to_gpu(np.ndarray(output_shape).astype(np.float32))
       ingrad = gpuarray.to_gpu(np.ndarray(output_shape).astype(np.float32))
-      
+
       garray.relu_activate(input, output, 0.0)
       garray.relu_compute_grad(ingrad, output, outgrad, 0.0)
 
@@ -520,7 +539,7 @@ class RequestExecuter(object):
     self.comput_cost = {}
     self.ideal = ideal
     self.open_request()
-    
+
   def open_request(self):
     with open(self.filename) as f:
       self.requests = json.load(f)
@@ -537,7 +556,7 @@ class RequestExecuter(object):
         state = tuple(decr['state'])
 
         print '\033[31mRunning request [%d workers] ...\033[0m' % (num_worker)
-        
+
         if self.ideal and state != sisw: # assume the backend scale perfectly to any number of GPUs
           print 'Ideally scaled'
           elapsed = self.comput_cost[layer_name][sisw][0] / num_worker
@@ -548,7 +567,7 @@ class RequestExecuter(object):
             executer = get_executer(decr['op'])(decr, param)
             elapsed = executer.execute()
         print 'elapsed = \033[1m%f\033[0m second' % elapsed
-        
+
         if layer_name not in self.comput_cost:
           self.comput_cost[layer_name] = {}
         self.comput_cost[layer_name][state] = (elapsed, num_worker)

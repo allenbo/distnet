@@ -654,7 +654,7 @@ class VArray(object):
 
 
   def write(self, area, data, propagate = True, debug = False):
-    if self.num_group > 1 and self.group_size == 1 and propagate and not self.global_unique:
+    if self.num_group > 1 and self.group_size == 1 and propagate and not self.global_unique and debug:
       self.write_async(area, data)
       return
 

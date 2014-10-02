@@ -23,6 +23,7 @@ if __name__ == '__main__':
 
   layerdists = []
   for desc_dict, layer in zip(desc, model):
+    print layer['name'], desc_dict['name']
     assert layer['name'] == desc_dict['name']
     layerdists.append(LayerDist(eval(desc_dict['group_state']), desc_dict['workers_group']))
 

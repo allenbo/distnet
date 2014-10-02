@@ -33,8 +33,10 @@ class RequestWriter(object):
     self.backend = backend
     self.name = layer['type']
     self.layer_name = layer['name']
-    if self.backend == 'cudaconv' or backend == 'mix':
+    if self.backend == 'cudaconv':
       import cudaconv_backend as cm_backend
+    elif self.backend == 'cudaconv3':
+      import cudaconv3_backend as cm_backend
     elif self.backend == 'caffe':
       import caffe_backend as cm_backend
     else:
@@ -81,9 +83,9 @@ class RequestWriter(object):
       dict['input_shape'] = input_shape
       dict['output_shape'] = output_shape
       self.list.append(dict)
-    
+
     if len(dic_set) != 1:
-      self.type = 'max'     
+      self.type = 'max'
 
 
   def write_request(self, id, fout):
@@ -102,6 +104,12 @@ class ConvRequestWriter(RequestWriter):
       self.dict['filter_shape'] = self.weight_shape
       self.dict['stride'] = self.stride
       self.dict['padding'] = self.padding
+      if 'sumWidth' in layer:
+        self.dict['weight_sum'] = layer['sumWidth']
+      elif 'partialSum' in layer:
+        self.dict['weight_sum'] = layer['partialSum']
+      else:
+        self.dict['weight_sum'] = -1
     elif self.name == 'pool':
       self.filter_size = layer['poolSize']
       self.padding = 0
@@ -120,10 +128,10 @@ class ConvRequestWriter(RequestWriter):
 
   def define_request(self):
     self.type = 'share'
-          
+
     if self.state == sisw:
       self.list.append(self.dict)
- 
+
     elif self.state == disw_b:
       self.define_disw_b(1)
 
@@ -152,10 +160,10 @@ class ConvRequestWriter(RequestWriter):
         dict['filter_shape' if self.name == 'conv' else 'input_shape'] = shape
         dict['output_shape'] = output_shape
         self.list.append(dict)
-      
+
       if len(dic_set) != 1:
-        self.type = 'max'     
-    
+        self.type = 'max'
+
     elif self.state == disw_i:
       overlapping_max =  0
       actual_data_max =  0
@@ -174,7 +182,7 @@ class ConvRequestWriter(RequestWriter):
 
           if self.name in ['rnorm']:
             output_shape = input_shape
-          
+
           if input_shape:
             overlapping_max = max(overlapping, overlapping_max)
             actual_data_max = max(actual_data, actual_data_max)
@@ -191,9 +199,9 @@ class ConvRequestWriter(RequestWriter):
         dict['output_shape'] = output_shape
         dict['padding'] = 0
         self.list.append(dict)
-      
+
       if len(dic_set) != 1:
-        self.type = 'max'    
+        self.type = 'max'
     else:
       assert False, 'Distribution Error for ' + self.name + str(self.state)
 
@@ -214,7 +222,7 @@ class FCRequestWriter(RequestWriter):
 
     if self.state == sisw:
       self.list.append(self.dict)
- 
+
     elif self.state == disw_b:
       self.define_disw_b(8)
 
@@ -241,9 +249,9 @@ class FCRequestWriter(RequestWriter):
           dict['weight_shape' if self.name == 'fc' else 'input_shape'] = shape
           dict['output_shape'] = output_shape
           self.list.append(dict)
-        
+
         if len(dic_set) != 1:
-          self.type = 'max'     
+          self.type = 'max'
 
     else:
       assert False, 'Distribution Error for ' + self.name
@@ -264,6 +272,6 @@ class RequestProxy(object):
       fc = FCRequestWriter(layer, state, num_worker, self.backend)
       fc.write_request(self.id, self.writer)
     self.id += 1
-  
+
   def finish(self):
     print >> self.writer, "{\"end\":\"true\"}]"

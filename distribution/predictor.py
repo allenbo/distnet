@@ -254,7 +254,7 @@ if __name__ == '__main__':
   parser = argparse.ArgumentParser()
   parser.add_argument('--num-worker', help='Set number of workers', required=True, type=int)
   parser.add_argument('--comp-dir', help='The directory of computation files', required=True)
-  parser.add_argument('--backend', help='Computation backend, [cudaconv, caffe, mix](cudaconv default)', default = 'cudaconv', choices=['cudaconv', 'caffe', 'mix'])
+  parser.add_argument('--backend', help='Computation backend, [cudaconv, caffe, cudaconv3](cudaconv default)', default = 'cudaconv', choices=['cudaconv', 'caffe', 'cudaconv3'])
   parser.add_argument('--model-path', help='Path of model file', required=True)
   parser.add_argument('--ideal', help='Assume the backend ideally scale to any number of GPUs', default=False, action='store_true')
   parser.add_argument('--strategy-path', help='Path of generated strategy file', default='')
@@ -284,10 +284,12 @@ if __name__ == '__main__':
   n = config['num_worker']
   model_file = config['model-path']
 
-  if backend == 'cudaconv' or backend == 'mix':
+  if backend == 'cudaconv':
     import cudaconv_backend as cm_backend
   elif backend == 'caffe':
     import caffe_backend as cm_backend
+  elif backend == 'cudaconv3':
+    import cudaconv3_backend as cm_backend
   else:
     assert False, 'There is no such backend %s' % (backend)
 

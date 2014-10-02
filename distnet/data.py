@@ -355,7 +355,7 @@ class ImageNetBatchDataProvider(DataProvider):
         self.get_next_index()
         epoch = self.curr_epoch
         filename = os.path.join(self.data_dir, 'data_batch_%d' % (self.curr_batch))
-        #start = time.time()
+        start = time.time()
         if os.path.isdir(filename):
             images = []
             labels = []
@@ -400,7 +400,7 @@ class DummyDataProvider(DataProvider):
     #data = np.ndarray((3, self.inner_size, self.inner_size, batch_size)).astype(np.float32) * 128
     #data = np.random.randn(*(3, self.inner_size, self.inner_size, batch_size)).astype(np.float32) * 128
     data = np.ones((3, self.inner_size, self.inner_size, batch_size)).astype(np.float32) * 128
-    label = [np.random.choice(self.output_size) for i in range(batch_size)]
+    label = [np.random.choice(self.output_size) for i in range(self.batch_size)]
     label = np.array(label).astype(np.float32)
 
     return BatchData(data, label, 1)
