@@ -106,7 +106,7 @@ class FastNet(object):
       input = layer.output
       driver.Context.synchronize()
       #print 'fprop', layer.name, time.time() - _
-      self._monitor.add_comp(time.time() - _)
+      self._monitor.add_fprop(time.time() - _)
     return self.layers[-1].output
 
   def bprop(self, label, train=TRAIN):
@@ -122,14 +122,14 @@ class FastNet(object):
       driver.Context.synchronize()
       grad = prev.output_grad
       #print 'bprop', curr.name, time.time() - _
-      self._monitor.add_comp(time.time() - _)
+      self._monitor.add_bprop(time.time() - _)
 
   def update(self, stat):
     for layer in self.layers:
       self._monitor.set_name(layer.name)
       _ = time.time()
       layer.update(stat)
-      self._monitor.add_comp(time.time() - _)
+      self._monitor.add_update(time.time() - _)
 
   def adjust_learning_rate(self, factor=1.0):
     util.log_info('Adjusting learning rate: %s', factor)

@@ -11,6 +11,8 @@ import time
 import garray
 import cPickle as pickle
 
+from mtime import MTime
+
 executer_dict = {}
 def register_executer(name, _class):
   if name in executer_dict:
@@ -111,30 +113,42 @@ class ConvExecuter(Executer):
           -padding, stride, channel, 1, weight_sum)
       driver.Context.synchronize()
 
-      start = time.time()
+      fprop = bprop = wprop = update = 0
+      fstart = time.time()
       for i in range(self.count):
         operation.convFilterActs(input, filter, output, bias, image_y, output_y, output_x, -padding, stride,
             channel, 1)
         driver.Context.synchronize()
+      fprop = (time.time() - fstart) / self.count
+
+      bstart = time.time()
+      for i in range(self.count):
         operation.convImgActs(ingrad, filter, outgrad, image_y, image_x, output_y,
             -padding, stride, channel, 1)
         driver.Context.synchronize()
+      bprop = (time.time() - bstart) / self.count
+
+      wstart = time.time()
+      for i in range(self.count):
         operation.convWeightActs(input, ingrad, filter, bias, image_y, output_y, output_x, filter_size,
             -padding, stride, channel, 1, weight_sum)
         driver.Context.synchronize()
+      wprop = (time.time() - wstart) / self.count
 
+      ustart = time.time()
+      for i in range(self.count):
         garray.matrix_add(filter_grad, filter)
         driver.Context.synchronize()
         garray.matrix_add(filter_grad, filter)
         driver.Context.synchronize()
         garray.matrix_add(filter_grad, filter)
         driver.Context.synchronize()
+      update = (time.time() - ustart) / self.count
 
-      elapsed = (time.time() - start) / self.count
-      times.append(elapsed)
+      times.append(MTime(fprop, bprop, wprop, update))
 
     if self.num_test == 0:
-      return 100.0
+      return MTime(1000, 0)
     if self.num_test != 1:
       assert self.type == 'max'
       return max(times)
@@ -198,22 +212,27 @@ class PoolExecuter(Executer):
           output_x, input_y)
       driver.Context.synchronize()
 
-      s = time.time()
+      fprop = bprop = 0
+      fstart = time.time()
       for i in range(self.count):
         # forward
         operation.convLocalMaxPool(input, output, channel, pool_size, start, stride, input_y,
             output_y, output_x)
         driver.Context.synchronize()
+      fprop = (time.time() - fstart) / self.count
+
+      bstart = time.time()
+      for i in range(self.count):
         # backward
         operation.convLocalMaxUndo(input, ingrad, output, outgrad, pool_size, start, stride, output_y,
             output_x, input_y)
         driver.Context.synchronize()
+      bprop = (time.time() - bstart) / self.count
 
-      elapsed = (time.time() - s) / self.count
-      times.append(elapsed)
+      times.append(MTime(fprop, bprop))
 
     if self.num_test == 0:
-      return 100.0
+      return MTime(1000, 0)
     if self.num_test != 1:
       assert self.type == 'max'
       return max(times)
@@ -277,19 +296,24 @@ class RNormExecuter(Executer):
           scalar, pow, 0.0, 1.0)
       driver.Context.synchronize()
 
-      start = time.time()
+      fprop = bprop = 0
+      fstart = time.time()
       for i in range(self.count):
         operation.convResponseNorm(input, denom, output, channel, size, input_y, scalar, pow)
         driver.Context.synchronize()
+      fprop = (time.time() - fstart) / self.count
+
+      bstart = time.time()
+      for i in range(self.count):
         operation.convResponseNormUndo(ingrad, denom, input, output, outgrad, channel, size, input_y,
             scalar, pow, 0.0, 1.0)
         driver.Context.synchronize()
+      bprop = (time.time() - bstart) / self.count
 
-      elapsed = (time.time() - start) / self.count
-      times.append(elapsed)
+      times.append(MTime(fprop, bprop))
 
     if self.num_test == 0:
-      return 100.0
+      return MTime(1000, 0)
     if self.num_test != 1:
       assert self.type == 'max'
       return max(times)
@@ -354,18 +378,23 @@ class CMRNormExecuter(Executer):
           scalar, pow, False, 0.0, 1.0)
       driver.Context.synchronize()
 
-      start = time.time()
+      fprop = bprop = 0
+      fstart = time.time()
       for i in range(self.count):
         operation.convResponseNormCrossMap(input, denom, output, channel, size, input_y, scalar, pow, False)
         driver.Context.synchronize()
+      fprop = (time.time() - fstart) / self.count
+
+      bstart = time.time()
+      for i in range(self.count):
         operation.convResponseNormCrossMapUndo(ingrad, denom, input, output, outgrad, channel, size, input_y,
             scalar, pow, False, 0.0, 1.0)
         driver.Context.synchronize()
-      elapsed = (time.time() - start) / self.count
-      times.append(elapsed)
+      bprop = (time.time() - bstart) / self.count
+      times.append(MTime(fprop, bprop))
 
     if self.num_test == 0:
-      return 100.0
+      return MTime(1000, 0)
     if self.num_test != 1:
       assert self.type == 'max'
       return max(times)
@@ -401,7 +430,8 @@ class FCExecuter(Executer):
       garray.matrixmult(garray.transpose(weight), ingrad, dest = outgrad)
       garray.matrixmult(ingrad, garray.transpose(input), dest = weight)
 
-      start = time.time()
+      fprop = bprop = wprop = update = 0
+      fstart = time.time()
       for i in range(self.count):
         # forward
         garray.matrixmult(weight, input, dest = output)
@@ -410,23 +440,37 @@ class FCExecuter(Executer):
           drop_mask = gpuarray.to_gpu(obj)
           garray.bigger_than_scalar(drop_mask, drop_out)
           garray.copy_to(output * drop_mask, output)
-          # backward
+      fprop = (time.time() - fstart) / self.count
+
+      bstart = time.time()
+      for i in range(self.count):
+        # backward
+        if drop_out > 0.0:
           garray.copy_to(ingrad * drop_mask, ingrad)
 
         garray.matrixmult(garray.transpose(weight), ingrad, dest = outgrad)
-        garray.matrixmult(ingrad, garray.transpose(input), dest = weight)
-        garray.matrix_add(weight_grad, weight)
-        driver.Context.synchronize()
-        garray.matrix_add(weight_grad, weight)
-        driver.Context.synchronize()
-        garray.matrix_add(weight_grad, weight)
-        driver.Context.synchronize()
+      bprop = (time.time() - bstart) / self.count
 
-      elapsed = (time.time() - start) / self.count
-      times.append(elapsed)
+      wstart = time.time()
+      for i in range(self.count):
+        garray.matrixmult(ingrad, garray.transpose(input), dest = weight)
+        driver.Context.synchronize()
+      wprop = (time.time() - wstart) / self.count
+
+      ustart = time.time()
+      for i in range(self.count):
+        garray.matrix_add(weight_grad, weight)
+        driver.Context.synchronize()
+        garray.matrix_add(weight_grad, weight)
+        driver.Context.synchronize()
+        garray.matrix_add(weight_grad, weight)
+        driver.Context.synchronize()
+      update = (time.time() - ustart) / self.count
+
+      times.append(MTime(fprop, bprop, wprop, update))
 
     if self.num_test == 0:
-      return 100.0
+      return MTime(1000, 0)
     if self.num_test != 1:
       assert self.type == 'max'
       return max(times)
@@ -454,20 +498,24 @@ class SoftmaxExecuter(Executer):
 
       garray.softmax_bprop(output, ingrad, outgrad)
 
-      start = time.time()
+      fprop = bprop = 0
+      fstart = time.time()
       for i in range(self.count):
         maximum = garray.max(input, axis = 0)
         garray.copy_to(input-maximum, output)
         garray.iexp(output)
         sum = garray.sum(output, axis = 0)
         garray.copy_to(output/sum, output)
+      fprop = (time.time() - fstart) / self.count
 
+      bstart = time.time()
+      for i in range(self.count):
         garray.softmax_bprop(output, ingrad, outgrad)
-      elapsed = (time.time() - start) / self.count
-      times.append(elapsed)
+      bprop = (time.time() - bstart) / self.count
+      times.append(MTime(fprop, bprop))
 
     if self.num_test == 0:
-      return 100.0
+      return MTime(1000, 0)
     if self.num_test != 1:
       assert self.type == 'max'
       return max(times)
@@ -509,16 +557,21 @@ class NeuronExecuter(Executer):
       garray.relu_activate(input, output, 0.0)
       garray.relu_compute_grad(ingrad, output, outgrad, 0.0)
 
-      start = time.time()
+      fprop = bprop = 0
+      fstart = time.time()
       for i in range(self.count):
         garray.relu_activate(input, output, 0.0)
-        garray.relu_compute_grad(ingrad, output, outgrad, 0.0)
+      fprop = (time.time() - fstart) / self.count
 
-      elapsed = (time.time() - start) / self.count
-      times.append(elapsed)
+      bstart = time.time()
+      for i in range(self.count):
+        garray.relu_compute_grad(ingrad, output, outgrad, 0.0)
+      bprop = (time.time() - bstart) / self.count
+
+      times.append(MTime(fprop, bprop))
 
     if self.num_test == 0:
-      return 100.0
+      return MTime(1000, 0)
     if self.num_test != 1:
       assert self.type == 'max'
       return max(times)
@@ -562,11 +615,11 @@ class RequestExecuter(object):
           elapsed = self.comput_cost[layer_name][sisw][0] / num_worker
         else:
           if state == disw_i and not issquare(num_worker):
-            elapsed = 1000
+            elapsed = MTime(1000, 0)
           else:
             executer = get_executer(decr['op'])(decr, param)
             elapsed = executer.execute()
-        print 'elapsed = \033[1m%f\033[0m second' % elapsed
+        print 'elapsed = \033[1m%s\033[0m second' % elapsed
 
         if layer_name not in self.comput_cost:
           self.comput_cost[layer_name] = {}

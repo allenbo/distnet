@@ -210,7 +210,7 @@ class WeightedLayer(Layer):
     self.bias.update(stat)
     garray.driver.Context.synchronize()
 
-    MONITOR.add_comp(time.time() - _)
+    MONITOR.add_update(time.time() - _)
 
   def get_summary(self, type='mean'):
     w = self.weight.wt.get()
@@ -481,7 +481,6 @@ class FCLayer(WeightedLayer):
 
   def fprop(self, input, output, train=TRAIN):
     arr.fcforward(input, output, self.weight.wt, self.bias.wt, self.prev_conv)
-    _ = time.time()
     if train == TEST:
       if self.dropRate > 0.0:
         output *= (1.0 - self.dropRate)
@@ -498,10 +497,8 @@ class FCLayer(WeightedLayer):
       arr.relu_activate(self.output, self.output, 0)
     self._printout_forward(output, fc = True)
     garray.driver.Context.synchronize()
-    MONITOR.add_comp(time.time() - _)
 
   def bprop(self, grad, input, output, outGrad):
-    _ = time.time()
     outGrad.fill(0)
     self.weight.grad.fill(0)
     self.bias.grad.fill(0)
@@ -512,7 +509,6 @@ class FCLayer(WeightedLayer):
       arr.copy_to(grad * self.dropMask, grad)
 
     garray.driver.Context.synchronize()
-    MONITOR.add_comp(time.time() - _)
     arr.fcbackward(input, self.weight.wt, grad, outGrad, self.weight.grad, self.bias.grad, self.prev_conv)
 
     #self._printout_backward((self.bias.grad, self.weight.grad, outGrad))

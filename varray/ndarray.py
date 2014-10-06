@@ -637,7 +637,7 @@ class VArray(object):
       for i in range(1, num_worker):
         tmp  = garray.GPUArray(shape = data.shape, dtype = np.float32, gpudata = cache.ptr + cache.strides[0] * i)
         data += tmp
-      if INNER: MONITOR.add_comp(time.time() - _)
+      if INNER: MONITOR.add_comm(time.time() - _)
 
 
   def group_synchronize(self):

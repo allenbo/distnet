@@ -132,7 +132,7 @@ def find_best(model, init_state, cfs, prev_nw):
       cm_cost = communicat_cost[(init_state, init_state)](input_size, weight_size, actual_data, cur_nw, prev_nw) * 1.0 / bandwidth + latency * 2
       if init_state == disw_i or init_state == sidw_f:
         cm_cost *= 1.5
-      return (layer['comp_cost'][init_state][0] + cm_cost + cost, [init_state] + state_list)
+      return (layer['comp_cost'][init_state][0].sum + cm_cost + cost, [init_state] + state_list)
     else:
       communicat_cost = comm_cost[cfs]
       cost, state_list = find_best(model[1:], init_state, ncfs, cur_nw)
@@ -140,7 +140,7 @@ def find_best(model, init_state, cfs, prev_nw):
       cm_latency = 0 if cm_cost == 0 else latency * 2
       if init_state == disw_i or init_state == sidw_f:
         cm_cost *= 1.5
-      return (layer['comp_cost'][init_state][0] + cm_cost + cm_latency + cost, [init_state] + state_list)
+      return (layer['comp_cost'][init_state][0].sum + cm_cost + cm_latency + cost, [init_state] + state_list)
 
   costs = []
   states = []
@@ -160,7 +160,7 @@ def find_best(model, init_state, cfs, prev_nw):
       cm_latency = 0 if cm_cost == 0 else latency * 2
       if s == disw_i or s == sidw_f:
         cm_cost *= 1.5
-    cp_cost = layer['comp_cost'][s][0]
+    cp_cost = layer['comp_cost'][s][0].sum
     cost = cm_cost + cp_cost + cost + cm_latency
     costs.append(cost)
     states.append(state_list)
@@ -181,7 +181,8 @@ def print_details(model, states):
   conv_region = True
 
   prev_nw = -1
-  print '\033[93m{:10}\t{:30}\t{:20}\t{:20}\t{:20}\033[0m'.format('layer', 'distribution', 'cp_cost', 'cm_cost', 'num_worker')
+  print '\033[93m{:10}\t{:30}\t{:20}\t{:20}\t{:20}\t{:20}\t{:20}\t{:20}\t{:20}\033[0m'.format(
+          'layer', 'distribution', 'fprop', 'bprop', 'wprop', 'update', 'cp_cost', 'cm_cost', 'num_worker')
   for i in range(len(model)):
     layer = model[i]
     curr_state = states[i]
@@ -229,7 +230,8 @@ def print_details(model, states):
         cm_cost += 0 if cm_cost == 0 else latency * 2
       if curr_state == disw_i or curr_state == sidw_f:
         cm_cost *= 1.5
-    cp_cost = layer['comp_cost'][curr_state][0]
+    mtime = layer['comp_cost'][curr_state][0]
+    cp_cost, fprop, bprop, wprop, update = mtime.sum, mtime.fprop, mtime.bprop, mtime.wprop, mtime.update
 
     if conv_region:
       conv_elapsed += cp_cost + cm_cost
@@ -237,7 +239,8 @@ def print_details(model, states):
     else:
       fc_elapsed += cp_cost + cm_cost
 
-    print '{:10}\t{:30}\t{:20}\t{:20}\t{:20}'.format(layer['name'], curr_state, cp_cost, cm_cost, cur_nw)
+    print '{:10}\t{:30}\t{:20}\t{:20}\t{:20}\t{:20}\t{:20}\t{:20}\t{:20}'.format(layer['name'],
+            curr_state, fprop, bprop, wprop, update, cp_cost, cm_cost, cur_nw)
     prev_state = curr_state
     prev_nw = cur_nw
     total_comp_cost += cp_cost

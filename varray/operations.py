@@ -128,7 +128,7 @@ def fcforward(input, output, weight, bias, prev_conv):
   garray.matrixmult(weight.DATA, input_data, dest = output.DATA)
   garray.copy_to(output.DATA + bias.DATA , output.DATA)
   driver.Context.synchronize()
-  MONITOR.add_comp(time.time() - _)
+  MONITOR.add_fprop(time.time() - _)
 
 def fcbackward(input, weight, grad, out_grad, weight_grad, bias_grad, prev_conv):
   grad_propagate = False
@@ -170,10 +170,13 @@ def fcbackward(input, weight, grad, out_grad, weight_grad, bias_grad, prev_conv)
   tmp_out_grad.fill(0)
   tmp_weight_grad.fill(0)
   garray.matrixmult(garray.transpose(weight.DATA), grad.DATA, dest = tmp_out_grad)
+  driver.Context.synchronize()
+  MONITOR.add_bprop(time.time() - _)
+  _ = time.time()
   garray.matrixmult(grad.DATA, garray.transpose(input.tmp_local_data), dest = tmp_weight_grad)
   garray.copy_to(garray.sum(grad.DATA, axis = 1), bias_grad.DATA)
   driver.Context.synchronize()
-  MONITOR.add_comp(time.time() - _)
+  MONITOR.add_wprop(time.time() - _)
   _ = time.time()
   weight_grad.write(area = weight_grad.local_area, data = tmp_weight_grad, propagate = weight_propagate)
   out_grad.write(area = input.tmp_local_area, data = tmp_out_grad, propagate = grad_propagate)
@@ -196,7 +199,7 @@ def softmax(input, output):
   garray.iexp(local_output)
   sum_rst = garray.sum(local_output, axis = 0)
   garray.copy_to(local_output / sum_rst, local_output)
-  MONITOR.add_comp(time.time() - _)
+  MONITOR.add_fprop(time.time() - _)
 
 def softmax_bprop(output, label, out_grad):
   state = get_state_from_slice_dim(output.group_slice_dim, False, ConvDataLayout, FCDataLayout)
@@ -207,7 +210,7 @@ def softmax_bprop(output, label, out_grad):
     tmp_out_grad = out_grad.tmp_local_data
     tmp_out_grad.fill(0)
     garray.softmax_bprop(output.DATA, label, tmp_out_grad)
-    MONITOR.add_comp(time.time() - _)
+    MONITOR.add_bprop(time.time() - _)
     _ = time.time()
     out_grad.write(area = out_grad.global_area, data = tmp_out_grad, propagate = False)
     if not INNER: MONITOR.add_comm(time.time() - _)
@@ -218,7 +221,7 @@ def softmax_bprop(output, label, out_grad):
     f = output.local_area._from[idx]
     t = output.local_area._to[idx] + 1
     garray.softmax_bprop(output.DATA, label[0:1, f:t], out_grad.DATA)
-    MONITOR.add_comp(time.time() - _)
+    MONITOR.add_bprop(time.time() - _)
 
 def relu_activate(input, output, e):
   garray.relu_activate(input.DATA, output.DATA, e)
@@ -265,8 +268,7 @@ def convolution(input, filter ,output, bias, image_y, output_y, output_x, paddin
       output.DATA,
       bias.DATA,
       image_y, output_y, output_x, padding, stride, channel, group)
-
-  MONITOR.add_comp(time.time() - _)
+  MONITOR.add_fprop(time.time() - _)
 
 def bconvolution(input, grad, filter, out_grad, image_y, image_x, output_size, padding, stride, channel):
   real_padding = padding
@@ -317,7 +319,7 @@ def bconvolution(input, grad, filter, out_grad, image_y, image_x, output_size, p
       tmp_out_grad,
       image_y, image_x, output_size, padding, stride, channel)
 
-  MONITOR.add_comp(time.time() - _)
+  MONITOR.add_bprop(time.time() - _)
 
   _ = time.time()
   if state == disw_i:
@@ -385,7 +387,7 @@ def wconvolution(input, grad, weight_grad, bias_grad, image_y, output_y, output_
       tmp_bias_grad,
       image_y, output_y, output_x, filter_size, padding, stride, channel, group, partial_sum)
 
-  MONITOR.add_comp(time.time() - _)
+  MONITOR.add_wprop(time.time() - _)
   _ = time.time()
   weight_grad.write(area = weight_grad.global_area, data = tmp_weight_grad, propagate = propagate)
   bias_grad.write(area = bias_grad.global_area, data = tmp_bias_grad, propagate = propagate)
@@ -422,7 +424,7 @@ def maxpool(input, output, channel, pool_size, start, stride, input_y, output_y,
       output.DATA,
       channel, pool_size, start, stride, input_y, output_y, output_x)
 
-  MONITOR.add_comp(time.time() - _)
+  MONITOR.add_fprop(time.time() - _)
 
 def maxundo(input, grad, output, out_grad, pool_size, start, stride, output_y, output_x, input_y):
   propagate = True
@@ -472,7 +474,7 @@ def maxundo(input, grad, output, out_grad, pool_size, start, stride, output_y, o
       tmp_out_grad,
       pool_size, start, stride, output_y, output_x, input_y)
 
-  MONITOR.add_comp(time.time() - _)
+  MONITOR.add_bprop(time.time() - _)
 
   _ = time.time()
   out_grad.write(data = tmp_out_grad, area = input.tmp_local_area, propagate = propagate)
@@ -509,7 +511,7 @@ def avgpool(input, output, channel, pool_size, start, stride, input_y, output_y,
       output.DATA,
       channel, pool_size, start, stride, input_y, output_y, output_x)
 
-  MONITOR.add_comp(time.time() - _)
+  MONITOR.add_fprop(time.time() - _)
 
 def avgundo(input, grad, out_grad, pool_size, start, stride, output_y, output_x, image_y, image_x):
   propagate = True
@@ -555,7 +557,7 @@ def avgundo(input, grad, out_grad, pool_size, start, stride, output_y, output_x,
       tmp_out_grad,
       pool_size, start, stride, output_y, output_x, image_y, image_x)
 
-  MONITOR.add_comp(time.time() - _)
+  MONITOR.add_bprop(time.time() - _)
   _ = time.time()
   out_grad.write(data = tmp_out_grad, area = input.tmp_local_area, propagate = propagate)
   if not INNER: MONITOR.add_comm(time.time() - _)
@@ -600,7 +602,7 @@ def rnorm(input, denom, output, channel, size, image_y, scalar, pow):
       tmp_output_data,
       channel, size, image_y, scalar, pow)
 
-  MONITOR.add_comp(time.time() - _)
+  MONITOR.add_fprop(time.time() - _)
 
   _ = time.time()
   if input.tmp_local_area != denom.local_area:
@@ -680,7 +682,7 @@ def rnormundo(grad, denom, input, output, out_grad, channel, size, image_y, scal
       tmp_out_grad,
       channel, size, image_y, scalar, pow)
 
-  MONITOR.add_comp(time.time() - _)
+  MONITOR.add_bprop(time.time() - _)
   _ = time.time()
   if state == disw_i and propagate:
     tmp_out_grad = output.local_patch(tmp_out_grad)
@@ -725,7 +727,7 @@ def rnormcrossmap(input, denom, output, channel, size,image_y, scalar, pow, bloc
       tmp_denom_data,
       tmp_output_data,
       channel, size, image_y, scalar, pow, blocked)
-  MONITOR.add_comp(time.time() - _)
+  MONITOR.add_fprop(time.time() - _)
   _ = time.time()
 
   if not input.tmp_local_area.cmp(denom.local_area):
@@ -798,7 +800,7 @@ def rnormcrossmapundo(grad, denom, input, output, out_grad, channel, size, image
       tmp_out_grad,
       channel, size, image_y, scalar, pow, blocked)
 
-  MONITOR.add_comp(time.time() - _)
+  MONITOR.add_bprop(time.time() - _)
   _ = time.time()
   if state == sidw and propagate:
     tmp_out_grad = output.local_path(tmp_out_grad)
