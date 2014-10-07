@@ -11,38 +11,20 @@ convert_to_conv = cm_backend.convert_to_conv
 convert_from_backend = cm_backend.convert_from_backend
 
 convolution = sync_function(cm_backend.convFilterActs)
-
-@sync_function
-def bconvolution(*args):
-  args = args[1:] + (1,)
-  cm_backend.convImgActs(*args)
-
-@sync_function
-def wconvolution(*args):
-  args = args[:-2] + (1, args[-1] if cm_backend.backend_name == 'cudaconv3' else args[-2])
-  cm_backend.convWeightActs(*args)
+bconvolution = sync_function(cm_backend.convImgActs)
+wconvolution = sync_function(cm_backend.convWeightActs)
 
 # PoolLayer
 maxpool = sync_function(cm_backend.convLocalMaxPool)
 maxundo = sync_function(cm_backend.convLocalMaxUndo)
 avgpool = sync_function(cm_backend.convLocalAvgPool)
-@sync_function
-def avgundo(*args):
-  args = args[1:]
-  cm_backend.convLocalAvgUndo(*args)
+avgundo = sync_function(cm_backend.convLocalAvgUndo)
 
 # RNormLayer
 rnorm = sync_function(cm_backend.convResponseNorm)
-@sync_function
-def rnormundo(*args):
-  args = args + (0.0, 1.0)
-  cm_backend.convResponseNormUndo(*args)
-
+rnormundo = sync_function(cm_backend.convResponseNormUndo)
 rnormcrossmap = sync_function(cm_backend.convResponseNormCrossMap)
-@sync_function
-def rnormcrossmapundo(*args):
-  args = args +  (0.0, 1.0)
-  cm_backend.convResponseNormCrossMapUndo(*args)
+rnormcrossmapundo = sync_function(cm_backend.convResponseNormCrossMapUndo)
 
 def matrixmult(x, y, dest = None, alpha = 1.0, beta = 0.0):
   if len(x.shape) == 4:

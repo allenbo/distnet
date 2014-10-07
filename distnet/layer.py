@@ -287,8 +287,7 @@ class ConvLayer(WeightedLayer):
     return ConvDataLayout.get_output_shape(self.outputSize, self.outputSize, self.numFilter, self.batch_size)
 
   def fprop(self, input, output, train=TRAIN):
-    arr.convolution(input, self.weight.wt, output, self.bias.wt, self.img_size, self.outputSize,
-        self.outputSize, -self.padding, self.stride, self.numColor, 1)
+    arr.convolution(input, self.weight.wt, output, self.bias.wt, -self.padding, self.stride)
 
     if self.neuron == 'relu':
       arr.relu_activate(output, output, 0)
@@ -302,14 +301,11 @@ class ConvLayer(WeightedLayer):
     if self.neuron == 'relu':
       arr.relu_compute_grad(grad, output, grad, 0)
     # bprop weight
-    arr.wconvolution(input, grad, self.weight.grad, self.bias.grad, self.img_size, self.outputSize,
-        self.outputSize, self.filterSize, -self.padding, self.stride, self.numColor,
-        self.partialSum, self.sumWidth)
+    arr.wconvolution(input, grad, self.weight.grad, self.bias.grad, -self.padding, self.stride, self.sumWidth)
 
     if self._prev_layer.type != 'data':
       # bprop to next layer
-      arr.bconvolution(input, grad, self.weight.wt, outGrad, self.img_size, self.img_size,
-          self.outputSize, -self.padding, self.stride, self.numColor)
+      arr.bconvolution(input, grad, self.weight.wt, outGrad, -self.padding, self.stride)
 
     self._printout_backward((self.bias.grad, self.weight.grad, outGrad))
 
@@ -333,15 +329,12 @@ class MaxPoolLayer(Layer):
     return ConvDataLayout.get_output_shape(self.outputSize, self.outputSize, self.numColor, self.batch_size)
 
   def fprop(self, input, output, train=TRAIN):
-    arr.maxpool(input, output, self.numColor, self.poolSize, self.start, self.stride, self.img_size,
-        self.outputSize, self.outputSize)
-
+    arr.maxpool(input, output, self.poolSize, self.start, self.stride)
     self._printout_forward(output)
 
   def bprop(self, grad, input, output, outGrad):
     outGrad.fill(0)
-    arr.maxundo(input, grad, output, outGrad, self.poolSize,
-        self.start, self.stride, self.outputSize, self.outputSize, self.img_size)
+    arr.maxundo(input, grad, output, outGrad, self.poolSize, self.start, self.stride)
     self._printout_backward((outGrad,))
 
 class AvgPoolLayer(Layer):
@@ -364,13 +357,11 @@ class AvgPoolLayer(Layer):
     return ConvDataLayout.get_output_shape(self.outputSize, self.outputSize, self.numColor, self.batch_size)
 
   def fprop(self, input, output, train=TRAIN):
-    arr.avgpool(input, output, self.numColor, self.poolSize, self.start, self.stride,
-        self.img_size, self.outputSize, self.outputSize)
+    arr.avgpool(input, output,self.poolSize, self.start, self.stride)
     self._printout_forward(output)
 
   def bprop(self, grad, input, output, outGrad):
-    arr.avgundo(input, grad, outGrad, self.poolSize,
-        self.start, self.stride, self.outputSize, self.outputSize, self.img_size, self.img_size)
+    arr.avgundo(input, grad, outGrad, self.poolSize, self.start, self.stride)
     self._printout_backward((outGrad,))
 
 class ResponseNormLayer(Layer):
@@ -406,16 +397,12 @@ class ResponseNormLayer(Layer):
                           context = build_context(self.layerdist.workers_group))
 
   def fprop(self, input, output, train=TRAIN):
-    arr.rnorm(input, self.denom, output, self.numColor, self.size, self.img_size, self.scalar,
-        self.pow)
+    arr.rnorm(input, self.denom, output, self.size, self.scalar, self.pow)
     self._printout_forward(output)
-
 
   def bprop(self, grad, input, output, outGrad):
     outGrad.fill(0)
-    arr.rnormundo(grad, self.denom, input, output, outGrad, self.numColor,
-        self.size, self.img_size, self.scalar, self.pow)
-
+    arr.rnormundo(grad, self.denom, input, output, outGrad, self.size, self.scalar, self.pow)
     self._printout_backward((outGrad,))
 
 class CrossMapResponseNormLayer(ResponseNormLayer):
@@ -430,15 +417,13 @@ class CrossMapResponseNormLayer(ResponseNormLayer):
 
 
   def fprop(self, input, output, train=TRAIN):
-    arr.rnormcrossmap(input, self.denom, output, self.numColor, self.size, self.img_size, self.scalar, self.pow, self.blocked)
+    arr.rnormcrossmap(input, self.denom, output, self.size, self.scalar, self.pow, self.blocked)
     self._printout_forward(output)
 
   def bprop(self, grad, input, output, outGrad):
     outGrad.fill(0)
-    arr.rnormcrossmapundo(grad, self.denom, input, output, outGrad, self.numColor,
-        self.size, self.img_size,self.scalar, self.pow, self.blocked)
+    arr.rnormcrossmapundo(grad, self.denom, input, output, outGrad, self.size,self.scalar, self.pow, self.blocked)
     self._printout_backward((outGrad,))
-
 
 class FCLayer(WeightedLayer):
   ''' When the backend is caffe, we have to transpose the input to make batch as the second

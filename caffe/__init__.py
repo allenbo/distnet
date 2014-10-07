@@ -75,7 +75,12 @@ def init(device=-1):
   atexit.register(CONTEXT.detach)
   return CONTEXT
 
-def convFilterActs(input, weight, output, bias, image_y, output_y, output_x, padding, stride, color, group):
+def convFilterActs(input, weight, output, bias, padding, stride):
+  image_y = input.shape[ConvDataLayout.HEIGHT]
+  output_y = output.shape[ConvDataLayout.HEIGHT]
+  output_x = output.shape[ConvDataLayout.WIDTH]
+  color = input.shape[ConvDataLayout.CHANNEL]
+  group = 1
   batch_size = input.shape[0]
   image_x = input.shape[-1]
   filter_size = weight.shape[-1]
@@ -96,8 +101,13 @@ def convFilterActs(input, weight, output, bias, image_y, output_y, output_x, pad
     cuda_base.matrixmult(bias, bias_multiplier, dest = output_buffer, alpha = 1.0, beta = 1.0)
 
 
-def convImgActs(ingrad, weight, outgrad, image_y, image_x, output_y, padding, stride, color,
-    group):
+def convImgActs(input, ingrad, weight, outgrad, padding, stride):
+  image_y =  input.shape[ConvDataLayout.HEIGHT]
+  image_x =  input.shape[ConvDataLayout.WIDTH]
+  output_y =  ingrad.shape[ConvDataLayout.HEIGHT]
+  color = input.shape[ConvDataLayout.CHANNEL]
+  group = 1
+
   batch_size = ingrad.shape[0]
   output_x = ingrad.shape[-1]
   filter_size = weight.shape[-1]
@@ -113,7 +123,14 @@ def convImgActs(ingrad, weight, outgrad, image_y, image_x, output_y, padding, st
     cuda_base.matrixmult(weight_buffer, ingrad_buffer, dest = col_buffer)
     col2im_gpu(col_buffer.ptr, color, image_y, image_x, filter_size, stride, padding, outgrad.ptr + outgrad.strides[0] * i)
 
-def convWeightActs(input, ingrad, weight_grad, bias_grad, image_y, output_y, output_x, filter_size, padding, stride, color, group, partial_sum):
+def convWeightActs(input, ingrad, weight_grad, bias_grad, padding, stride, color, *args):
+  image_y = input.shape[ConvDataLayout.HEIGHT]
+  output_y =  ingrad.shape[ConvDataLayout.HEIGHT]
+  output_x =  ingrad.shape[ConvDataLayout.WIDTH]
+  filter_size =  weight_grad.shape[FilterLayout.HEIGHT]
+  color = input.shape[ConvDataLayout.CHANNEL]
+  group = 1
+
   batch_size = input.shape[0]
   image_x = input.shape[-1]
   filter_size = weight_grad.shape[-1]
@@ -130,6 +147,58 @@ def convWeightActs(input, ingrad, weight_grad, bias_grad, image_y, output_y, out
     cuda_base.matrixmult(ingrad_buffer, cuda_base.transpose(col_buffer), dest = weight_grad, alpha = 1.0, beta = 1.0)
     # bias term
     cuda_base.matrixmult(ingrad_buffer, bias_multiplier, bias_grad, alpha = 1.0, beta = 1.0)
+
+def convLocalMaxPool(input, output, size, start, stride):
+  color =  input.shape[ConvDataLayout.CHANNEL]
+  image_y =  input.shape[ConvDataLayout.HEIGHT]
+  output_y = output.shape[ConvDataLayout.HEIGHT]
+  output_x =  output.shape[ConvDataLayout.WIDTH]
+
+  caffe.convLocalMaxPool(input, output, color, size, start, stride, image_y, output_y, output_x)
+
+
+def convLocalMaxUndo(input, grad, output, outgrad, size, start, stride):
+  output_y = output.shape[ConvDataLayout.HEIGHT]
+  output_x = output.shape[ConvDataLayout.WIDTH]
+  image_y = input.shape[ConvDataLayout.HEIGHT]
+
+  caffe.convLocalMaxUndo(input, grad, output, outgrad, size, start, stride, output_y, output_x, image_y)
+
+def convLocalAvgPool(input, output, size, start, stride):
+  color = input.shape[ConvDataLayout.CHANNEL]
+  image_y = input.shape[ConvDataLayout.HEIGHT]
+  output_y = output.shape[ConvDataLayout.HEIGHT]
+  output_x = output.shape[ConvDataLayout.WIDTH]
+
+  caffe.convLocalAvgPool(input, output, color, size, start, stride, image_y, output_y, output_x)
+
+def convLocalAvgUndo(input, grad, outgrad, size, start, stride):
+  output_y = output.shape[ConvDataLayout.HEIGHT]
+  outptut_x = output.shape[ConvDataLayout.WIDTH]
+  image_y = input.shape[ConvDataLayout.HEIGHT]
+  image_x = input.shape[ConvDataLayout.WIDTH]
+
+  caffe.convLocalAvgUndo(grad, outgrad, size, start, stride, output_y, output_x, image_y, image_x)
+
+def convResponseNorm(input, denom, output, size, scalar, pow):
+  color = input.shape[ConvDataLayout.CHANNEL]
+  image_y = input.shape[ConvDataLayout.HEIGHT]
+  caffe.convResponseNorm(input, denom, output, color, size, image_y, scalar, pow)
+
+def convResponseNormUndo(grad, denom, input, output, outgrad, size, scalar, pow):
+  color = input.shape[ConvDataLayout.CHANNEL]
+  image_y = input.shape[ConvDataLayout.HEIGHT]
+  caffe.convResponseNormUndo(grad, denom, input, output, outgrad, color, size, image_y, scalar, pow, 0.0, 1.0)
+
+def convResponseNormCrossMap(input, denom, output, size, scalar, pow, blocked):
+  color = input.shape[ConvDataLayout.CHANNEL]
+  image_y = input.shape[ConvDataLayout.HEIGHT]
+  caffe.convResponseNormCrossMap(input, denom, output,color, size, image_y, scalar, pow, blocked)
+
+def convResponseNormCrossMapUndo(grad, denom, input, output, outgrad, size, scalar, pow, blocked):
+  color = input.shape[ConvDataLayout.CHANNEL]
+  image_y = input.shape[ConvDataLayout.HEIGHT]
+  caffe.convResponseNormCrossMapUndo(grad, denom, input, output, outgrad, color, size, image_y, scalar, pow, blocked, 0.0, 1.0)
 
 def convert_to_fc(input):
   batch_size = input.shape[ConvDataLayout.BATCH]

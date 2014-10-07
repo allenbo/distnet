@@ -11,7 +11,7 @@ class Monitor(object):
   MERGE = 6
   LEN = 7
 
-  def __init__(self, name, active = True):
+  def __init__(self, name, active = False):
     self._name = name
     self._active = active
     self._clear()

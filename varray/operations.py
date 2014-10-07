@@ -235,7 +235,7 @@ def tanh_activate(input, output, a, b):
 def tanh_compute_grad(grad, output, out_grad, a, b):
   garray.tanh_compute_grad(grad.DATA, output.DATA, out_grad.DATA, a, b)
 
-def convolution(input, filter ,output, bias, image_y, output_y, output_x, padding, stride, channel, group):
+def convolution(input, filter ,output, bias, padding, stride):
   filter_size_index = FilterLayout.HEIGHT
   r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
   state = get_state_from_slice_dim(output.group_slice_dim, True, ConvDataLayout, FCDataLayout)
@@ -255,22 +255,11 @@ def convolution(input, filter ,output, bias, image_y, output_y, output_x, paddin
 
   if not INNER: MONITOR.add_comm(time.time() - _)
 
-  input_data = input.tmp_local_data
-  image_y = input_data.shape[r]
-  output_y = output.local_shape[r]
-  output_x = output.local_shape[c]
-  channel = input_data.shape[ch]
-
   _ = time.time()
-  garray.convolution(
-      input_data,
-      filter.DATA,
-      output.DATA,
-      bias.DATA,
-      image_y, output_y, output_x, padding, stride, channel, group)
+  garray.convolution(input_data, filter.DATA, output.DATA, bias.DATA, padding, stride)
   MONITOR.add_fprop(time.time() - _)
 
-def bconvolution(input, grad, filter, out_grad, image_y, image_x, output_size, padding, stride, channel):
+def bconvolution(input, grad, filter, out_grad, padding, stride):
   real_padding = padding
   propagate = True
   r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
@@ -303,21 +292,10 @@ def bconvolution(input, grad, filter, out_grad, image_y, image_x, output_size, p
     out_grad.tmp_local_data = garray.empty_like(input_data)
   tmp_out_grad = out_grad.tmp_local_data
 
-  image_y = input_data.shape[r]
-  image_x = input_data.shape[c]
-  output_size = grad.local_shape[r]
-  channel = input_data.shape[ch]
-
-
   _ = time.time()
   tmp_out_grad.fill(0)
 
-  garray.bconvolution(
-      input_data,
-      grad.DATA,
-      filter.DATA,
-      tmp_out_grad,
-      image_y, image_x, output_size, padding, stride, channel)
+  garray.bconvolution( input_data, grad.DATA, filter.DATA, tmp_out_grad, padding, stride)
 
   MONITOR.add_bprop(time.time() - _)
 
@@ -332,8 +310,7 @@ def bconvolution(input, grad, filter, out_grad, image_y, image_x, output_size, p
   out_grad.write(area = input.tmp_local_area, data = tmp_out_grad, propagate = propagate, debug = DEBUG)
   if not INNER: MONITOR.add_comm(time.time() - _)
 
-def wconvolution(input, grad, weight_grad, bias_grad, image_y, output_y, output_x, filter_size,
-        padding, stride, channel, group, partial_sum):
+def wconvolution(input, grad, weight_grad, bias_grad, padding, stride, *args):
   propagate = True
   filter_size_index = FilterLayout.HEIGHT
   r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
@@ -370,22 +347,12 @@ def wconvolution(input, grad, weight_grad, bias_grad, image_y, output_y, output_
     tmp_weight_grad = weight_grad.DATA
     tmp_bias_grad = bias_grad.DATA
 
-  image_y = input_data.shape[r]
-  output_y = grad.local_shape[r]
-  output_x = grad.local_shape[c]
-  channel = input_data.shape[ch]
-
   _ = time.time()
 
   tmp_weight_grad.fill(0)
   tmp_bias_grad.fill(0)
 
-  garray.wconvolution(
-      input_data,
-      grad.DATA,
-      tmp_weight_grad,
-      tmp_bias_grad,
-      image_y, output_y, output_x, filter_size, padding, stride, channel, group, partial_sum)
+  garray.wconvolution( input_data, grad.DATA, tmp_weight_grad, tmp_bias_grad,padding, stride, chann*args)
 
   MONITOR.add_wprop(time.time() - _)
   _ = time.time()
@@ -393,7 +360,7 @@ def wconvolution(input, grad, weight_grad, bias_grad, image_y, output_y, output_
   bias_grad.write(area = bias_grad.global_area, data = tmp_bias_grad, propagate = propagate)
   if not INNER: MONITOR.add_comm(time.time() - _)
 
-def maxpool(input, output, channel, pool_size, start, stride, input_y, output_y, output_x):
+def maxpool(input, output, pool_size, start, stride):
   r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
   state = get_state_from_slice_dim(output.group_slice_dim, True, ConvDataLayout, FCDataLayout)
 
@@ -413,20 +380,12 @@ def maxpool(input, output, channel, pool_size, start, stride, input_y, output_y,
   if not INNER: MONITOR.add_comm(time.time() - _)
   input_data = input.tmp_local_data
 
-  output_y = output.local_shape[r]
-  output_x = output.local_shape[c]
-  input_y = input_data.shape[r]
-  channel = output.local_shape[ch]
-
   _ = time.time()
-  garray.maxpool(
-      input_data,
-      output.DATA,
-      channel, pool_size, start, stride, input_y, output_y, output_x)
+  garray.maxpool(input_data, output.DATA, pool_size, start, stride)
 
   MONITOR.add_fprop(time.time() - _)
 
-def maxundo(input, grad, output, out_grad, pool_size, start, stride, output_y, output_x, input_y):
+def maxundo(input, grad, output, out_grad, pool_size, start, stride):
   propagate = True
   r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
   state = get_state_from_slice_dim(output.group_slice_dim, True, ConvDataLayout, FCDataLayout)
@@ -460,19 +419,9 @@ def maxundo(input, grad, output, out_grad, pool_size, start, stride, output_y, o
     out_grad.tmp_local_data = out_grad.DATA
   tmp_out_grad = out_grad.tmp_local_data
 
-  output_y = output.DATA.shape[r]
-  output_x = output.DATA.shape[c]
-  input_y = input_data.shape[r]
-  channel = input_data.shape[ch]
-
   _ = time.time()
   tmp_out_grad.fill(0)
-  garray.maxundo(
-      input_data,
-      grad.DATA,
-      output.DATA,
-      tmp_out_grad,
-      pool_size, start, stride, output_y, output_x, input_y)
+  garray.maxundo(input_data, grad.DATA, output.DATA, tmp_out_grad, pool_size, start, stride)
 
   MONITOR.add_bprop(time.time() - _)
 
@@ -480,7 +429,7 @@ def maxundo(input, grad, output, out_grad, pool_size, start, stride, output_y, o
   out_grad.write(data = tmp_out_grad, area = input.tmp_local_area, propagate = propagate)
   if not INNER: MONITOR.add_comm(time.time() - _)
 
-def avgpool(input, output, channel, pool_size, start, stride, input_y, output_y, output_x):
+def avgpool(input, output, pool_size, start, stride):
   r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
   state = get_state_from_slice_dim(output.group_slice_dim, True, ConvDataLayout, FCDataLayout)
 
@@ -500,20 +449,12 @@ def avgpool(input, output, channel, pool_size, start, stride, input_y, output_y,
   if not INNER: MONITOR.add_comm(time.time() - _)
   input_data = input.tmp_local_data
 
-  output_y = output.local_shape[r]
-  output_x = output.local_shape[c]
-  input_y = input_data.shape[r]
-  channel = input_data.shape[ch]
-
   _ = time.time()
-  garray.avgpool(
-      input_data,
-      output.DATA,
-      channel, pool_size, start, stride, input_y, output_y, output_x)
+  garray.avgpool(input_data, output.DATA, pool_size, start, stride)
 
   MONITOR.add_fprop(time.time() - _)
 
-def avgundo(input, grad, out_grad, pool_size, start, stride, output_y, output_x, image_y, image_x):
+def avgundo(input, grad, out_grad, pool_size, start, stride)
   propagate = True
   r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
   state = get_state_from_slice_dim(grad.group_slice_dim, True, ConvDataLayout, FCDataLayout)
@@ -543,26 +484,16 @@ def avgundo(input, grad, out_grad, pool_size, start, stride, output_y, output_x,
     out_grad.tmp_local_data = garray.empty_like(input_data)
   tmp_out_grad = out_grad.tmp_local_data
 
-  output_y = grad.DATA.shape[r]
-  output_x = grad.DATA.shape[c]
-  image_y = input_data.shape[r]
-  image_x = input_data.shape[c]
-  channel = input_data.shape[ch]
-
   _ = time.time()
   tmp_out_grad.fill(0)
-  garray.avgundo(
-      input_data,
-      grad.DATA,
-      tmp_out_grad,
-      pool_size, start, stride, output_y, output_x, image_y, image_x)
+  garray.avgundo( input_data, grad.DATA, tmp_out_grad, pool_size, start, stride)
 
   MONITOR.add_bprop(time.time() - _)
   _ = time.time()
   out_grad.write(data = tmp_out_grad, area = input.tmp_local_area, propagate = propagate)
   if not INNER: MONITOR.add_comm(time.time() - _)
 
-def rnorm(input, denom, output, channel, size, image_y, scalar, pow):
+def rnorm(input, denom, output, size, scalar, pow):
   r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
   state = get_state_from_slice_dim(output.group_slice_dim, True, ConvDataLayout, FCDataLayout)
 
@@ -592,15 +523,8 @@ def rnorm(input, denom, output, channel, size, image_y, scalar, pow):
   tmp_denom_data = denom.tmp_local_data
   tmp_output_data = output.tmp_local_data
 
-  image_y = input_data.shape[r]
-  channel = input_data.shape[ch]
-
   _ = time.time()
-  garray.rnorm(
-      input_data,
-      tmp_denom_data,
-      tmp_output_data,
-      channel, size, image_y, scalar, pow)
+  garray.rnorm(input_data, tmp_denom_data, tmp_output_data, size, scalar, pow)
 
   MONITOR.add_fprop(time.time() - _)
 
@@ -610,7 +534,7 @@ def rnorm(input, denom, output, channel, size, image_y, scalar, pow):
     denom.write(area = input.tmp_local_area, data = tmp_denom_data, propagate = False)
   if not INNER: MONITOR.add_comm(time.time() - _)
 
-def rnormundo(grad, denom, input, output, out_grad, channel, size, image_y, scalar, pow):
+def rnormundo(grad, denom, input, output, out_grad, size, scalar, pow):
   propagate = True
   r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
   out_grad.fill(0)
@@ -668,19 +592,10 @@ def rnormundo(grad, denom, input, output, out_grad, channel, size, image_y, scal
     out_grad.tmp_local_data = garray.empty_like(input_data)
   tmp_out_grad = out_grad.tmp_local_data
 
-  image_y = input.tmp_local_data.shape[r]
-  channel = input.tmp_local_data.shape[ch]
-
   _ = time.time()
   tmp_out_grad.fill(0)
 
-  garray.rnormundo(
-      grad_data,
-      denom_data,
-      input_data,
-      output_data,
-      tmp_out_grad,
-      channel, size, image_y, scalar, pow)
+  garray.rnormundo( grad_data, denom_data, input_data, output_data, tmp_out_grad, size,  scalar, pow)
 
   MONITOR.add_bprop(time.time() - _)
   _ = time.time()
@@ -689,7 +604,7 @@ def rnormundo(grad, denom, input, output, out_grad, channel, size, image_y, scal
   out_grad.write(data = tmp_out_grad, area = output.local_area, propagate = propagate)
   if not INNER: MONITOR.add_comm(time.time() - _)
 
-def rnormcrossmap(input, denom, output, channel, size,image_y, scalar, pow, blocked):
+def rnormcrossmap(input, denom, output, size, scalar, pow, blocked):
   r, c, ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
   state = get_state_from_slice_dim(output.group_slice_dim, True, ConvDataLayout, FCDataLayout)
 
@@ -718,15 +633,8 @@ def rnormcrossmap(input, denom, output, channel, size,image_y, scalar, pow, bloc
   tmp_denom_data = denom.tmp_local_data
   tmp_output_data = output.tmp_local_data
 
-  image_y = input.DATA.shape[r]
-  channel = input_data.shape[ch]
-
   _ = time.time()
-  garray.rnormcrossmap(
-      input_data,
-      tmp_denom_data,
-      tmp_output_data,
-      channel, size, image_y, scalar, pow, blocked)
+  garray.rnormcrossmap( input_data, tmp_denom_data, tmp_output_data, size,  scalar, pow, blocked)
   MONITOR.add_fprop(time.time() - _)
   _ = time.time()
 
@@ -735,7 +643,7 @@ def rnormcrossmap(input, denom, output, channel, size,image_y, scalar, pow, bloc
     denom.write(area = denom.local_area, data = tmp_denom_data, propagate = False)
   if not INNER: MONITOR.add_comm(time.time() - _)
 
-def rnormcrossmapundo(grad, denom, input, output, out_grad, channel, size, image_y, scalar, pow, blocked):
+def rnormcrossmapundo(grad, denom, input, output, out_grad, size,  scalar, pow, blocked):
   propagate = True
   r, c,ch = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH, ConvDataLayout.CHANNEL
   state = get_state_from_slice_dim(grad.group_slice_dim, True, ConvDataLayout, FCDataLayout)
@@ -786,20 +694,10 @@ def rnormcrossmapundo(grad, denom, input, output, out_grad, channel, size, image
   else:
     tmp_out_grad = out_grad.DATA
 
-  image_y = input.DATA.shape[r]
-  channel = input_data.shape[ch]
-
   _ = time.time()
   tmp_out_grad.fill(0)
 
-  garray.rnormcrossmapundo(
-      grad_data,
-      denom_data,
-      input_data,
-      output_data,
-      tmp_out_grad,
-      channel, size, image_y, scalar, pow, blocked)
-
+  garray.rnormcrossmapundo( grad_data, denom_data, input_data, output_data, tmp_out_grad, size,  scalar, pow, blocked) 
   MONITOR.add_bprop(time.time() - _)
   _ = time.time()
   if state == sidw and propagate:

@@ -69,22 +69,93 @@ def init(device=-1):
   atexit.register(CONTEXT.detach)
   return CONTEXT
 
-def convFilterActs(input, weight, output, bias, image_y, output_y, output_x, padding, stride, color, group):
+def convFilterActs(input, weight, output, bias, padding, stride):
   from distbase import cuda_base
+  image_y = input.shape[ConvDataLayout.HEIGHT]
+  output_y = output.shape[ConvDataLayout.HEIGHT]
+  output_x = output.shape[ConvDataLayout.WIDTH]
+  color = input.shape[ConvDataLayout.CHANNEL]
+
   cudaconv2.convFilterActs(input, weight, output, image_y, output_y, output_x, padding, stride,
-      color, group)
+      color, 1)
   batch_size = output.shape[ConvDataLayout.BATCH]
   channel = output.shape[ConvDataLayout.CHANNEL]
 
   # bias term
   cuda_base.add_vec_to_rows(output.reshape((channel, output_y * output_x * batch_size)), bias)
 
-def convWeightActs(input, ingrad, weight_grad, bias_grad, image_y, output_y, output_x, filter_size, padding, stride, color, group, partial_sum):
-  cudaconv2.convWeightActs(input, ingrad, weight_grad, image_y, output_y, output_x, filter_size, padding, stride, color, group, partial_sum)
+def convImgActs(input, grad, weight, out_grad, padding, stride):
+  image_y =  input.shape[ConvDataLayout.HEIGHT]
+  image_x =  input.shape[ConvDataLayout.WIDTH]
+  output_y =  grad.shape[ConvDataLayout.HEIGHT]
+  color = input.shape[ConvDataLayout.CHANNEL]
+
+  cudaconv2.convImgActs(grad, weight, out_grad, image_y, image_x, output_y, padding, stride, color, 1)
+
+def convWeightActs(input, ingrad, weight_grad, bias_grad, padding, stride, color, *args):
+  image_y = input.shape[ConvDataLayout.HEIGHT]
+  output_y =  ingrad.shape[ConvDataLayout.HEIGHT]
+  output_x =  ingrad.shape[ConvDataLayout.WIDTH]
+  filter_size =  weight_grad.shape[FilterLayout.HEIGHT]
+  color = input.shape[ConvDataLayout.CHANNEL]
+  cudaconv2.convWeightActs(input, ingrad, weight_grad, image_y, output_y, output_x, filter_size, padding, stride, color, 1, 0)
+
   batch_size = ingrad.shape[ConvDataLayout.BATCH]
   channel = ingrad.shape[ConvDataLayout.CHANNEL]
 
   cudaconv2.sum(ingrad.reshape((channel, output_y * output_x * batch_size)), 1, bias_grad)
+
+def convLocalMaxPool(input, output, size, start, stride):
+  color =  input.shape[ConvDataLayout.CHANNEL]
+  image_y =  input.shape[ConvDataLayout.HEIGHT]
+  output_y = output.shape[ConvDataLayout.HEIGHT]
+  output_x =  output.shape[ConvDataLayout.WIDTH]
+
+  cudaconv2.convLocalMaxPool(input, output, color, size, start, stride, image_y, output_y, output_x)
+
+
+def convLocalMaxUndo(input, grad, output, outgrad, size, start, stride):
+  output_y = output.shape[ConvDataLayout.HEIGHT]
+  output_x = output.shape[ConvDataLayout.WIDTH]
+  image_y = input.shape[ConvDataLayout.HEIGHT]
+
+  cudaconv2.convLocalMaxUndo(input, grad, output, outgrad, size, start, stride, output_y, output_x, image_y)
+
+def convLocalAvgPool(input, output, size, start, stride):
+  color = input.shape[ConvDataLayout.CHANNEL]
+  image_y = input.shape[ConvDataLayout.HEIGHT]
+  output_y = output.shape[ConvDataLayout.HEIGHT]
+  output_x = output.shape[ConvDataLayout.WIDTH]
+
+  cudaconv2.convLocalAvgPool(input, output, color, size, start, stride, image_y, output_y, output_x)
+
+def convLocalAvgUndo(input, grad, outgrad, size, start, stride):
+  output_y = output.shape[ConvDataLayout.HEIGHT]
+  outptut_x = output.shape[ConvDataLayout.WIDTH]
+  image_y = input.shape[ConvDataLayout.HEIGHT]
+  image_x = input.shape[ConvDataLayout.WIDTH]
+
+  cudaconv2.convLocalAvgUndo(grad, outgrad, size, start, stride, output_y, output_x, image_y, image_x)
+
+def convResponseNorm(input, denom, output, size, scalar, pow):
+  color = input.shape[ConvDataLayout.CHANNEL]
+  image_y = input.shape[ConvDataLayout.HEIGHT]
+  cudaconv2.convResponseNorm(input, denom, output, color, size, image_y, scalar, pow)
+
+def convResponseNormUndo(grad, denom, input, output, outgrad, size, scalar, pow):
+  color = input.shape[ConvDataLayout.CHANNEL]
+  image_y = input.shape[ConvDataLayout.HEIGHT]
+  cudaconv2.convResponseNormUndo(grad, denom, input, output, outgrad, color, size, image_y, scalar, pow, 0.0, 1.0)
+
+def convResponseNormCrossMap(input, denom, output, size, scalar, pow, blocked):
+  color = input.shape[ConvDataLayout.CHANNEL]
+  image_y = input.shape[ConvDataLayout.HEIGHT]
+  cudaconv2.convResponseNormCrossMap(input, denom, output,color, size, image_y, scalar, pow, blocked)
+
+def convResponseNormCrossMapUndo(grad, denom, input, output, outgrad, size, scalar, pow, blocked):
+  color = input.shape[ConvDataLayout.CHANNEL]
+  image_y = input.shape[ConvDataLayout.HEIGHT]
+  cudaconv2.convResponseNormCrossMapUndo(grad, denom, input, output, outgrad, color, size, image_y, scalar, pow, blocked, 0.0, 1.0)
 
 def convert_to_fc(input):
   return input
