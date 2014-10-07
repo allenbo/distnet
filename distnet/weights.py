@@ -6,7 +6,7 @@ import numpy as np
 
 import os
 
-from multigpu import uniformed_array, arr, allocate, zeros, default_context
+from multigpu import arr
 
 def update(wts, grad, incr, epsilon, momentum, decay, batch_size):
   Assert.eq(grad.shape, wts.shape)
@@ -31,14 +31,15 @@ def update(wts, grad, incr, epsilon, momentum, decay, batch_size):
                beta=np.float32(epsilon / batch_size))
 
 class Weight(object):
-  def __init__(self, group_slice_dim, context):
-    self.group_slice_dim = group_slice_dim
-    self.context = context
-  
+  def __init__(self, allocator):
+    self._allocator = allocator
+
+  def isweight(self):
+    return self.name.startswith('weight')
+
   def to_gpu(self, obj):
-    assert obj.dtype == np.float32
-    result = uniformed_array(obj, global_slice_dim = None, group_slice_dim = self.group_slice_dim, context = self.context)
-    assert result.dtype == np.float32
+    init = self._allocator.init_weight if self.isweight() else self._allocator.init_bias
+    result = init(obj)
     return result
 
   def set_weight(self, w):
@@ -61,13 +62,16 @@ class Weight(object):
   @property
   def grad(self):
     if self._grad is None or self._grad.shape != self.shape:
-      self._grad = allocate(shape = self.shape, global_slice_dim = None, group_slice_dim = self.group_slice_dim, context = self.context)
+      init = self._allocator.init_weight if self.isweight() else self._allocator.init_bias
+      self._grad = init(shape = shape)
     return self._grad
 
   @property
   def incr(self):
     if (self._incr is None or self._incr.shape != self.shape) and self.momentum > 0:
-      self._incr = zeros(shape = self.shape, global_slice_dim = None, group_slice_dim = self.group_slice_dim, context = self.context)
+      init = self._allocator.init_weight if self.isweight() else self._allocator.init_bias
+      self._incr = init(shape = shape)
+      self._incr.fill(0.0)
     return self._incr
 
   @property
@@ -96,8 +100,8 @@ class WeightManager(object):
   def clone(self):
     return copy.deepcopy(self)
 
-  def empty(self, name, epsilon, momentum, decay, group_slice_dim = None, context = default_context):
-    w = Weight(group_slice_dim = group_slice_dim, context = context)
+  def empty(self, name, epsilon, momentum, decay, allocator):
+    w = Weight(allocator = allocator)
     w.name = name
     w.shape = None
     w.decay = np.float32(decay)

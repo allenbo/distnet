@@ -10,8 +10,9 @@ import time
 import garray
 from garray import ConvDataLayout, FilterLayout, FCDataLayout, WeightLayout, backend_name
 
-from multigpu import allocate, arr, uniformed_array, multi_gpu, get_layerdist, build_context, random_uniform
+from multigpu import arr, multi_gpu
 from distbase import state
+from varray.para import FakePara
 
 PFout = False
 PBout = False
@@ -27,10 +28,11 @@ def col_randn(shape, dtype):
   return np.require(np.random.randn(*shape), dtype=dtype, requirements='C')
 
 class Layer(object):
-  def __init__(self, name, type, disable_bprop=False):
+  def __init__(self, name, type, para, disable_bprop=False):
     self.merge_neuron = False
     self.name = name
     self.type = type
+    self.__para = para
     self._prev_layer = None
     self._next_layer = None
     self.disable_bprop = disable_bprop
@@ -39,8 +41,6 @@ class Layer(object):
     self.output_grad = None
     self.neuron = None
     self.iteration = 0
-    if self.type != 'data':
-      self.layerdist = get_layerdist(self.name)
 
   def set_index(self, index):
     self.index = index
@@ -89,26 +89,13 @@ class Layer(object):
 
   def init_output(self, fc = False):
     if self.type == 'data':
-      self.layerdist = self._next_layer.layerdist
-      group_slice_dim = state.get_input_slice_dim(self.layerdist.group_state, not fc, ConvDataLayout, FCDataLayout, self.layerdist.group_size)
-    else:
-      group_slice_dim = state.get_output_slice_dim(self.layerdist.group_state, not fc, ConvDataLayout, FCDataLayout, self.layerdist.group_size)
-    self.group_slice_dim = group_slice_dim
-
-    self.global_slice_dim = ConvDataLayout.BATCH if not fc and self.layerdist.global_dist else None
+      self.__para = self._next_layer.__para
 
     out_shape = self.get_output_shape()
-    self.output = allocate(out_shape,
-                           global_slice_dim = self.global_slice_dim,
-                           group_slice_dim = self.group_slice_dim,
-                           context = build_context(self.layerdist.workers_group))
+    self.output = self.__para.init_output(output_shpae)
 
     if self.type != 'data':
-      self.output_grad = allocate(out_shape,
-                                  global_slice_dim = self.global_slice_dim,
-                                  group_slice_dim = self.group_slice_dim,
-                                  context = build_context(self.layerdist.workers_group))
-    #print self.name, self.layerdist.global_dist, self.layerdist.group_state, self.output.local_data.shape, self.output.local_area
+      self.output_grad = self.__para.init_output(shape = out_shape) 
 
   def dump(self):
     attr = [att for att in dir(self) if not att.startswith('__')]
@@ -121,7 +108,7 @@ class Layer(object):
 
 class DataLayer(Layer):
   def __init__(self, name, image_shape):
-    Layer.__init__(self, name, 'data', True)
+    Layer.__init__(self, name, 'data', None, True)
     self.name = name
     self.image_shape = image_shape
     self.batch_size = image_shape[ConvDataLayout.BATCH]
@@ -142,22 +129,14 @@ class DataLayer(Layer):
     return tuple(image_shape)
 
 class WeightedLayer(Layer):
-  def __init__(self, name, type, epsW, epsB, initW, initB, momW, momB, wc, weight, bias,
+  def __init__(self, name, type, para, epsW, epsB, initW, initB, momW, momB, wc, weight, bias,
                weightIncr , biasIncr, disable_bprop=False, backend = 'cudaconv'):
-    Layer.__init__(self, name, type, disable_bprop)
+    Layer.__init__(self, name, type, para, disable_bprop)
     self.initW = initW
     self.initB = initB
 
-    context = build_context(self.layerdist.workers_group)
-    group_slice_dim = state.get_weight_slice_dim(self.layerdist.group_state, (self.type == 'conv'), FilterLayout, WeightLayout)
-    self.weight = WEIGHTS.empty('weight.' + self.name, epsW, momW, wc,
-                                group_slice_dim = group_slice_dim,
-                                context = context)
-
-    group_slice_dim = state.get_bias_slice_dim(self.layerdist.group_state, conv = (self.type == 'conv'))
-    self.bias = WEIGHTS.empty('bias.' + self.name, epsB, momB, 0.0,
-                              group_slice_dim = group_slice_dim,
-                              context = context)
+    self.weight = WEIGHTS.empty('weight.' + self.name, epsW, momW, wc, self.__para)
+    self.bias = WEIGHTS.empty('bias.' + self.name, epsB, momB, 0.0, self.__para)
 
     if weight is not None:
       if backend == backend_name or self.type == 'fc':
@@ -242,7 +221,7 @@ class WeightedLayer(Layer):
     return d
 
 class ConvLayer(WeightedLayer):
-  def __init__(self, name, num_filters, filter_shape, padding=2, stride=1, initW=None,
+    def __init__(self, name, num_filters, filter_shape, para = FakePara(), padding=2, stride=1, initW=None,
                initB=None, partialSum=0, sumWidth=1000, sharedBiases=0, epsW=ConstantLearningRate(0.001),
                epsB=ConstantLearningRate(0.002), momW=0.9, momB=0.9, wc=0.004,
                bias=None, weight=None, weightIncr=None, biasIncr=None, disable_bprop=False, neuron =
@@ -258,7 +237,7 @@ class ConvLayer(WeightedLayer):
     self.sumWidth = sumWidth
     self.sharedBiases = sharedBiases
 
-    WeightedLayer.__init__(self, name, 'conv',
+    WeightedLayer.__init__(self, name, 'conv', para
                            epsW, epsB, initW, initB, momW, momB, wc, weight,
                            bias, weightIncr, biasIncr, disable_bprop, backend = backend)
 
@@ -272,11 +251,11 @@ class ConvLayer(WeightedLayer):
   def attach(self, prev_layer):
     image_shape = prev_layer.get_output_shape()
 
+    img_size = image_shape[ConvDataLayout.HEIGHT]
     self.numColor = image_shape[ConvDataLayout.CHANNEL]
-    self.img_size = image_shape[ConvDataLayout.HEIGHT]
     self.batch_size = image_shape[ConvDataLayout.BATCH]
 
-    self.outputSize = 1 + divup(2 * self.padding + self.img_size - self.filterSize, self.stride)
+    self.outputSize = 1 + divup(2 * self.padding + img_size - self.filterSize, self.stride)
     self.modules = self.outputSize ** 2
 
     weight_shape = FilterLayout.get_filter_shape(self.filterSize, self.numColor, self.numFilter)
@@ -310,8 +289,8 @@ class ConvLayer(WeightedLayer):
     self._printout_backward((self.bias.grad, self.weight.grad, outGrad))
 
 class MaxPoolLayer(Layer):
-  def __init__(self, name, poolSize=2, stride=2, start=0, disable_bprop=False):
-    Layer.__init__(self, name, 'pool', disable_bprop)
+  def __init__(self, name, para = FakePara(), poolSize=2, stride=2, start=0, disable_bprop=False):
+    Layer.__init__(self, name, 'pool', para, disable_bprop)
     self.pool = 'max'
     self.poolSize = poolSize
     self.stride = stride
@@ -320,10 +299,10 @@ class MaxPoolLayer(Layer):
 
   def attach(self, prev):
     image_shape = prev.get_output_shape()
+    img_size = image_shape[ConvDataLayout.HEIGHT]
     self.numColor = image_shape[ConvDataLayout.CHANNEL]
-    self.img_size = image_shape[ConvDataLayout.HEIGHT]
     self.batch_size = image_shape[ConvDataLayout.BATCH]
-    self.outputSize = divup(self.img_size - self.poolSize - self.start, self.stride) + 1
+    self.outputSize = divup(img_size - self.poolSize - self.start, self.stride) + 1
 
   def get_output_shape(self):
     return ConvDataLayout.get_output_shape(self.outputSize, self.outputSize, self.numColor, self.batch_size)
@@ -338,8 +317,8 @@ class MaxPoolLayer(Layer):
     self._printout_backward((outGrad,))
 
 class AvgPoolLayer(Layer):
-  def __init__(self, name, poolSize=2, stride=2, start=0, disable_bprop=False):
-    Layer.__init__(self, name, 'pool', disable_bprop)
+  def __init__(self, name, para = FakePara(), poolSize=2, stride=2, start=0, disable_bprop=False):
+    Layer.__init__(self, name, 'pool', para, disable_bprop)
     self.pool = 'avg'
     self.poolSize = poolSize
     self.stride = stride
@@ -348,10 +327,10 @@ class AvgPoolLayer(Layer):
 
   def attach(self, prev):
     image_shape = prev.get_output_shape()
+    img_size = image_shape[ConvDataLayout.HEIGHT]
     self.numColor = image_shape[ConvDataLayout.CHANNEL]
-    self.img_size = image_shape[ConvDataLayout.HEIGHT]
     self.batch_size = image_shape[ConvDataLayout.BATCH]
-    self.outputSize = divup(self.img_size - self.poolSize - self.start, self.stride) + 1
+    self.outputSize = divup(img_size - self.poolSize - self.start, self.stride) + 1
 
   def get_output_shape(self):
     return ConvDataLayout.get_output_shape(self.outputSize, self.outputSize, self.numColor, self.batch_size)
@@ -365,8 +344,8 @@ class AvgPoolLayer(Layer):
     self._printout_backward((outGrad,))
 
 class ResponseNormLayer(Layer):
-  def __init__(self, name, pow=0.75, size=9, scale=0.001, disable_bprop=False):
-    Layer.__init__(self, name, 'rnorm', disable_bprop)
+  def __init__(self, name, para = FakePara(), pow=0.75, size=9, scale=0.001, disable_bprop=False):
+    Layer.__init__(self, name, 'rnorm', para,  disable_bprop)
     self.pow = pow
     self.size = size
     self.scale = scale
@@ -377,24 +356,15 @@ class ResponseNormLayer(Layer):
   def attach(self, prev):
     image_shape = prev.get_output_shape()
     self.numColor = image_shape[ConvDataLayout.CHANNEL]
-    self.img_size  = image_shape[ConvDataLayout.HEIGHT]
+    self.outputSize  = image_shape[ConvDataLayout.HEIGHT]
     self.batch_size = image_shape[ConvDataLayout.BATCH]
-    group_slice_dim = state.get_output_slice_dim(self.layerdist.group_state, True, ConvDataLayout, FCDataLayout, self.layerdist.group_size)
-    self.group_slice_dim = group_slice_dim
-    self.global_slice_dim = ConvDataLayout.BATCH if self.layerdist.global_dist else None
-
-    #slice_dim = state.get_output_slice_dim(self.state, True, ConvDataLayout, FCDataLayout)
-    #self.denom = allocate(image_shape, slice_dim = slice_dim)
 
   def get_output_shape(self):
-    return ConvDataLayout.get_output_shape(self.img_size, self.img_size, self.numColor, self.batch_size)
+    return ConvDataLayout.get_output_shape(self.outputSize, self.outputSize, self.numColor, self.batch_size)
 
   def change_batch_size(self, batch_size):
     Layer.change_batch_size(self, batch_size)
-    self.denom = allocate(self.get_output_shape(),
-                          global_slice_dim = self.global_slice_dim,
-                          group_slice_dim = self.group_slice_dim,
-                          context = build_context(self.layerdist.workers_group))
+    self.denom = self.__para.init_output(shape = self.get_output_shape())
 
   def fprop(self, input, output, train=TRAIN):
     arr.rnorm(input, self.denom, output, self.size, self.scalar, self.pow)
@@ -406,9 +376,9 @@ class ResponseNormLayer(Layer):
     self._printout_backward((outGrad,))
 
 class CrossMapResponseNormLayer(ResponseNormLayer):
-  def __init__(self, name, pow=0.75, size=9, scale=0.001, blocked=False, disable_bprop=
+  def __init__(self, name, para = FakePara(), pow=0.75, size=9, scale=0.001, blocked=False, disable_bprop=
       False):
-    ResponseNormLayer.__init__(self, name, pow, size, scale, disable_bprop)
+    ResponseNormLayer.__init__(self, name, para, pow, size, scale, disable_bprop)
     self.type = 'cmrnorm'
     self.scalar = self.scale / self.size
     self.blocked = blocked
@@ -428,13 +398,13 @@ class CrossMapResponseNormLayer(ResponseNormLayer):
 class FCLayer(WeightedLayer):
   ''' When the backend is caffe, we have to transpose the input to make batch as the second
   dimension of matrix'''
-  def __init__(self, name, n_out, epsW=ConstantLearningRate(0.001), epsB=ConstantLearningRate(0.002), initW=None, initB=None,
+  def __init__(self, name, n_out, para = FakePar(), epsW=ConstantLearningRate(0.001), epsB=ConstantLearningRate(0.002), initW=None, initB=None,
       momW=0.9, momB=0.9, wc=0.004, dropRate=0.0, weight=None, bias=None, weightIncr=None,
       biasIncr=None, disable_bprop=False, neuron = None):
     self.outputSize = n_out
     self.dropRate = dropRate
 
-    WeightedLayer.__init__(self, name, 'fc', epsW, epsB, initW, initB, momW, momB, wc, weight,
+    WeightedLayer.__init__(self, name, 'fc', para, epsW, epsB, initW, initB, momW, momB, wc, weight,
         bias, weightIncr, biasIncr, disable_bprop)
     util.log('outputSize:%s initW:%s initB:%s dropRate:%s w: %s, b: %s',
         self.outputSize, self.initW, self.initB, self.dropRate, self.weight, self.bias)
@@ -471,10 +441,7 @@ class FCLayer(WeightedLayer):
         output *= (1.0 - self.dropRate)
     else:
       if self.dropRate > 0.0:
-        self.dropMask = random_uniform(shape = output.shape,
-                                       global_slice_dim = None,
-                                       group_slice_dim = self.group_slice_dim,
-                                       context = build_context(self.layerdist.workers_group))
+        self.dropMask = self.__para.random_uniform(shape = output.shape)
         arr.bigger_than_scalar(self.dropMask, self.dropRate)
         arr.copy_to(output * self.dropMask, output)
 
@@ -500,8 +467,8 @@ class FCLayer(WeightedLayer):
     self._printout_backward((self.weight.grad, ), fc = True)
 
 class SoftmaxLayer(Layer):
-  def __init__(self, name, disable_bprop=False):
-    Layer.__init__(self, name, "softmax", disable_bprop)
+  def __init__(self, name, para = FakePara(), disable_bprop=False):
+    Layer.__init__(self, name, "softmax", para, disable_bprop)
     self.batchCorrect = 0
 
   def attach(self, prev_layer):
@@ -509,17 +476,12 @@ class SoftmaxLayer(Layer):
     self.inputSize, self.batch_size = int(np.prod(input_shape[:-1])), input_shape[-1]
     self.outputSize = self.inputSize
     self.inputShape = input_shape
-    self.group_slice_dim = state.get_output_slice_dim(self.layerdist.group_state, False, ConvDataLayout, FCDataLayout, self.layerdist.group_size)
-    self.global_slice_dim = None
     self.create_cost(self.batch_size)
 
   def create_cost(self, size):
     if size < 0:
       return
-    self.cost = allocate((1, size),
-                         global_slice_dim = self.global_slice_dim,
-                         group_slice_dim = self.group_slice_dim,
-                         context = build_context(self.layerdist.workers_group))
+    self.cost = self.__para.init_output(shape = (1, size))
 
   def get_output_shape(self):
     return (self.outputSize, self.batch_size)
@@ -606,8 +568,8 @@ class TanhNeuron(Neuron):
     return d
 
 class NeuronLayer(Layer):
-  def __init__(self, name, type='relu', a=1.0, b=1.0, e=0.0, disable_bprop=False):
-    Layer.__init__(self, name, 'neuron', disable_bprop)
+  def __init__(self, name, para = FakePara(), type='relu', a=1.0, b=1.0, e=0.0, disable_bprop=False):
+    Layer.__init__(self, name, 'neuron', para,  disable_bprop)
     if type == 'relu':
       self.neuron = ReluNeuron(e)
     elif type == 'tanh':
@@ -618,9 +580,11 @@ class NeuronLayer(Layer):
     self.output_shape = image_shape
     if len(image_shape) == 4:
       self.numColor, self.img_size, _, self.batch_size = image_shape
+      self.__para == self.__para.to_conv()
     else:
       self.numColor, self.batch_size = image_shape
       self.img_size = 1
+      self.__para == self.__para.to_fc()
 
   def change_batch_size(self, batch_size):
     self.output_shape = tuple(list(self.output_shape)[:-1] + [batch_size])
