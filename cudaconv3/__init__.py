@@ -106,19 +106,19 @@ def convWeightActs(input, ingrad, weight_grad, bias_grad, padding, stride, sum_w
   do_partial_sum =  sum_width < output_x
   target = weight_grad
   if do_partial_sum:
-    output_chunk = divup(output_x, sum_width) * divup(output_y, sum_width) 
+    output_chunk = divup(output_x, sum_width) * divup(output_y, sum_width)
     shape = (output_chunk *  filter_size * filter_size * color / group, channel)
     from pycuda import gpuarray
     target = gpuarray.GPUArray(shape = shape, dtype = np.float32)
 
   cudaconv3.convWeightActs(input, ingrad, target, image_y, output_y, output_x, filter_size, padding, stride, color, group, sum_width)
   if do_partial_sum:
-    target = target.reshape((output_chunk, filter_size * filter_size * color / group * channel)) 
+    target = target.reshape((output_chunk, filter_size * filter_size * color / group * channel))
     weight_shape = weight_grad.shape
     weight_grad = weight_grad.reshape((1, filter_size * filter_size * color * channel))
     from distbase import cuda_base
     cuda_base.add_col_sum_to_vec(weight_grad, target, alpha = 0, beta = 1.0)
-    
+
   cudaconv3.sum(ingrad.reshape((channel, output_y * output_x * batch_size)), 1, bias_grad)
 
 def convLocalMaxPool(input, output, size, start, stride):
@@ -126,7 +126,6 @@ def convLocalMaxPool(input, output, size, start, stride):
   image_y =  input.shape[ConvDataLayout.HEIGHT]
   output_y = output.shape[ConvDataLayout.HEIGHT]
   output_x =  output.shape[ConvDataLayout.WIDTH]
-
   cudaconv3.convLocalMaxPool(input, output, color, size, start, stride, image_y, output_y, output_x)
 
 
@@ -146,11 +145,10 @@ def convLocalAvgPool(input, output, size, start, stride):
   cudaconv3.convLocalAvgPool(input, output, color, size, start, stride, image_y, output_y, output_x)
 
 def convLocalAvgUndo(input, grad, outgrad, size, start, stride):
-  output_y = output.shape[ConvDataLayout.HEIGHT]
-  outptut_x = output.shape[ConvDataLayout.WIDTH]
+  output_y = grad.shape[ConvDataLayout.HEIGHT]
+  output_x = grad.shape[ConvDataLayout.WIDTH]
   image_y = input.shape[ConvDataLayout.HEIGHT]
   image_x = input.shape[ConvDataLayout.WIDTH]
-
   cudaconv3.convLocalAvgUndo(grad, outgrad, size, start, stride, output_y, output_x, image_y, image_x)
 
 def convResponseNorm(input, denom, output, size, scalar, pow):

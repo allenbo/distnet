@@ -2202,7 +2202,7 @@ void convLocalAvgUndo(NVMatrix& avgGrads, NVMatrix& target,
     int imgsPerThread = numImages % 128 == 0 ? 4 : numImages % 64 == 0 ? 2 : 1;
     int checkCaseBounds = numImages % (32*imgsPerThread) != 0;
     dim3 threads(32, 4);
-    dim3 blocks(DIVUP(numImages,32*imgsPerThread) * imageX, (numFilters / (4 * 4)) * imageX);
+    dim3 blocks(DIVUP(numImages,32*imgsPerThread) * imageX, (numFilters / (4 * 4)) * imageY);
     cudaStream_t stream = NVMatrix::getDefaultStream();
     if (imgsPerThread == 4) {
         if (checkCaseBounds) {

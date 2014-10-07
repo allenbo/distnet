@@ -31,8 +31,8 @@ data_provider = 'imagenet'
 image_size=224
 batch_size=128
 multiview = False
-train_dp = data.get_by_name(data_provider)(data_dir,train_range, batch_size = 1024)
-test_dp = data.get_by_name(data_provider)(data_dir, test_range, batch_size = 1024)
+train_dp = data.get_by_name(data_provider)(data_dir,train_range, batch_size = 1024, minibatch_size = batch_size)
+test_dp = data.get_by_name(data_provider)(data_dir, test_range, batch_size = 1024, minibatch_size = batch_size)
 checkpoint_dumper = trainer.CheckpointDumper(checkpoint_dir, test_id)
 
 model = checkpoint_dumper.get_checkpoint()

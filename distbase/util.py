@@ -5,6 +5,8 @@ import threading
 import time
 import traceback
 import math
+import string
+import random
 import numpy as np
 import warnings
 import functools
@@ -25,7 +27,7 @@ level_to_char = { DEBUG : 'D',
                   INFO : 'I',
                   WARN : 'W',
                   ERROR : 'E',
-                  FATAL : 'F', 
+                  FATAL : 'F',
                   }
 
 program_start = time.time()
@@ -123,10 +125,10 @@ class EZTimer(object):
   def __init__(self, msg=''):
     self.msg = msg
     self.start = time.time()
-    
+
   def __del__(self):
-    log('Operation %s finished in %.5f seconds', self.msg, time.time() - self.start) 
-    
+    log('Operation %s finished in %.5f seconds', self.msg, time.time() - self.start)
+
 class AttrDict(dict):
   __getattr__ = dict.__getitem__
   __setattr__ = dict.__setitem__
@@ -136,6 +138,9 @@ def divup(x, base):
     return int(x / base)
   else:
     return int(x / base + 1)
+
+def random_string(len):
+  return ''.join([random.choice(string.ascii_letters) for i in range(len)])
 
 def load(filename):
   with open(filename, 'rb') as f:
@@ -157,7 +162,7 @@ def isinteger(value):
     return False
 
 def issquare(x):
-  a = math.sqrt(x) 
+  a = math.sqrt(x)
   b = int(a)
   return a == b
 
@@ -215,43 +220,43 @@ class Assert(object):
     import numpy
     if hasattr(a, 'shape') and hasattr(b, 'shape'):
       assert a.shape == b.shape, 'Mismatched shapes: %s %s' % (a.shape, b.shape)
-      
+
     assert numpy.all(a == b), 'Failed: \n%s\n ==\n%s' % (a, b)
-  
+
   @staticmethod
   def eq(a, b): assert (a == b), 'Failed: %s == %s' % (a, b)
-  
+
   @staticmethod
   def ne(a, b): assert (a == b), 'Failed: %s != %s' % (a, b)
-  
+
   @staticmethod
   def gt(a, b): assert (a > b), 'Failed: %s > %s' % (a, b)
-  
+
   @staticmethod
   def lt(a, b): assert (a < b), 'Failed: %s < %s' % (a, b)
-  
+
   @staticmethod
   def ge(a, b): assert (a >= b), 'Failed: %s >= %s' % (a, b)
-  
+
   @staticmethod
   def le(a, b): assert (a <= b), 'Failed: %s <= %s' % (a, b)
-  
+
   @staticmethod
   def true(expr): assert expr, 'Failed: %s == True' % (expr)
-  
+
   @staticmethod
-  def isinstance(expr, klass): 
+  def isinstance(expr, klass):
     assert isinstance(expr, klass), 'Failed: isinstance(%s, %s) [type = %s]' % (expr, klass, type(expr))
-  
+
   @staticmethod
   def no_duplicates(collection):
     d = collections.defaultdict(int)
     for item in collection:
       d[item] += 1
-    
+
     bad = [(k,v) for k, v in d.iteritems() if v > 1]
     assert len(bad) == 0, 'Duplicates found: %s' % bad
-  
+
 
 from types import FunctionType, CodeType
 
@@ -278,7 +283,7 @@ def lazyinit(initializer_fn):
       initializer_fn()
       return fn(*args, **kw)
     return make_copy(_fn, fn.__name__)
-  
+
   return make_copy(wrap, initializer_fn.__name__)
 
 def timed_fn(fn):
@@ -287,11 +292,11 @@ def timed_fn(fn):
   '''
   def _fn(*args, **kw):
     timer.start()
-    result = fn(*args, **kw) 
+    result = fn(*args, **kw)
     timer.end(fn.__name__)
-    
+
     return result
-    
+
   return make_copy(_fn, fn.__name__)
 
 def deprecated(fn):

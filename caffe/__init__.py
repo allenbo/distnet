@@ -173,8 +173,8 @@ def convLocalAvgPool(input, output, size, start, stride):
   caffe.convLocalAvgPool(input, output, color, size, start, stride, image_y, output_y, output_x)
 
 def convLocalAvgUndo(input, grad, outgrad, size, start, stride):
-  output_y = output.shape[ConvDataLayout.HEIGHT]
-  outptut_x = output.shape[ConvDataLayout.WIDTH]
+  output_y = grad.shape[ConvDataLayout.HEIGHT]
+  output_x = grad.shape[ConvDataLayout.WIDTH]
   image_y = input.shape[ConvDataLayout.HEIGHT]
   image_x = input.shape[ConvDataLayout.WIDTH]
 

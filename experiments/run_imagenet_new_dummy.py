@@ -6,7 +6,6 @@ This test is for naive trainer to traine a full imagenet model
 import pyximport
 pyximport.install()
 from distnet import data, trainer, net, parser
-from distnet.multigpu import init_strategy
 from mpi4py import MPI
 from garray import ConvDataLayout
 from distbase import util
@@ -35,7 +34,6 @@ model = checkpoint_dumper.get_checkpoint()
 if model is None:
   model = parser.parse_config_file(param_file)
 
-init_strategy(param_file + '.layerdist')
 save_freq = 100
 test_freq = 100
 adjust_freq = 100
@@ -47,5 +45,4 @@ net = parser.load_model(net.FastNet(image_shape), model)
 
 param_dict = globals()
 t = trainer.Trainer(**param_dict)
-#util.enable_profile()
 t.train()

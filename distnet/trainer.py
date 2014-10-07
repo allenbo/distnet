@@ -10,7 +10,6 @@ from distnet.net import FastNet
 from distnet.lr import Stat
 from distnet.parser import parse_config_file, load_model
 from distnet.scheduler import Scheduler
-from distnet.multigpu import init_strategy
 import os
 import sys
 import time
@@ -30,7 +29,7 @@ def cache_outputs(net, dp, dumper, layer_name = 'pool5', index = -1):
   '''
   dp.reset()
   curr_batch = 0
-  batch = dp.get_next_batch(128)
+  batch = dp.get_next_batch()
   epoch = batch.epoch
 
   if layer_name != '':
@@ -44,7 +43,7 @@ def cache_outputs(net, dp, dumper, layer_name = 'pool5', index = -1):
     log('%d.%d: error: %f logreg: %f time: %f', epoch, curr_batch, 1 - correct, cost, time.time() - batch_start)
     dumper.add({ 'labels' : batch.labels.get(),
                  'fc' : net.get_output_by_index(index).get().transpose()})
-    batch = dp.get_next_batch(128)
+    batch = dp.get_next_batch()
   dumper.flush()
 
 
@@ -65,7 +64,6 @@ class Trainer:
 
     for k, v in kw.iteritems():
       setattr(self, k, v)
-    init_strategy(dist_file = self.param_file + '.layerdist')
 
     # recover from checkpoint
     checkpoint = self.checkpoint_dumper.get_checkpoint()
@@ -83,7 +81,7 @@ class Trainer:
     if not hasattr(self, 'stat') or self.stat is None:
       total_batch = self.num_epochs * (self.train_dp.batch_size  / self.batch_size) * self.train_dp.batch_num
       self.stat = Stat(self.num_epochs, total_batch, 0, 0, self.batch_size)
-    print self.stat
+    util.log_info('%s', self.stat)
     self._finish_init()
 
   def _finish_init(self):
@@ -114,7 +112,7 @@ class Trainer:
 
   def get_test_error(self):
     batch_size = self.batch_size
-    test_data = self.test_dp.get_next_batch(batch_size)
+    test_data = self.test_dp.get_next_batch()
 
     input, label = test_data.data, test_data.labels
     if self.multiview:
@@ -170,7 +168,7 @@ class Trainer:
       if PARALLEL_READ == True:
         batch_start = time.time()
       #start = time.time()
-      train_data = self.train_dp.get_next_batch(self.batch_size)
+      train_data = self.train_dp.get_next_batch()
       #util.log_info('Trainer get data %f', time.time() - start)
 
       self.stat.curr_epoch = train_data.epoch
@@ -215,7 +213,7 @@ class Trainer:
     total_cost, total_correct, total_case = 0, 0, 0
     while True:
       batch_size = self.batch_size
-      test_data = self.test_dp.get_next_batch(batch_size)
+      test_data = self.test_dp.get_next_batch()
 
       self.stat.curr_batch += 1
       self.stat.curr_epoch = test_data.epoch
