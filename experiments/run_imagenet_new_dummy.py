@@ -6,7 +6,6 @@ This test is for naive trainer to traine a full imagenet model
 import pyximport
 pyximport.install()
 from distnet import data, trainer, net, parser
-from distnet.multigpu import init_strategy
 from mpi4py import MPI
 from garray import ConvDataLayout
 from distbase import util

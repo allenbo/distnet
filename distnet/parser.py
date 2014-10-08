@@ -92,7 +92,7 @@ class FastNetBuilder(Builder):
     name = Builder.set_val(ld, 'name')
     neuron = Builder.set_val(ld, 'neuron')
     disable_bprop = Builder.set_val(ld, 'disable_bprop', default = False)
-    para = Para.build_para_adapter(Builder.set_value(ld, 'para'), default = '').to_conv()
+    para = Para.build_para_adapter(Builder.set_val(ld, 'para',  default = '')).to_conv()
     cv = ConvLayer(name, numFilter, (filterSize, filterSize), para, padding, stride, initW, initB,
         partialSum, sumWidth, sharedBiases, epsW, epsB, momW, momB, wc, bias, weight,
         weightIncr = weightIncr, biasIncr = biasIncr, disable_bprop = disable_bprop, neuron =
@@ -106,7 +106,7 @@ class FastNetBuilder(Builder):
     name = Builder.set_val(ld, 'name')
     pool = Builder.set_val(ld, 'pool', default = 'max')
     disable_bprop = Builder.set_val(ld, 'disable_bprop', default = False)
-    para = Para.build_para_adapter(Builder.set_value(ld, 'para'), default = '').to_conv()
+    para = Para.build_para_adapter(Builder.set_val(ld, 'para', default = '')).to_conv()
     if pool == 'max':
       return MaxPoolLayer(name, para, poolSize, stride, start, disable_bprop = disable_bprop)
     elif pool == 'avg':
@@ -119,20 +119,20 @@ class FastNetBuilder(Builder):
     scale = Builder.set_val(ld, 'scale')
     blocked = bool(Builder.set_val(ld, 'blocked', default = 0))
     disable_bprop = Builder.set_val(ld, 'disable_bprop', default = False)
-    para = Para.build_para_adapter(Builder.set_value(ld, 'para'), default = '').to_conv()
+    para = Para.build_para_adapter(Builder.set_val(ld, 'para', default = '')).to_conv()
     return CrossMapResponseNormLayer(name, para, pow, size, scale, blocked, disable_bprop =
         disable_bprop)
 
   def softmax_layer(self, ld):
     name = Builder.set_val(ld, 'name')
     disable_bprop = Builder.set_val(ld, 'disable_bprop', default = False)
-    para = Para.build_para_adapter(Builder.set_value(ld, 'para'), default = '')
+    para = Para.build_para_adapter(Builder.set_val(ld, 'para', default = ''))
     return SoftmaxLayer(name, para, disable_bprop = disable_bprop)
 
   def neuron_layer(self, ld):
     name = Builder.set_val(ld, 'name')
     disable_bprop = Builder.set_val(ld, 'disable_bprop', default = False)
-    para = Para.build_para_adapter(Builder.set_value(ld, 'para'), default = '')
+    para = Para.build_para_adapter(Builder.set_val(ld, 'para', default = ''))
     if ld['neuron'] == 'relu':
       e = Builder.set_val(ld, 'e')
       return NeuronLayer(name, para, type='relu', e=e, disable_bprop = disable_bprop)
@@ -150,7 +150,7 @@ class FastNetBuilder(Builder):
     size = Builder.set_val(ld, 'size')
     scale = Builder.set_val(ld, 'scale')
     disable_bprop = Builder.set_val(ld, 'disable_bprop', default = False)
-    para = Para.build_para_adapter(Builder.set_value(ld, 'para'), default = '').to_conv()
+    para = Para.build_para_adapter(Builder.set_val(ld, 'para', default = '')).to_conv()
     return ResponseNormLayer(name, para, pow, size, scale, disable_bprop = disable_bprop)
 
 
@@ -173,7 +173,7 @@ class FastNetBuilder(Builder):
     name = Builder.set_val(ld, 'name')
     neuron = Builder.set_val(ld, 'neuron')
     disable_bprop = Builder.set_val(ld, 'disable_bprop', default = False)
-    para = Para.build_para_adapter(Builder.set_value(ld, 'para'), default = '').to_conv()
+    para = Para.build_para_adapter(Builder.set_val(ld, 'para', default = '')).to_fc()
     return FCLayer(name, n_out, para, epsW, epsB, initW, initB, momW, momB, wc, dropRate,
         weight, bias, weightIncr = weightIncr, biasIncr = biasIncr, disable_bprop = disable_bprop, neuron = neuron)
 

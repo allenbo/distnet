@@ -19,11 +19,3 @@ else:
   import garray as arr
   garray.device_init()
   rank, num_gpu = 0, 1
-
-def random_uniform(shape, global_slice_dim = None, group_slice_dim = None, context = default_context):
-  if not multi_gpu:
-    return arr.random_uniform(shape)
-  else:
-    return arr.random_uniform(shape, global_slice_dim = global_slice_dim,
-                                     group_slice_dim = group_slice_dim,
-                                     context = default_context)

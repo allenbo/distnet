@@ -32,7 +32,7 @@ class Layer(object):
     self.merge_neuron = False
     self.name = name
     self.type = type
-    self.__para = para
+    self._para = para
     self._prev_layer = None
     self._next_layer = None
     self.disable_bprop = disable_bprop
@@ -89,13 +89,13 @@ class Layer(object):
 
   def init_output(self, fc = False):
     if self.type == 'data':
-      self.__para = self._next_layer.__para
+      self._para = self._next_layer._para
 
     out_shape = self.get_output_shape()
-    self.output = self.__para.init_output(output_shpae)
+    self.output = self._para.init_output(out_shape)
 
     if self.type != 'data':
-      self.output_grad = self.__para.init_output(shape = out_shape) 
+      self.output_grad = self._para.init_output(shape = out_shape) 
 
   def dump(self):
     attr = [att for att in dir(self) if not att.startswith('__')]
@@ -135,8 +135,8 @@ class WeightedLayer(Layer):
     self.initW = initW
     self.initB = initB
 
-    self.weight = WEIGHTS.empty('weight.' + self.name, epsW, momW, wc, self.__para)
-    self.bias = WEIGHTS.empty('bias.' + self.name, epsB, momB, 0.0, self.__para)
+    self.weight = WEIGHTS.empty('weight.' + self.name, epsW, momW, wc, self._para)
+    self.bias = WEIGHTS.empty('bias.' + self.name, epsB, momB, 0.0, self._para)
 
     if weight is not None:
       if backend == backend_name or self.type == 'fc':
@@ -221,12 +221,11 @@ class WeightedLayer(Layer):
     return d
 
 class ConvLayer(WeightedLayer):
-    def __init__(self, name, num_filters, filter_shape, para = FakePara(), padding=2, stride=1, initW=None,
+  def __init__(self, name, num_filters, filter_shape, para = FakePara(), padding=2, stride=1, initW=None,
                initB=None, partialSum=0, sumWidth=1000, sharedBiases=0, epsW=ConstantLearningRate(0.001),
                epsB=ConstantLearningRate(0.002), momW=0.9, momB=0.9, wc=0.004,
                bias=None, weight=None, weightIncr=None, biasIncr=None, disable_bprop=False, neuron =
                None, backend = 'cudaconv'):
-
     self.numFilter = num_filters
     assert filter_shape[0] == filter_shape[1], 'Non-square filters not yet supported.'
     self.filterSize = filter_shape[0]
@@ -237,7 +236,7 @@ class ConvLayer(WeightedLayer):
     self.sumWidth = sumWidth
     self.sharedBiases = sharedBiases
 
-    WeightedLayer.__init__(self, name, 'conv', para
+    WeightedLayer.__init__(self, name, 'conv', para,
                            epsW, epsB, initW, initB, momW, momB, wc, weight,
                            bias, weightIncr, biasIncr, disable_bprop, backend = backend)
 
@@ -266,6 +265,7 @@ class ConvLayer(WeightedLayer):
     return ConvDataLayout.get_output_shape(self.outputSize, self.outputSize, self.numFilter, self.batch_size)
 
   def fprop(self, input, output, train=TRAIN):
+    self._para.before_fprop(self)
     arr.convolution(input, self.weight.wt, output, self.bias.wt, -self.padding, self.stride)
 
     if self.neuron == 'relu':
@@ -281,10 +281,12 @@ class ConvLayer(WeightedLayer):
       arr.relu_compute_grad(grad, output, grad, 0)
     # bprop weight
     arr.wconvolution(input, grad, self.weight.grad, self.bias.grad, -self.padding, self.stride, self.sumWidth)
+    self._para.after_weight(self)
 
     if self._prev_layer.type != 'data':
       # bprop to next layer
       arr.bconvolution(input, grad, self.weight.wt, outGrad, -self.padding, self.stride)
+      self._para.after_bprop(self)
 
     self._printout_backward((self.bias.grad, self.weight.grad, outGrad))
 
@@ -308,12 +310,14 @@ class MaxPoolLayer(Layer):
     return ConvDataLayout.get_output_shape(self.outputSize, self.outputSize, self.numColor, self.batch_size)
 
   def fprop(self, input, output, train=TRAIN):
+    self._para.before_fprop(self)
     arr.maxpool(input, output, self.poolSize, self.start, self.stride)
     self._printout_forward(output)
 
   def bprop(self, grad, input, output, outGrad):
     outGrad.fill(0)
     arr.maxundo(input, grad, output, outGrad, self.poolSize, self.start, self.stride)
+    self._para.after_bprop(self)
     self._printout_backward((outGrad,))
 
 class AvgPoolLayer(Layer):
@@ -336,11 +340,13 @@ class AvgPoolLayer(Layer):
     return ConvDataLayout.get_output_shape(self.outputSize, self.outputSize, self.numColor, self.batch_size)
 
   def fprop(self, input, output, train=TRAIN):
+    self._para._before_fprop(self) 
     arr.avgpool(input, output,self.poolSize, self.start, self.stride)
     self._printout_forward(output)
 
   def bprop(self, grad, input, output, outGrad):
     arr.avgundo(input, grad, outGrad, self.poolSize, self.start, self.stride)
+    self._para.after_bprop(self)
     self._printout_backward((outGrad,))
 
 class ResponseNormLayer(Layer):
@@ -364,15 +370,17 @@ class ResponseNormLayer(Layer):
 
   def change_batch_size(self, batch_size):
     Layer.change_batch_size(self, batch_size)
-    self.denom = self.__para.init_output(shape = self.get_output_shape())
+    self.denom = self._para.init_output(shape = self.get_output_shape())
 
   def fprop(self, input, output, train=TRAIN):
+    self._para.before_fprop(self)
     arr.rnorm(input, self.denom, output, self.size, self.scalar, self.pow)
     self._printout_forward(output)
 
   def bprop(self, grad, input, output, outGrad):
     outGrad.fill(0)
     arr.rnormundo(grad, self.denom, input, output, outGrad, self.size, self.scalar, self.pow)
+    self._para.after_bprop(self)
     self._printout_backward((outGrad,))
 
 class CrossMapResponseNormLayer(ResponseNormLayer):
@@ -387,18 +395,20 @@ class CrossMapResponseNormLayer(ResponseNormLayer):
 
 
   def fprop(self, input, output, train=TRAIN):
+    self._para.before_fprop(self)
     arr.rnormcrossmap(input, self.denom, output, self.size, self.scalar, self.pow, self.blocked)
     self._printout_forward(output)
 
   def bprop(self, grad, input, output, outGrad):
     outGrad.fill(0)
     arr.rnormcrossmapundo(grad, self.denom, input, output, outGrad, self.size,self.scalar, self.pow, self.blocked)
+    self._para.after_bprop(self)
     self._printout_backward((outGrad,))
 
 class FCLayer(WeightedLayer):
   ''' When the backend is caffe, we have to transpose the input to make batch as the second
   dimension of matrix'''
-  def __init__(self, name, n_out, para = FakePar(), epsW=ConstantLearningRate(0.001), epsB=ConstantLearningRate(0.002), initW=None, initB=None,
+  def __init__(self, name, n_out, para = FakePara(), epsW=ConstantLearningRate(0.001), epsB=ConstantLearningRate(0.002), initW=None, initB=None,
       momW=0.9, momB=0.9, wc=0.004, dropRate=0.0, weight=None, bias=None, weightIncr=None,
       biasIncr=None, disable_bprop=False, neuron = None):
     self.outputSize = n_out
@@ -435,13 +445,14 @@ class FCLayer(WeightedLayer):
     return FCDataLayout.get_output_shape(self.outputSize, self.batch_size)
 
   def fprop(self, input, output, train=TRAIN):
+    self._para.before_fprop(self)
     arr.fcforward(input, output, self.weight.wt, self.bias.wt, self.prev_conv)
     if train == TEST:
       if self.dropRate > 0.0:
         output *= (1.0 - self.dropRate)
     else:
       if self.dropRate > 0.0:
-        self.dropMask = self.__para.random_uniform(shape = output.shape)
+        self.dropMask = self._para.random_uniform(shape = output.shape)
         arr.bigger_than_scalar(self.dropMask, self.dropRate)
         arr.copy_to(output * self.dropMask, output)
 
@@ -462,14 +473,17 @@ class FCLayer(WeightedLayer):
 
     garray.driver.Context.synchronize()
     arr.fcbackward(input, self.weight.wt, grad, outGrad, self.weight.grad, self.bias.grad, self.prev_conv)
+    self._para.after_bprop(self)
+    self._para.after_weight(self)
 
-    #self._printout_backward((self.bias.grad, self.weight.grad, outGrad))
     self._printout_backward((self.weight.grad, ), fc = True)
 
 class SoftmaxLayer(Layer):
   def __init__(self, name, para = FakePara(), disable_bprop=False):
+    # softmax layer has to apply replica parallel, or fake parallel when it's single GPU
     Layer.__init__(self, name, "softmax", para, disable_bprop)
     self.batchCorrect = 0
+    assert self._para.name == 'R' or self._para.name == 'F'
 
   def attach(self, prev_layer):
     input_shape = prev_layer.get_output_shape()
@@ -481,12 +495,13 @@ class SoftmaxLayer(Layer):
   def create_cost(self, size):
     if size < 0:
       return
-    self.cost = self.__para.init_output(shape = (1, size))
+    self.cost = self._para.init_output(shape = (1, size))
 
   def get_output_shape(self):
     return (self.outputSize, self.batch_size)
 
   def fprop(self, input, output, train=TRAIN):
+    self._para.before_fprop(self)
     arr.softmax(input, output)
 
     self._printout_forward(output, fc = True)
@@ -580,11 +595,11 @@ class NeuronLayer(Layer):
     self.output_shape = image_shape
     if len(image_shape) == 4:
       self.numColor, self.img_size, _, self.batch_size = image_shape
-      self.__para == self.__para.to_conv()
+      self._para == self._para.to_conv()
     else:
       self.numColor, self.batch_size = image_shape
       self.img_size = 1
-      self.__para == self.__para.to_fc()
+      self._para == self._para.to_fc()
 
   def change_batch_size(self, batch_size):
     self.output_shape = tuple(list(self.output_shape)[:-1] + [batch_size])

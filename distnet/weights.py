@@ -39,7 +39,7 @@ class Weight(object):
 
   def to_gpu(self, obj):
     init = self._allocator.init_weight if self.isweight() else self._allocator.init_bias
-    result = init(obj)
+    result = init(array = obj)
     return result
 
   def set_weight(self, w):
@@ -63,14 +63,14 @@ class Weight(object):
   def grad(self):
     if self._grad is None or self._grad.shape != self.shape:
       init = self._allocator.init_weight if self.isweight() else self._allocator.init_bias
-      self._grad = init(shape = shape)
+      self._grad = init(shape = self.shape)
     return self._grad
 
   @property
   def incr(self):
     if (self._incr is None or self._incr.shape != self.shape) and self.momentum > 0:
       init = self._allocator.init_weight if self.isweight() else self._allocator.init_bias
-      self._incr = init(shape = shape)
+      self._incr = init(shape = self.shape)
       self._incr.fill(0.0)
     return self._incr
 

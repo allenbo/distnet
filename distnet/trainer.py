@@ -10,7 +10,6 @@ from distnet.net import FastNet
 from distnet.lr import Stat
 from distnet.parser import parse_config_file, load_model
 from distnet.scheduler import Scheduler
-from distnet.multigpu import init_strategy
 import os
 import sys
 import time
@@ -65,7 +64,6 @@ class Trainer:
 
     for k, v in kw.iteritems():
       setattr(self, k, v)
-    init_strategy(dist_file = self.param_file + '.layerdist')
 
     # recover from checkpoint
     checkpoint = self.checkpoint_dumper.get_checkpoint()

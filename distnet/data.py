@@ -16,7 +16,7 @@ import sys
 import threading
 import time
 
-from multigpu import uniformed_array, arr, rank, num_gpu, multi_gpu
+from multigpu import arr, rank, num_gpu, multi_gpu
 
 def set_seed():
   seed = arr.get_seed()
@@ -25,10 +25,6 @@ def set_seed():
   np.random.seed(seed)
 
 set_seed()
-# determine whether we should split the input before training
-INPUT_SEG = True
-if num_gpu == 1:
-  INPUT_SEG = False
 # determine whether we should copy image data to gpu before training
 PREV_FILL_GPU = True
 PARALLEL_READ = True
@@ -184,7 +180,7 @@ class ImageNetDataProvider(DataProvider):
     index = 0
     while index < len(self.images):
       self.label_batches.append(image_index[index: index + self.batch_size])
-      if not multi_gpu or not INPUT_SEG:
+      if not multi_gpu:
         self.batches.append(image_index[index: index + self.batch_size])
       else:
         num_images = min(self.batch_size, len(image_index) - index)
@@ -342,7 +338,7 @@ class ImageNetBatchDataProvider(DataProvider):
         matrix.decode_trim_images(images, target, self.img_size, self.border_size)
 
     def __multigpu_seg(self, images):
-        if not multi_gpu or not INPUT_SEG:
+        if not multi_gpu:
             return images
         num_images = util.divup(len(images), num_gpu)
         if rank != num_gpu - 1:
@@ -390,12 +386,9 @@ class DummyDataProvider(DataProvider):
     self.batch_size = batch_size
 
   def get_next_batch(self, _ = 128):
-    if INPUT_SEG:
-      batch_size = self.batch_size / num_gpu
-      if rank == num_gpu - 1:
-        batch_size = self.batch_size - batch_size * (num_gpu -1)
-    else:
-      batch_size = self.batch_size
+    batch_size = self.batch_size / num_gpu
+    if rank == num_gpu - 1:
+      batch_size = self.batch_size - batch_size * (num_gpu -1)
 
     #data = np.ndarray((3, self.inner_size, self.inner_size, batch_size)).astype(np.float32) * 128
     #data = np.random.randn(*(3, self.inner_size, self.inner_size, batch_size)).astype(np.float32) * 128
@@ -419,7 +412,7 @@ class CifarDataProvider(DataProvider):
     img = data['data'] - self.batch_meta['data_mean']
     num_image = img.shape[-1]
     label = data['labels']
-    if multi_gpu and INPUT_SEG:
+    if multi_gpu:
       nrow = 1.0 * img.shape[-1] / num_gpu
       pos_from = int(nrow * rank)
       pos_to = int((rank+ 1)* nrow)
@@ -626,11 +619,10 @@ class ParallelDataProvider(DataProvider):
 
       # special case wheh the batch size is equal to the data provider batch size
       label_batch_size = batch_size
-      if INPUT_SEG:
-        tmp_batch_size = batch_size / num_gpu
-        if rank == num_gpu - 1:
-          tmp_batch_size = batch_size - tmp_batch_size * (num_gpu -1)
-        batch_size = tmp_batch_size
+      tmp_batch_size = batch_size / num_gpu
+      if rank == num_gpu - 1:
+        tmp_batch_size = batch_size - tmp_batch_size * (num_gpu -1)
+      batch_size = tmp_batch_size
 
       if batch_size == width:
         data = gpu_data.copy()
@@ -652,11 +644,8 @@ class ParallelDataProvider(DataProvider):
           self.index += batch_size
           self.label_index += label_batch_size
 
-      if INPUT_SEG:
+      if multi_gpu:
         data = arr.assemble(data)
-        #labels = arr.assemble(labels.reshape((1, labels.size)), flat = True)
-      else:
-        data = uniformed_array(data)
     else:
       channel, img_size, img_size, width = self._cpu_batch.data.shape
       cpu_data = self._cpu_batch.data
