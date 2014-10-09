@@ -94,8 +94,7 @@ class Para(object):
         BB[N:M] means BatchBatchPara with N groups, M workers per group
         I[N] means ImagePara with N workers
         BI[N:M] means BatchImagePara with N groups, M workers per group
-        FM[N] means FCModelPara with N worker
-        CM[N] means ConvModelPara with N worker
+        M[N] means ConvModelPara with N worker
         R[N] means ReplicaPara with N worker
         empty string means FakePara, single GPU will use this
     '''
@@ -115,7 +114,7 @@ class FakePara(Para):
     else:
       assert shape is not None
       return garray.GPUArray(shape, dtype = np.float32)
-  
+
   init_bias = init_weight = init_output
 
   def random_uniform(self, shape):
@@ -139,17 +138,17 @@ class DataPara(Para):
       return allocate(shape = shape, context = self._context)
 
   init_bias = init_weight
-  
+
   def after_weight(self, layer):
     weight_grad = layer.weight.grad
-    weight_grad.write(area = weight_grad.area, data = weight_grad.DATA, propagate = True)
-    bias_grad = layer.bias_grad
-    bias_grad.write(area = bias_grad.area, data = bias_grad.DATA, propagate = True)
+    weight_grad.write(area = weight_grad.global_area, data = weight_grad.DATA, propagate = True)
+    bias_grad = layer.bias.grad
+    bias_grad.write(area = bias_grad.global_area, data = bias_grad.DATA, propagate = True)
 
 class BatchPara(DataPara):
   def __init__(self, num_worker):
     assert num_worker > 1
-    DataPara.__init__(self, 'B') 
+    DataPara.__init__(self, 'B')
     self._num_worker = num_worker
     self._context = CONTEXTMANAGER.build_context([self._num_worker])
 
@@ -178,7 +177,7 @@ class BatchPara(DataPara):
 class BatchBatchPara(DataPara):
   def __init__(self, num_group, num_worker_per_group):
     assert num_group > 1 and num_worker_per_group > 1
-    DataPara.__init__(self, 'BB') 
+    DataPara.__init__(self, 'BB')
     self._num_group = num_group
     self._num_worker_per_group = num_worker_per_group
     self._context = CONTEXTMANAGER.build_context([self._num_worker_per_group] * self._num_group)
@@ -203,12 +202,12 @@ class BatchBatchPara(DataPara):
 class ImagePara(DataPara):
   def __init__(self, num_worker):
     assert num_worker > 1
-    DataPara.__init__(self, 'I') 
+    DataPara.__init__(self, 'I')
     self._num_worker = num_worker
     self._context = CONTEXTMANAGER.build_context([self._num_worker])
 
   def init_output(self, shape):
-    if  util.issqrt(self._num_worker):
+    if  util.issquare(self._num_worker):
       group_slice_dim = (ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH)
     else:
       group_slice_dim = ConvDataLayout.HEIGHT
@@ -224,13 +223,13 @@ class ImagePara(DataPara):
     input = layer._prev_layer.output
     r, c = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH
     output_area = layer.output.local_area
-    padding = -layer.padding if has_attr(layer, 'padding') else 0
-    stride = layer.stride if has_attr(layer, 'stride') else 1
+    padding = -layer.padding if hasattr(layer, 'padding') else 0
+    stride = layer.stride if hasattr(layer, 'stride') else 1
     if layer.type == 'conv':
       filter_size = layer.filterSize
     elif layer.type == 'pool':
       filter_size = layer.poolSize
-    elif layer.type == ['rnorm', 'cmrnorm']:
+    elif layer.type in ['rnorm', 'cmrnorm']:
       filter_size = 0
 
     input.image_communicate(slice_dim = (r, c), padding = padding, stride = stride, filter_size = filter_size, output_area = output_area)
@@ -239,24 +238,28 @@ class ImagePara(DataPara):
     r, c = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH
     input = layer._prev_layer.output
     out_grad = layer._prev_layer.output_grad
-    if layer.type == 'conv':
+    if layer.type == 'conv' and layer.padding != 0:
       out_grad.local_cache = input.unpad(data = out_grad.local_cache,
                                padding = -layer.padding,
                                old_shape = out_grad.local_cache.shape,
                                old_area = input.local_cache_area,
                                slice_dim = (r, c))
-    out_grad.write(area = input.local_cache_area, data = out_grad.local_cache, propagate = True)
+      out_grad.write(area = input.local_cache_area, data = out_grad.local_cache, propagate = True)
+      del out_grad.local_cache
+    else:
+      out_grad.write(area = input.local_cache_area, data = out_grad.local_cache, propagate = True)
+
 
 class BatchImagePara(DataPara):
   def __init__(self, num_group, num_worker_per_group):
     assert num_group > 1 and num_worker_per_group > 1
-    DataPara.__init__(self, 'BI') 
+    DataPara.__init__(self, 'BI')
     self._num_group  = num_group
     self._num_worker_per_group = num_worker_per_group
     self._context = CONTEXTMANAGER.build_context([self._num_worker_per_group] * self._num_group)
 
   def init_output(self, shape):
-    if  util.issqrt(self._num_worker_per_group):
+    if  util.issquare(self._num_worker_per_group):
       group_slice_dim = (ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH)
     else:
       group_slice_dim = ConvDataLayout.HEIGHT
@@ -276,7 +279,7 @@ class BatchImagePara(DataPara):
 class ModelPara(Para):
   def __init__(self, num_worker):
     assert num_worker > 1
-    Para.__init__(self, 'M') 
+    Para.__init__(self, 'M')
     self._num_worker = num_worker
     self._context = CONTEXTMANAGER.build_context([self._num_worker])
 
@@ -321,10 +324,14 @@ class ModelPara(Para):
     out_grad = layer._prev_layer.output_grad
     out_grad.write(area = out_grad.global_area, data = out_grad.local_cache, propagate = True)
 
+  def random_uniform(self, shape):
+    #only FC layer needs random uniform, so same distribution with output
+    return ndarray.random_uniform(shape, group_slice_dim = self._output_group_dim, context = self._context)
+
 class ReplicaPara(Para):
   def __init__(self, num_worker):
     assert num_worker > 1
-    Para.__init__(self, 'R') 
+    Para.__init__(self, 'R')
     self._num_worker = num_worker
     self._context = CONTEXTMANAGER.build_context([self._num_worker])
 
@@ -347,3 +354,6 @@ class ReplicaPara(Para):
     input = layer._prev_layer.output
     out_grad = layer._prev_layer.output_grad
     out_grad.write(area = out_grad.global_area, data = out_grad.local_cache, propagate = False)
+
+  def random_uniform(self, shape):
+    return ndarray.random_uniform(shape = shape, context = self._context)

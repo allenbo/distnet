@@ -3,7 +3,7 @@ from pycuda.gpuarray import GPUArray, to_gpu, zeros, zeros_like, empty, empty_li
 import numpy as np
 from aux_operation import *
 from .backend import backend_name
-from distbase.util import divup, make_copy, deprecated
+from distbase.util import divup, make_copy, deprecated, random_string
 from distbase import cuda_base
 import time
 import traceback
@@ -472,11 +472,18 @@ def printout(self, name, row_from = 0, row_to = 0, col_from = 0, col_to = 0, fc 
   if row_to == 0:
     row_to = x.shape[0]
   if col_to == 0:
-    col_to = x.shape[1]
+    col_to = 10#x.shape[1]
   a = x.get()[row_from: row_to , col_from: col_to]
 
   for rows in a:
     for i in rows:
-      print '%.4f' % i,
+      print '%.6f' % i,
     print ''
 GPUArray.printout = printout
+
+def dump(self):
+  x = self.get()
+  filename = 'arrayout-' + random_string(6)
+  import cPickle as pickle
+  with open(filename) as f:
+    pickle.dump(x, f)

@@ -18,8 +18,8 @@ PFout = False
 PBout = False
 TEST = 0
 TRAIN = 1
-STOPITER = 1
-OUTINDEX = [5]
+STOPITER = 2
+OUTINDEX = [1]
 
 def col_rand(shape, dtype):
   return np.require(np.random.rand(*shape), dtype=dtype, requirements='C')
@@ -75,7 +75,7 @@ class Layer(object):
 
   def _printout_forward(self, obj, fc = False):
     if PFout and self.index in OUTINDEX:
-      obj.printout(self.name, fc = fc)
+      obj.printout(self.name)
       if self.index == OUTINDEX[-1] and self.iteration == STOPITER:
         sys.exit(-1)
 
@@ -83,7 +83,7 @@ class Layer(object):
     if PBout and self.index in OUTINDEX:
       for obj in obj_list:
         if obj:
-          obj.printout(self.name, fc = fc)
+          obj.printout(self.name)
       if self.index == OUTINDEX[0] and self.iteration == STOPITER:
         sys.exit(-1)
 
@@ -95,7 +95,7 @@ class Layer(object):
     self.output = self._para.init_output(out_shape)
 
     if self.type != 'data':
-      self.output_grad = self._para.init_output(shape = out_shape) 
+      self.output_grad = self._para.init_output(shape = out_shape)
 
   def dump(self):
     attr = [att for att in dir(self) if not att.startswith('__')]
@@ -271,7 +271,7 @@ class ConvLayer(WeightedLayer):
     if self.neuron == 'relu':
       arr.relu_activate(output, output, 0)
 
-    self._printout_forward(output)
+    self._printout_forward(self.weight.wt)
 
   def bprop(self, grad, input, output, outGrad):
     self.weight.grad.fill(0)
@@ -340,7 +340,7 @@ class AvgPoolLayer(Layer):
     return ConvDataLayout.get_output_shape(self.outputSize, self.outputSize, self.numColor, self.batch_size)
 
   def fprop(self, input, output, train=TRAIN):
-    self._para._before_fprop(self) 
+    self._para.before_fprop(self)
     arr.avgpool(input, output,self.poolSize, self.start, self.stride)
     self._printout_forward(output)
 

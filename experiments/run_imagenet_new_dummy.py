@@ -15,7 +15,7 @@ test_id = 'imagenet_dummy'
 
 data_dir = '/home/justinlin/nn-data/part-imagenet-category/'
 checkpoint_dir = './checkpoint/'
-param_file = './config/imagenet_new.cfg'
+param_file = './config/imagenet_cudaconv.cfg'
 output_dir = ''
 output_method = 'disk'
 
@@ -26,8 +26,8 @@ data_provider = 'dummy'
 image_size=224
 batch_size=512
 multiview = False
-train_dp = data.get_by_name(data_provider)(image_size, 1000, batch_size = 1024)
-test_dp = data.get_by_name(data_provider)(image_size, 1000, batch_size = 1024)
+train_dp = data.get_by_name(data_provider)(image_size, 1000, batch_size = 1024, minibatch_size = batch_size)
+test_dp = data.get_by_name(data_provider)(image_size, 1000, batch_size = 1024, minibatch_size = batch_size)
 checkpoint_dumper = trainer.CheckpointDumper(checkpoint_dir, test_id)
 
 model = checkpoint_dumper.get_checkpoint()

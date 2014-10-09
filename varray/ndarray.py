@@ -87,7 +87,7 @@ class VArray(object):
       of groups is always one, so the global_unique is False always.
 
       Weights and biases in model parallelism are unique across GPUs, so the group_unique is True.
-      
+
     VArray is built upon MPI. It needs MPI to boostrap itself to figure out where and which part of
     global array lays. When initializing, VArray, would infer the area of any other parts of this
     array and construct an area dictionary. This dictionary is what VArray will query when it needs to
@@ -108,7 +108,7 @@ class VArray(object):
 
     @function *_like:   Given another VArray, create a similar one.
 
-  
+
     When initiliazing an VArray, you have to provide an array or a global shape. global_slice_dim ==
     None means there is only one group in VArray. group_slice_dim == None means VArray doesn't
     divide data within each group.
@@ -127,7 +127,7 @@ class VArray(object):
     global_shape: same as shape
 
     @property
-    group_shape: the shape of the group which this GPU belongs to 
+    group_shape: the shape of the group which this GPU belongs to
 
     @property
     local_shape: the shape of the actual data on this GPU
@@ -280,7 +280,7 @@ class VArray(object):
     @utility.
     Check if VArray has cache
     '''
-    return has_attr(self, 'local_cache')
+    return hasattr(self, 'local_cache')
 
   def get_gpuarray(self, area, zeroed = False):
     '''
@@ -532,7 +532,7 @@ class VArray(object):
     '''
     @communication.internal
     @param area:the target area, can cross multiply GPUs.
-    @param padding:padding of final data 
+    @param padding:padding of final data
     @param slice_dim:dividing dimension of data pieces from multi GPUs
     @param self_id:self rank inside the communicator world
     @param area_dict:the area dictionay to query
@@ -990,7 +990,7 @@ class VArray(object):
   def __eq__(self, other):
     '''
     @computation
-    
+
     This function is only called in logreg_cost when comparing maxid with label
     Since softmax layer always applys replica parallelism, so maxid should be group and global
     non-unique
@@ -1115,11 +1115,11 @@ class VArray(object):
   def cache_from_local_data(self):
     '''
     @utility.internal
-    
+
     Set local_cache to local_data
     '''
     self.local_cache = copy.deepcopy(self.local_data)
-    self.local_cache_data = self.local_area
+    self.local_cache_area = self.local_area
 
   def get_pad_info(self, padding, old_shape, old_area, slice_dim = None):
     '''
@@ -1270,7 +1270,7 @@ def zeros_like(like):
   va.fill(0)
   return va
 
-def random_uniform(shape, global_slice_dim, group_slice_dim, context = default_context):
+def random_uniform(shape, global_slice_dim = None, group_slice_dim = None, context = default_context):
   va = allocate(shape = shape,
                 global_slice_dim = global_slice_dim,
                 group_slice_dim = group_slice_dim,
@@ -1302,3 +1302,9 @@ def assemble(local_data, flat = False, axis = -1):
     return rst.local_data
   else:
     return rst
+
+def concatenate(labels):
+  #concatenate labels in the order of rank
+  cache = garray.empty(shape = (size, int(labels.size)), dtype = np.float32)
+  WORLD.Allgather([tobuffer(labels), MPI.FLOAT], [tobuffer(cache), MPI.FLOAT])
+  return cache.reshape((cache.size, ))

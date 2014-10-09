@@ -14,11 +14,11 @@ import sys
 DEBUG = False
 
 def copy_to(input, output):
-  ''' 
+  '''
   Copy the content of input to output
   @param input:source
   @param output:destination
-  
+
   This function only used by fc layer.
     - When fprop, copy output*mask to output, the distribution of input and output must be the same
     - When bprop, copy grad*mask to grad
@@ -50,11 +50,11 @@ def sum(input, axis = None):
   @param input:Array object
   @param axis[None]:Axis that needs to compute
 
-  This function is only used when getting the batch correctness, in which case axis would be None.
-  So far, we only support axis == None
+  This function is only used when getting the batch correctness, in which case axis would be None
+  and input will be both global and group shared.
   '''
-  if axis is None:
-    return input.sum()
+  if axis is None and not input.global_unique and not input.group_unique:
+    return garray.sum(input.DATA)
   else:
     assert False
 
@@ -125,15 +125,15 @@ def convert_from_backend(weight, backend):
 def fcforward(input, output, weight, bias, prev_conv):
   _ = time.time()
   input_data = input.local_cache
-
   garray.matrixmult(weight.DATA, input_data, dest = output.DATA)
   garray.copy_to(output.DATA + bias.DATA , output.DATA)
   driver.Context.synchronize()
   MONITOR.add_fprop(time.time() - _)
 
 def fcbackward(input, weight, grad, out_grad, weight_grad, bias_grad, prev_conv):
-  if not out_grad.has_local_cache():
-    if out_grad.local_cache.shape != input_data.shape:
+  input_data = input.local_cache
+  if not out_grad.has_local_cache() :
+    if out_grad.DATA.shape != input_data.shape:
       out_grad.local_cache = garray.empty_like(input_data)
     else:
       out_grad.local_cache = out_grad.DATA
@@ -187,14 +187,14 @@ def tanh_compute_grad(grad, output, out_grad, a, b):
 def convolution(input, filter ,output, bias, padding, stride):
   _ = time.time()
   input_data = input.local_cache
-  garray.convolution(input_data, filter.DATA, output.DATA, bias.DATA, padding, stride)
+  garray.convolution(input_data, filter.DATA, output.DATA, bias.DATA, 0, stride)
   MONITOR.add_fprop(time.time() - _)
 
 def bconvolution(input, grad, filter, out_grad, padding, stride):
   input_data = input.local_cache
 
   if not out_grad.has_local_cache():
-    if out_grad.local_cache.shape != input_data.shape:
+    if out_grad.DATA.shape != input_data.shape:
       out_grad.local_cache = garray.empty_like(input_data)
     else:
       out_grad.local_cache = out_grad.DATA
@@ -214,7 +214,7 @@ def wconvolution(input, grad, weight_grad, bias_grad, padding, stride, *args):
 
   garray.wconvolution(input_data, grad.DATA, weight_grad.DATA, bias_grad.DATA, 0, stride, *args)
   MONITOR.add_wprop(time.time() - _)
- 
+
 def maxpool(input, output, pool_size, start, stride):
   input_data = input.local_cache
   _ = time.time()
@@ -225,7 +225,7 @@ def maxundo(input, grad, output, out_grad, pool_size, start, stride):
   input_data = input.local_cache
 
   if not out_grad.has_local_cache():
-    if out_grad.local_cache.shape != input_data.shape:
+    if out_grad.DATA.shape != input_data.shape:
       out_grad.local_cache = garray.empty_like(input_data)
     else:
       out_grad.local_cache = out_grad.DATA
@@ -245,9 +245,9 @@ def avgpool(input, output, pool_size, start, stride):
 
 def avgundo(input, grad, out_grad, pool_size, start, stride):
   input_data = input.local_cache
-  
+
   if not out_grad.has_local_cache():
-    if out_grad.local_cache.shape != input_data.shape:
+    if out_grad.DATA.shape != input_data.shape:
       out_grad.local_cache = garray.empty_like(input_data)
     else:
       out_grad.local_cache = out_grad.DATA
@@ -267,9 +267,9 @@ def rnorm(input, denom, output, size, scalar, pow):
 
 def rnormundo(grad, denom, input, output, out_grad, size, scalar, pow):
   input_data = input.local_cache
-  
+
   if not out_grad.has_local_cache():
-    if out_grad.local_cache.shape != input_data.shape:
+    if out_grad.DATA.shape != input_data.shape:
       out_grad.local_cache = garray.empty_like(input_data)
     else:
       out_grad.local_cache = out_grad.DATA
@@ -290,7 +290,7 @@ def rnormcrossmapundo(grad, denom, input, output, out_grad, size,  scalar, pow, 
   input_data = input.local_cache
 
   if not out_grad.has_local_cache():
-    if out_grad.local_cache.shape != input_data.shape:
+    if out_grad.DATA.shape != input_data.shape:
       out_grad.local_cache = garray.empty_like(input_data)
     else:
       out_grad.local_cache = out_grad.DATA
@@ -299,5 +299,5 @@ def rnormcrossmapundo(grad, denom, input, output, out_grad, size,  scalar, pow, 
   _ = time.time()
   out_grad_data.fill(0)
 
-  garray.rnormcrossmapundo(grad.DATA, denom.DATA, input_data, output.DATA, out_grad_data, size,  scalar, pow, blocked) 
+  garray.rnormcrossmapundo(grad.DATA, denom.DATA, input_data, output.DATA, out_grad_data, size,  scalar, pow, blocked)
   MONITOR.add_bprop(time.time() - _)
