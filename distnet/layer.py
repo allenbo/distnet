@@ -19,7 +19,7 @@ PBout = False
 TEST = 0
 TRAIN = 1
 STOPITER = 2
-OUTINDEX = [1]
+OUTINDEX = [0]
 
 def col_rand(shape, dtype):
   return np.require(np.random.rand(*shape), dtype=dtype, requirements='C')
@@ -271,7 +271,7 @@ class ConvLayer(WeightedLayer):
     if self.neuron == 'relu':
       arr.relu_activate(output, output, 0)
 
-    self._printout_forward(self.weight.wt)
+    self._printout_forward(output)
 
   def bprop(self, grad, input, output, outGrad):
     self.weight.grad.fill(0)

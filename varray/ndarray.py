@@ -901,6 +901,10 @@ class VArray(object):
       self.write_async(area, data)
       return
 
+    if self.group_unique == False and self.global_unique == False:
+      self._synchronize(self.global_comm, self.local_data, self.group_size)
+      return
+
     if self.global_unique:
       if self.global_area.cmp(area):
         self.global_write(area, data, propagate)

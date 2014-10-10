@@ -477,7 +477,7 @@ def printout(self, name, row_from = 0, row_to = 0, col_from = 0, col_to = 0, fc 
 
   for rows in a:
     for i in rows:
-      print '%.6f' % i,
+      print '%.8f' % i,
     print ''
 GPUArray.printout = printout
 

@@ -81,7 +81,7 @@ class Trainer:
     if not hasattr(self, 'stat') or self.stat is None:
       total_batch = self.num_epochs * (self.train_dp.batch_size  / self.batch_size) * self.train_dp.batch_num
       self.stat = Stat(self.num_epochs, total_batch, 0, 0, self.batch_size)
-    print self.stat
+    util.log_info('%s', self.stat)
     self._finish_init()
 
   def _finish_init(self):

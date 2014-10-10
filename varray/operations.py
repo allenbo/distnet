@@ -187,7 +187,7 @@ def tanh_compute_grad(grad, output, out_grad, a, b):
 def convolution(input, filter ,output, bias, padding, stride):
   _ = time.time()
   input_data = input.local_cache
-  garray.convolution(input_data, filter.DATA, output.DATA, bias.DATA, 0, stride)
+  garray.convolution(input_data, filter.DATA, output.DATA, bias.DATA, padding, stride)
   MONITOR.add_fprop(time.time() - _)
 
 def bconvolution(input, grad, filter, out_grad, padding, stride):
@@ -202,7 +202,7 @@ def bconvolution(input, grad, filter, out_grad, padding, stride):
 
   _ = time.time()
   out_grad_data.fill(0)
-  garray.bconvolution(input_data, grad.DATA, filter.DATA, out_grad_data, 0, stride)
+  garray.bconvolution(input_data, grad.DATA, filter.DATA, out_grad_data, padding, stride)
   MONITOR.add_bprop(time.time() - _)
 
 def wconvolution(input, grad, weight_grad, bias_grad, padding, stride, *args):
@@ -212,7 +212,7 @@ def wconvolution(input, grad, weight_grad, bias_grad, padding, stride, *args):
   weight_grad.fill(0)
   bias_grad.fill(0)
 
-  garray.wconvolution(input_data, grad.DATA, weight_grad.DATA, bias_grad.DATA, 0, stride, *args)
+  garray.wconvolution(input_data, grad.DATA, weight_grad.DATA, bias_grad.DATA, padding, stride, *args)
   MONITOR.add_wprop(time.time() - _)
 
 def maxpool(input, output, pool_size, start, stride):

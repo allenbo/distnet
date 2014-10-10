@@ -13,12 +13,12 @@ data_dir = '/home/justinlin/nn-data/cifar-10.old/'
 checkpoint_dir = 'checkpoint/'
 param_file = 'config/cifar-18pct_new.cfg'
 
-train_range = range(1, 41) #1,2,3,....,40
-test_range = range(41, 50) #41, 42, ..., 48
+train_range = range(1, 320) #1,2,3,....,40
+test_range = range(321, 350) #41, 42, ..., 48
 data_provider = 'cifar10'
 
 
-batch_size = 1024
+batch_size = 128
 train_dp = data.get_by_name(data_provider)(data_dir,train_range, minibatch_size = batch_size)
 test_dp = data.get_by_name(data_provider)(data_dir, test_range, minibatch_size = batch_size)
 checkpoint_dumper = trainer.CheckpointDumper(checkpoint_dir, test_id)
@@ -27,12 +27,11 @@ init_model = checkpoint_dumper.get_checkpoint()
 if init_model is None:
   init_model = parser.parse_config_file(param_file)
 
-save_freq = 100
+save_freq = 10000
 test_freq = 10000
 adjust_freq = 100
 factor = 1
 num_epochs = 30
-learning_rate = 1.0
 image_color = 3
 image_size = 32
 image_shape = ConvDataLayout.get_output_shape(image_size, image_size, image_color, batch_size)

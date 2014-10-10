@@ -223,7 +223,16 @@ class ImagePara(DataPara):
     input = layer._prev_layer.output
     r, c = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH
     output_area = layer.output.local_area
-    padding = -layer.padding if hasattr(layer, 'padding') else 0
+    #padding is a little trickly, in ImagePara, padding should be changed to be 0, but other paras
+    #don't have to do it. So we have to save padding in para object.
+    padding = 0
+    if hasattr(self, 'padding'):
+      padding = self.padding
+      layer.padding = 0
+    elif hasattr(layer, 'padding'):
+      padding = -layer.padding
+      self.padding = padding
+      layer.padding = 0
     stride = layer.stride if hasattr(layer, 'stride') else 1
     if layer.type == 'conv':
       filter_size = layer.filterSize
@@ -238,9 +247,9 @@ class ImagePara(DataPara):
     r, c = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH
     input = layer._prev_layer.output
     out_grad = layer._prev_layer.output_grad
-    if layer.type == 'conv' and layer.padding != 0:
+    if layer.type == 'conv' and self.padding != 0:
       out_grad.local_cache = input.unpad(data = out_grad.local_cache,
-                               padding = -layer.padding,
+                               padding = self.padding,
                                old_shape = out_grad.local_cache.shape,
                                old_area = input.local_cache_area,
                                slice_dim = (r, c))
