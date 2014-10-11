@@ -18,8 +18,8 @@ PFout = False
 PBout = False
 TEST = 0
 TRAIN = 1
-STOPITER = 2
-OUTINDEX = [0]
+STOPITER = 1
+OUTINDEX = [2]
 
 def col_rand(shape, dtype):
   return np.require(np.random.rand(*shape), dtype=dtype, requirements='C')
@@ -90,12 +90,16 @@ class Layer(object):
   def init_output(self, fc = False):
     if self.type == 'data':
       self._para = self._next_layer._para
+      output_allocate = self._para.init_input
+    else:
+      output_allocate = self._para.init_output
+
 
     out_shape = self.get_output_shape()
-    self.output = self._para.init_output(out_shape)
+    self.output = output_allocate(out_shape)
 
     if self.type != 'data':
-      self.output_grad = self._para.init_output(shape = out_shape)
+      self.output_grad = output_allocate(shape = out_shape)
 
   def dump(self):
     attr = [att for att in dir(self) if not att.startswith('__')]
@@ -603,7 +607,6 @@ class NeuronLayer(Layer):
 
   def change_batch_size(self, batch_size):
     self.output_shape = tuple(list(self.output_shape)[:-1] + [batch_size])
-
 
   def get_output_shape(self):
     return self.output_shape

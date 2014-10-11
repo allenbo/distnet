@@ -126,8 +126,7 @@ def convLocalMaxPool(input, output, size, start, stride):
   image_y =  input.shape[ConvDataLayout.HEIGHT]
   output_y = output.shape[ConvDataLayout.HEIGHT]
   output_x =  output.shape[ConvDataLayout.WIDTH]
-  print 'image_y', image_y, 'output_y', output_y, 'output_x', output_x, 'color', color, 'stride', stride, 'size', size
-
+  print 'input.shape', input.shape, 'output.shape', output.shape, 'color', color, 'size', size, 'start', start, 'stride', stride, 'image_y', image_y, 'output_y', output_y, 'output_x', output_x
   cudaconv3.convLocalMaxPool(input, output, color, size, start, stride, image_y, output_y, output_x)
 
 

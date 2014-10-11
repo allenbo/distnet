@@ -11,6 +11,8 @@ class Para(object):
   NumWorker = size
   def __init__(self, name):
     self.name = name
+  def init_input(self, shape):
+    pass
   def init_output(self, shape):
     pass
   def init_weight(self, shape = None, array = None):
@@ -52,7 +54,7 @@ class Para(object):
       if match:
         N = int(match.group(1))
         M = int(match.group(2))
-        assert N*M == NumWorker
+        assert N*M == Para.NumWorker
         para = BatchImagePara(N, M)
         return para
       else:
@@ -71,7 +73,7 @@ class Para(object):
       if match:
         N = int(match.group(1))
         M = int(match.group(2))
-        assert N*M == NumWorker
+        assert N*M == Para.NumWorker
         para = BatchBatchPara(N, M)
         return para
       else:
@@ -94,7 +96,7 @@ class Para(object):
         BB[N:M] means BatchBatchPara with N groups, M workers per group
         I[N] means ImagePara with N workers
         BI[N:M] means BatchImagePara with N groups, M workers per group
-        M[N] means ConvModelPara with N worker
+        M[N] means ModelPara with N worker
         R[N] means ReplicaPara with N worker
         empty string means FakePara, single GPU will use this
     '''
@@ -115,7 +117,7 @@ class FakePara(Para):
       assert shape is not None
       return garray.GPUArray(shape, dtype = np.float32)
 
-  init_bias = init_weight = init_output
+  init_input = init_bias = init_weight = init_output
 
   def random_uniform(self, shape):
     return garray.random_uniform(shape)
@@ -145,6 +147,17 @@ class DataPara(Para):
     bias_grad = layer.bias.grad
     bias_grad.write(area = bias_grad.global_area, data = bias_grad.DATA, propagate = True)
 
+def batch_before_fprop(self, layer):
+  input = layer._prev_layer.output
+  prev_conv = False if not hasattr(layer, 'prev_conv') else layer.prev_conv
+  input.batch_communicate(input.group_rank, self._group_dim if prev_conv == False else ConvDataLayout.BATCH)
+
+def batch_after_bprop(self, layer):
+  outgrad = layer._prev_layer.output_grad
+  input = layer._prev_layer.output
+  if not outgrad.has_local_cache(): return
+  outgrad.write(area = input.local_cache_area, data = outgrad.local_cache, propagate = True)
+
 class BatchPara(DataPara):
   def __init__(self, num_worker):
     assert num_worker > 1
@@ -154,6 +167,7 @@ class BatchPara(DataPara):
 
   def init_output(self, shape):
     return allocate(shape = shape, group_slice_dim = self._group_dim, context = self._context)
+  init_input = init_output
 
   def to_fc(self):
     self._group_dim = FCDataLayout.BATCH
@@ -164,15 +178,10 @@ class BatchPara(DataPara):
     return self
 
   def before_fprop(self, layer):
-    input = layer._prev_layer.output
-    prev_conv = False if not hasattr(layer, 'prev_conv') else layer.prev_conv
-    input.batch_communicate(input.group_rank, self._group_dim if prev_conv == False else ConvDataLayout.BATCH)
+    batch_before_fprop(self, layer)
 
   def after_bprop(self, layer):
-    outgrad = layer._prev_layer.output_grad
-    input = layer._prev_layer.output
-    if not outgrad.has_local_cache(): return
-    outgrad.write(area = input.local_cache_area, data = outgrad.local_cache, propagate = True)
+    batch_after_bprop(self, layer)
 
 class BatchBatchPara(DataPara):
   def __init__(self, num_group, num_worker_per_group):
@@ -185,6 +194,7 @@ class BatchBatchPara(DataPara):
   def init_output(self, shape):
     return allocate(shape = shape, global_slice_dim = self._global_dim,
             group_slice_dim = self._group_dim, context = self._context)
+  init_input = init_output
 
   def to_fc(self):
     self._global_dim = FCDataLayout.BATCH
@@ -196,8 +206,50 @@ class BatchBatchPara(DataPara):
     self._group_dim = ConvDataLayout.BATCH
     return self
 
-  before_fprop = BatchPara.before_fprop
-  after_bprop = BatchPara.after_bprop
+  def before_fprop(self, layer):
+    batch_before_fprop(self, layer)
+
+  def after_bprop(self, layer):
+    batch_after_bprop(self, layer)
+
+def image_before_fprop(self, layer):
+  input = layer._prev_layer.output
+  r, c = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH
+  output_area = layer.output.local_area
+  #padding is a little trickly, in ImagePara, padding should be changed to be 0, but other paras
+  #don't have to do it. So we have to save padding in para object.
+  padding = 0
+  if hasattr(self, 'padding'):
+    padding = self.padding
+    layer.padding = 0
+  elif hasattr(layer, 'padding'):
+    padding = -layer.padding
+    self.padding = padding
+    layer.padding = 0
+  stride = layer.stride if hasattr(layer, 'stride') else 1
+  if layer.type == 'conv':
+    filter_size = layer.filterSize
+  elif layer.type == 'pool':
+    filter_size = layer.poolSize
+  elif layer.type in ['rnorm', 'cmrnorm']:
+    filter_size = 0
+
+  input.image_communicate(slice_dim = (r, c), padding = padding, stride = stride, filter_size = filter_size, output_area = output_area)
+
+def image_after_bprop(self, layer):
+  r, c = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH
+  input = layer._prev_layer.output
+  out_grad = layer._prev_layer.output_grad
+  if layer.type == 'conv' and self.padding != 0:
+    out_grad.local_cache = input.unpad(data = out_grad.local_cache,
+                             padding = self.padding,
+                             old_shape = out_grad.local_cache.shape,
+                             old_area = input.local_cache_area,
+                             slice_dim = (r, c))
+    out_grad.write(area = input.local_cache_area, data = out_grad.local_cache, propagate = True)
+    del out_grad.local_cache
+  else:
+    out_grad.write(area = input.local_cache_area, data = out_grad.local_cache, propagate = True)
 
 class ImagePara(DataPara):
   def __init__(self, num_worker):
@@ -212,6 +264,7 @@ class ImagePara(DataPara):
     else:
       group_slice_dim = ConvDataLayout.HEIGHT
     return allocate(shape = shape, group_slice_dim = group_slice_dim, context = self._context)
+  init_input = init_output
 
   def to_fc(self):
     assert  False
@@ -220,44 +273,10 @@ class ImagePara(DataPara):
     return self
 
   def before_fprop(self, layer):
-    input = layer._prev_layer.output
-    r, c = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH
-    output_area = layer.output.local_area
-    #padding is a little trickly, in ImagePara, padding should be changed to be 0, but other paras
-    #don't have to do it. So we have to save padding in para object.
-    padding = 0
-    if hasattr(self, 'padding'):
-      padding = self.padding
-      layer.padding = 0
-    elif hasattr(layer, 'padding'):
-      padding = -layer.padding
-      self.padding = padding
-      layer.padding = 0
-    stride = layer.stride if hasattr(layer, 'stride') else 1
-    if layer.type == 'conv':
-      filter_size = layer.filterSize
-    elif layer.type == 'pool':
-      filter_size = layer.poolSize
-    elif layer.type in ['rnorm', 'cmrnorm']:
-      filter_size = 0
-
-    input.image_communicate(slice_dim = (r, c), padding = padding, stride = stride, filter_size = filter_size, output_area = output_area)
+    image_before_fprop(self, layer)
 
   def after_bprop(self, layer):
-    r, c = ConvDataLayout.HEIGHT, ConvDataLayout.WIDTH
-    input = layer._prev_layer.output
-    out_grad = layer._prev_layer.output_grad
-    if layer.type == 'conv' and self.padding != 0:
-      out_grad.local_cache = input.unpad(data = out_grad.local_cache,
-                               padding = self.padding,
-                               old_shape = out_grad.local_cache.shape,
-                               old_area = input.local_cache_area,
-                               slice_dim = (r, c))
-      out_grad.write(area = input.local_cache_area, data = out_grad.local_cache, propagate = True)
-      del out_grad.local_cache
-    else:
-      out_grad.write(area = input.local_cache_area, data = out_grad.local_cache, propagate = True)
-
+    image_after_bprop(self, layer)
 
 class BatchImagePara(DataPara):
   def __init__(self, num_group, num_worker_per_group):
@@ -275,6 +294,7 @@ class BatchImagePara(DataPara):
 
     return allocate(shape = shape, global_slice_dim = ConvDataLayout.BATCH, group_slice_dim =
             group_slice_dim, context = self._context)
+  init_input = init_output
 
   def to_fc(self):
     assert  False
@@ -282,8 +302,11 @@ class BatchImagePara(DataPara):
   def to_conv(self):
     return self
 
-  before_fprop = ImagePara.before_fprop
-  afterr_bprop = ImagePara.after_bprop
+  def before_fprop(self, layer):
+    image_before_fprop(self, layer)
+
+  def after_bprop(self, layer):
+    image_after_bprop(self, layer)
 
 class ModelPara(Para):
   def __init__(self, num_worker):
@@ -311,6 +334,9 @@ class ModelPara(Para):
       assert shape is not None
       return allocate(shape = shape, group_slice_dim =self._weight_group_dim, context = self._context)
 
+  def init_input(self, shape):
+    return allocate(shape = shape, context = self._context)
+
   def to_fc(self):
     self._output_group_dim = FCDataLayout.NEURON
     self._weight_group_dim = WeightLayout.OUTPUT
@@ -331,7 +357,7 @@ class ModelPara(Para):
   def after_bprop(self, layer):
     input = layer._prev_layer.output
     out_grad = layer._prev_layer.output_grad
-    out_grad.write(area = out_grad.global_area, data = out_grad.local_cache, propagate = True)
+    out_grad.write(area = input.local_cache_area, data = out_grad.local_cache, propagate = True)
 
   def random_uniform(self, shape):
     #only FC layer needs random uniform, so same distribution with output
@@ -351,7 +377,7 @@ class ReplicaPara(Para):
       assert shape is not None
       return allocate(shape = shape, context = self._context)
 
-  init_weight = init_bias = init_output
+  init_input = init_weight = init_bias = init_output
 
   def to_fc(self): return self
   def to_conv(self): return self

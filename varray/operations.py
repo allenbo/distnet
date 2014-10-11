@@ -4,7 +4,7 @@ from distbase import util
 from distbase.util import deprecated
 from distbase.monitor import MONITOR
 import numpy as np
-from .ndarray import VArray, zeros_like, WORLD, zeros, allocate_like, allocate, WORLD, barrier, INNER
+from .ndarray import VArray, zeros_like, WORLD, zeros, allocate_like, allocate, WORLD, barrier, INNER, rank
 from .area import Area
 import garray
 from garray import ConvDataLayout, FCDataLayout, FilterLayout, WeightLayout, driver
@@ -100,6 +100,10 @@ def convert_from_data(input, output):
   if input.check_param(output):
     # when the output is divided in batch dimension
     garray.convert_from_data(input.DATA, output.DATA)
+  elif output.global_unique == False and output.group_unique == False:
+    # when conv Layer is model parallelism
+    input.gather()
+    garray.convert_from_data(input.DATA, output.DATA)
   else:
     # input is global shared and group_unique
     if input.global_unique != output.global_unique:
@@ -108,7 +112,7 @@ def convert_from_data(input, output):
     if input.group_slice_dim == output.group_slice_dim:
       garray.convert_from_data(input.DATA, output.DATA)
     else:
-      group_output = garray.empty(shape = input.group_area.shape, dtype = np.float32)
+      group_output = garray.empty(shape = output.group_area.shape, dtype = np.float32)
       input.group_gather()
       garray.convert_from_data(input.DATA, group_output)
       output.copy_from_group(group_output)

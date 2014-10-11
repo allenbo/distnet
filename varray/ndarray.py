@@ -26,7 +26,7 @@ MASTER = 0
 size = WORLD.Get_size()
 rank = WORLD.Get_rank()
 
-MVAPICH2 = False
+MVAPICH2 = True
 INNER = True
 
 def barrier(communicator = WORLD):
@@ -1036,26 +1036,21 @@ class VArray(object):
     else:
       self.group_communicate()
 
-  def channel_communicate(self, rank, slice_dim, padding = 0):
+  def channel_communicate(self, rank, slice_dim):
     '''
     @communication.layer
     @param rank:self rank
     @param slice_dim:The channel dimension
-    @param padding:alwasy 0
 
     Store (num_channel / num_worker) of  data in local_cache, used when the input needs to be
     divided by channel at model parallelism
     '''
-    if padding == 0:
-      self.local_cache_area = Area.make_stripe_area(rank, slice_dim)
+    if slice_dim == self.group_slice_dim:
+      self.local_cache_area = self.local_area
+      self.local_cache = self.local_data
     else:
-      tmp_area = Area.make_stripe_area(rank, slice_dim)
-      if tmp_area._from[slice_dim] != 0:
-        tmp_area._from[slice_dim] -= padding
-      if tmp_area._to[slice_dim] != self.global_area._to[slice_dim]:
-        tmp_area._to[slice_dim] += padding
-      self.local_cache_area = tmp_area
-    self.local_cache = self.fetch(self.local_cache_area)
+      self.local_cache_area = VArray.make_stripe_area(rank, slice_dim, self.group_area, self.group_size)
+      self.local_cache = self.group_fetch(self.local_cache_area)
 
   def batch_communicate(self, rank, slice_dim):
     '''
@@ -1311,4 +1306,5 @@ def concatenate(labels):
   #concatenate labels in the order of rank
   cache = garray.empty(shape = (size, int(labels.size)), dtype = np.float32)
   WORLD.Allgather([tobuffer(labels), MPI.FLOAT], [tobuffer(cache), MPI.FLOAT])
+  barrier()
   return cache.reshape((cache.size, ))

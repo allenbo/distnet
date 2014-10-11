@@ -14,7 +14,7 @@ if os.environ.get('MULTIGPU', 'no') == 'yes':
   from varray import rank, size as num_gpu
   from varray.context import default_context, Context, CONTEXTMANAGER
   multi_gpu = True
-  garray.device_init(arr.rank)
+  garray.device_init(3 - arr.rank)
 else:
   import garray as arr
   garray.device_init()

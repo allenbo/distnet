@@ -1,6 +1,6 @@
 # Get backend
 import os
-backend_name = os.environ.get('BACKEND', 'cudaconv')
+backend_name = os.environ.get('BACKEND', 'cudaconv3')
 
 if backend_name == 'cudaconv':
   import cudaconv as cm_backend

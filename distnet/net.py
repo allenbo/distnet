@@ -118,6 +118,7 @@ class FastNet(object):
       if curr.disable_bprop: break
       prev = self.layers[-(i + 1)]
       curr.prev_bprop()
+      if prev.output_grad: prev.output_grad.fill(0)
       curr.bprop(grad, prev.output, curr.output, prev.output_grad)
       driver.Context.synchronize()
       grad = prev.output_grad
