@@ -126,7 +126,6 @@ def convLocalMaxPool(input, output, size, start, stride):
   image_y =  input.shape[ConvDataLayout.HEIGHT]
   output_y = output.shape[ConvDataLayout.HEIGHT]
   output_x =  output.shape[ConvDataLayout.WIDTH]
-  print 'input.shape', input.shape, 'output.shape', output.shape, 'color', color, 'size', size, 'start', start, 'stride', stride, 'image_y', image_y, 'output_y', output_y, 'output_x', output_x
   cudaconv3.convLocalMaxPool(input, output, color, size, start, stride, image_y, output_y, output_x)
 
 
@@ -150,7 +149,6 @@ def convLocalAvgUndo(input, grad, outgrad, size, start, stride):
   output_x = grad.shape[ConvDataLayout.WIDTH]
   image_y = input.shape[ConvDataLayout.HEIGHT]
   image_x = input.shape[ConvDataLayout.WIDTH]
-
   cudaconv3.convLocalAvgUndo(grad, outgrad, size, start, stride, output_y, output_x, image_y, image_x)
 
 def convResponseNorm(input, denom, output, size, scalar, pow):

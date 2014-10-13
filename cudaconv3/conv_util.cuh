@@ -172,7 +172,7 @@ __global__ void kLocalPool(float* imgs, float* target, const int imageY, const i
     const int regionSize = (loopEndY - loopStartY) * (loopEndX - loopStartX);
     for (int y = loopStartY; y < loopEndY; y++) {
         for (int x = loopStartX; x < loopEndX; x++) {
-            const int imgPx = y * imageY + x;
+            const int imgPx = y * imageX + x;
             #pragma unroll
             for (int i = 0; i < imgsPerThread; i++) {
                 if (!checkCaseBounds || imgIdx + i * B_X < numImages) {
