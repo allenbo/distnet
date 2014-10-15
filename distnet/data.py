@@ -337,7 +337,7 @@ class ImageNetBatchDataProvider(DataProvider):
     def __multigpu_seg(self, data):
         if not multi_gpu:
             return images
-        num_images = util.divup(len(images), num_gpu)
+        num_images = util.divup(len(data['data']), num_gpu)
         if rank != num_gpu - 1:
             images = data['data'][rank * num_images: (rank + 1) * num_images]
             labels = data['labels'][rank * num_images: (rank + 1) * num_images]
@@ -389,8 +389,6 @@ class DummyDataProvider(DataProvider):
 
   def get_next_batch(self):
     batch_size = self.batch_size / num_gpu
-    if rank == num_gpu - 1:
-      batch_size = self.batch_size - batch_size * (num_gpu -1)
 
     data = np.ones((3, self.inner_size, self.inner_size, batch_size)).astype(np.float32) * 128
     label = [np.random.choice(self.output_size) for i in range(batch_size)]
@@ -564,8 +562,6 @@ class ParallelDataProvider(DataProvider):
     if self._reader is None:
       self._start_read()
 
-    #if self._gpu_batch is None:
-    #  self._fill_reserved_data()
     if self.index == 0:
         self._fill_reserved_data()
 
@@ -586,7 +582,6 @@ class ParallelDataProvider(DataProvider):
       if batch_size == width:
         data = gpu_data.copy()
         labels = gpu_labels.copy()
-        #self._fill_reserved_data()
         self.index = 0
       else:
         if self.index + batch_size >=  width:
@@ -595,7 +590,6 @@ class ParallelDataProvider(DataProvider):
           data = gpu_data[:, :, :, self.index:self.index + batch_size]
 
           self.index = 0
-          #self._fill_reserved_data()
         else:
           labels = gpu_labels[self.index : self.index + batch_size]
           data = gpu_data[:, :, :, self.index:self.index + batch_size]
@@ -626,7 +620,17 @@ class ParallelDataProvider(DataProvider):
 
     return BatchData(data, labels, epoch)
 
-  get_next_batch = __get_next_batch1
+  def __get_next_batch3(self):
+    if not hasattr(self, 'cached_data'):
+      batch_size = self.dp.minibatch_size / num_gpu
+      data = garray.array( np.ones(  self.dp.image_shape + (batch_size, ) ).astype(np.float32) )
+      labels = garray.array( np.ones( self.dp.minibatch_size ).astype(np.float32) )
+      if multi_gpu:
+          data = arr.assemble(data)
+      self.cached_data = BatchData(data, labels, 1)
+    return self.cached_data
+
+  get_next_batch = __get_next_batch3
 
   def recover_from_dp(self, dp):
     self.index = dp['index']
