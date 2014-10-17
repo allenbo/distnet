@@ -36,7 +36,7 @@ old_init = GPUArray.__init__
 def new_init(self, *args, **kw):
   global default_stream
   if default_stream is None:
-      default_stream = driver.Stream()
+    default_stream = driver.Stream()
   #traceback.print_stack()
   result = old_init(self, *args, **kw)
   driver.Context.synchronize()

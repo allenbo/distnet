@@ -6,10 +6,12 @@ top of the convolutional kernel code from [cuda-convnet](https://code.google.com
 
 **Requires**
 
-  * [NumPy](http://www.numpy.org/)
-  * [CUDA](http://www.nvidia.com/object/cuda_home_new.html)
-  * [PyCUDA](http://documen.tician.de/pycuda/)
   * MPI:[OpenMPI](http://www.open-mpi.org) or [MVAPICH](http://mvapich.cse.ohio-state.edu/)
+  * [CUDA](http://www.nvidia.com/object/cuda_home_new.html)
+  * [JPEGLIB](http://sourceforge.net/projects/libjpeg/)
+
+  * [NumPy](http://www.numpy.org/)
+  * [PyCUDA](http://documen.tician.de/pycuda/)
   * [mpi4py](http://mpi4py.scipy.org/)
   * [PIL](http://www.pythonware.com/products/pil/)
   * [scikits-cuda](http://scikits.appspot.com/cuda)

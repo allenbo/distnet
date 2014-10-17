@@ -161,25 +161,12 @@ class FastNet(object):
     cost_layer.logreg_cost(label, prediction)
     return cost_layer.cost.get().sum(), cost_layer.batchCorrect
 
-  def get_cost_multiview(self, label, prediction, num_view):
-    cost_layer = self.layers[-1]
-    assert not np.any(np.isnan(prediction.get()))
-    cost_layer.logreg_cost_multiview(label, prediction, num_view)
-    return cost_layer.cost.get().sum(), cost_layer.batchCorrect
-
   def get_batch_information(self):
     cost = self.cost
     numCase = self.numCase
     correct = self.correct
     self.cost = self.numCase = self.correct = 0.0
     return cost / numCase , correct / numCase, int(numCase)
-
-  def get_batch_information_multiview(self, num_view):
-    cost = self.cost
-    numCase = self.numCase / num_view
-    correct = self.correct
-    self.cost = self.numCase = self.correct = 0.0
-    return cost / numCase, correct / numCase, int(numCase)
 
   def get_correct(self):
     return self.layers[-1].get_correct()
@@ -212,14 +199,6 @@ class FastNet(object):
       self.bprop(label)
       self.update(stat)
 
-    driver.Context.synchronize()
-
-  def test_batch_multiview(self, data, label, num_view):
-    data, label = self.prepare_for_train(data, label)
-    prediction = self.fprop(data, TEST)
-    cost, correct = self.get_cost_multiview(label, prediction, num_view)
-    self.cost += cost
-    self.correct += correct
     driver.Context.synchronize()
 
   def get_dumped_layers(self):
