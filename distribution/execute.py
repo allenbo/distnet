@@ -103,35 +103,29 @@ class ConvExecuter(Executer):
       padding = param['padding']
       stride = param['stride']
 
-      operation.convFilterActs(input, filter, output, bias, image_y, output_y, output_x, -padding, stride,
-          channel, 1)
+      operation.convFilterActs(input, filter, output, bias,-padding, stride)
       driver.Context.synchronize()
-      operation.convImgActs(ingrad, filter, outgrad, image_y, image_x, output_y,
-          -padding, stride, channel, 1)
+      operation.convImgActs(input, ingrad, filter, outgrad, -padding, stride)
       driver.Context.synchronize()
-      operation.convWeightActs(input, ingrad, filter, bias, image_y, output_y, output_x, filter_size,
-          -padding, stride, channel, 1, weight_sum)
+      operation.convWeightActs(input, ingrad, filter, bias, -padding, stride, weight_sum)
       driver.Context.synchronize()
 
       fprop = bprop = wprop = update = 0
       fstart = time.time()
       for i in range(self.count):
-        operation.convFilterActs(input, filter, output, bias, image_y, output_y, output_x, -padding, stride,
-            channel, 1)
+        operation.convFilterActs(input, filter, output, bias, -padding, stride)
         driver.Context.synchronize()
       fprop = (time.time() - fstart) / self.count
 
       bstart = time.time()
       for i in range(self.count):
-        operation.convImgActs(ingrad, filter, outgrad, image_y, image_x, output_y,
-            -padding, stride, channel, 1)
+        operation.convImgActs(input, ingrad, filter, outgrad, -padding, stride)
         driver.Context.synchronize()
       bprop = (time.time() - bstart) / self.count
 
       wstart = time.time()
       for i in range(self.count):
-        operation.convWeightActs(input, ingrad, filter, bias, image_y, output_y, output_x, filter_size,
-            -padding, stride, channel, 1, weight_sum)
+        operation.convWeightActs(input, ingrad, filter, bias, -padding, stride, weight_sum)
         driver.Context.synchronize()
       wprop = (time.time() - wstart) / self.count
 
@@ -205,27 +199,23 @@ class PoolExecuter(Executer):
       start = param['start']
       stride = param['stride']
 
-      operation.convLocalMaxPool(input, output, channel, pool_size, start, stride, input_y,
-          output_y, output_x)
+      operation.convLocalMaxPool(input, output, pool_size, start, stride)
       driver.Context.synchronize()
-      operation.convLocalMaxUndo(input, ingrad, output, outgrad, pool_size, start, stride, output_y,
-          output_x, input_y)
+      operation.convLocalMaxUndo(input, ingrad, output, outgrad, pool_size, start, stride)
       driver.Context.synchronize()
 
       fprop = bprop = 0
       fstart = time.time()
       for i in range(self.count):
         # forward
-        operation.convLocalMaxPool(input, output, channel, pool_size, start, stride, input_y,
-            output_y, output_x)
+        operation.convLocalMaxPool(input, output, pool_size, start, stride)
         driver.Context.synchronize()
       fprop = (time.time() - fstart) / self.count
 
       bstart = time.time()
       for i in range(self.count):
         # backward
-        operation.convLocalMaxUndo(input, ingrad, output, outgrad, pool_size, start, stride, output_y,
-            output_x, input_y)
+        operation.convLocalMaxUndo(input, ingrad, output, outgrad, pool_size, start, stride)
         driver.Context.synchronize()
       bprop = (time.time() - bstart) / self.count
 
@@ -290,23 +280,21 @@ class RNormExecuter(Executer):
       scalar = param['scale']
       pow = param['pow']
 
-      operation.convResponseNorm(input, denom, output, channel, size, input_y, scalar, pow)
+      operation.convResponseNorm(input, denom, output, size, scalar, pow)
       driver.Context.synchronize()
-      operation.convResponseNormUndo(ingrad, denom, input, output, outgrad, channel, size, input_y,
-          scalar, pow, 0.0, 1.0)
+      operation.convResponseNormUndo(ingrad, denom, input, output, outgrad, size, scalar, pow)
       driver.Context.synchronize()
 
       fprop = bprop = 0
       fstart = time.time()
       for i in range(self.count):
-        operation.convResponseNorm(input, denom, output, channel, size, input_y, scalar, pow)
+        operation.convResponseNorm(input, denom, output, size, scalar, pow)
         driver.Context.synchronize()
       fprop = (time.time() - fstart) / self.count
 
       bstart = time.time()
       for i in range(self.count):
-        operation.convResponseNormUndo(ingrad, denom, input, output, outgrad, channel, size, input_y,
-            scalar, pow, 0.0, 1.0)
+        operation.convResponseNormUndo(ingrad, denom, input, output, outgrad, size, scalar, pow)
         driver.Context.synchronize()
       bprop = (time.time() - bstart) / self.count
 
@@ -372,23 +360,21 @@ class CMRNormExecuter(Executer):
       scalar = param['scale']
       pow = param['pow']
 
-      operation.convResponseNormCrossMap(input, denom, output, channel, size, input_y, scalar, pow, False)
+      operation.convResponseNormCrossMap(input, denom, output, size, scalar, pow, False)
       driver.Context.synchronize()
-      operation.convResponseNormCrossMapUndo(ingrad, denom, input, output, outgrad, channel, size, input_y,
-          scalar, pow, False, 0.0, 1.0)
+      operation.convResponseNormCrossMapUndo(ingrad, denom, input, output, outgrad, size, scalar, pow, False)
       driver.Context.synchronize()
 
       fprop = bprop = 0
       fstart = time.time()
       for i in range(self.count):
-        operation.convResponseNormCrossMap(input, denom, output, channel, size, input_y, scalar, pow, False)
+        operation.convResponseNormCrossMap(input, denom, output, size, scalar, pow, False)
         driver.Context.synchronize()
       fprop = (time.time() - fstart) / self.count
 
       bstart = time.time()
       for i in range(self.count):
-        operation.convResponseNormCrossMapUndo(ingrad, denom, input, output, outgrad, channel, size, input_y,
-            scalar, pow, False, 0.0, 1.0)
+        operation.convResponseNormCrossMapUndo(ingrad, denom, input, output, outgrad, size, scalar, pow, False)
         driver.Context.synchronize()
       bprop = (time.time() - bstart) / self.count
       times.append(MTime(fprop, bprop))

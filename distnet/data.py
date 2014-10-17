@@ -19,14 +19,10 @@ from multigpu import arr, rank, num_gpu, multi_gpu
 
 def set_seed():
   seed = arr.get_seed()
-  seed = 0
   random.seed(seed)
   np.random.seed(seed)
 
 set_seed()
-# determine whether we should copy image data to gpu before training
-PREV_FILL_GPU = True
-PARALLEL_READ = True
 
 class BatchData(object):
   def __init__(self, data, labels, epoch):
@@ -144,12 +140,13 @@ class ImageNetDataProvider(DataProvider):
   border_size = 16
   inner_size = 224
 
-  def __init__(self, data_dir, batch_range=None, multiview = False, category_range=None, batch_size=1024, minibatch_size = 128):
+  def __init__(self, data_dir, batch_range=None, category_range=None, batch_size=1024, minibatch_size = 128):
     DataProvider.__init__(self, data_dir, batch_range, minibatch_size)
-    self.multiview = multiview
     self.batch_size = batch_size
     self.images = _prepare_images(data_dir, category_range, batch_range, self.batch_meta)
-    self.num_view = 5 * 2 if self.multiview else 1
+    self.image_index = np.arange(len(self.images))
+    np.random.shuffle(self.image_index)
+    self.num_view = 1
 
     assert len(self.images) > 0
 
@@ -171,21 +168,21 @@ class ImageNetDataProvider(DataProvider):
     util.log('Starting data provider with %d batches', len(self.batches))
 
   def _shuffle_batches(self):
-    # build index vector into 'images' and split into groups of batch-size
-    image_index = np.arange(len(self.images))
-    np.random.shuffle(image_index)
+    np.random.shuffle(self.image_index)
+    self._multi_gpu_seg()
 
+  def _multi_gpu_seg(self):
     self.batches = []
     index = 0
     while index < len(self.images):
       if not multi_gpu:
-        self.batches.append(image_index[index: index + self.batch_size])
+        self.batches.append(self.image_index[index: index + self.batch_size])
       else:
-        num_images = min(self.batch_size, len(image_index) - index)
+        num_images = min(self.batch_size, len(self.image_index) - index)
         if num_images % num_gpu != 0:
           break
         num_images = util.divup(num_images, num_gpu)
-        self.batches.append(image_index[index + rank * num_images: index + (rank+1) * num_images ])
+        self.batches.append(self.image_index[index + rank * num_images: index + (rank+1) * num_images ])
       index += self.batch_size
 
     self.batch_range = range(len(self.batches))
@@ -204,27 +201,13 @@ class ImageNetDataProvider(DataProvider):
     self.__trim_borders(images, cropped)
 
   def __trim_borders(self, images, target):
-    if self.multiview:
-      start_positions = [(0, 0), (0, self.border_size * 2), (self.border_size, self.border_size),
-                          (self.border_size *2 , 0), (self.border_size * 2 , self.border_size * 2)]
-      end_positions = [(x + self.inner_size, y + self.inner_size) for (x, y) in start_positions]
-      for i in xrange(self.num_view / 2):
-        startY , startX = start_positions[i][0], start_positions[i][1]
-        endY, endX = end_positions[i][0], end_positions[i][1]
-        num_image = len(images)
-        for idx, img in enumerate(images):
-          pic = img[:, startY:endY, startX:endX]
-          target[:, :, :, i * num_image + idx] = pic
-          target[:, :, :, (self.num_view/2 +i) * num_image + idx] = pic[:, :, ::-1]
-    else:
-      #matrix.trim_images(images, target, self.img_size, self.border_size)
-      for idx, img in enumerate(images):
-        startY, startX = np.random.randint(0, self.border_size * 2 + 1), np.random.randint(0, self.border_size * 2 + 1)
-        endY, endX = startY + self.inner_size, startX + self.inner_size
-        pic = img[:, startY:endY, startX:endX]
-        if np.random.randint(2) == 0:
-          pic = pic[:, :, ::-1]
-        target[:, :, :, idx] = pic
+    for idx, img in enumerate(images):
+      startY, startX = np.random.randint(0, self.border_size * 2 + 1), np.random.randint(0, self.border_size * 2 + 1)
+      endY, endX = startY + self.inner_size, startX + self.inner_size
+      pic = img[:, startY:endY, startX:endX]
+      if np.random.randint(2) == 0:
+        pic = pic[:, :, ::-1]
+      target[:, :, :, idx] = pic
 
   def __decode_trim_images2(self, image_filenames, cropped):
     images = []
@@ -233,8 +216,6 @@ class ImageNetDataProvider(DataProvider):
     matrix.decode_trim_images(images, cropped, self.img_size, self.border_size)
 
   def get_next_batch(self):
-    #start = time.time()
-    #util.log_info('Start to get batch from disk')
     self.get_next_index()
 
     epoch = self.curr_epoch
@@ -244,7 +225,6 @@ class ImageNetDataProvider(DataProvider):
     labels = np.zeros(len(names))
     cropped = np.ndarray((3, self.inner_size, self.inner_size, num_imgs * self.num_view),
             dtype=np.float32)
-    # _load in parallel for training
     self.__decode_trim_images2(names, cropped)
 
     clabel = []
@@ -269,116 +249,94 @@ class ImageNetDataProvider(DataProvider):
 
   def recover_from_dp(self, dp_dict):
     DataProvider.recover_from_dp(self, dp_dict)
-    self.batches = dp_dict['batches']
-    if 'label_batches' in dp_dict:
-      self.label_batches = dp_dict['label_batches']
-    else:
-      self.label_batches = self.batches
-
-    # recover the image batch information from label batch list
-    if len(self.batches[0]) != len(self.label_batches[0]):
-      image_batch_size = len(self.label_batches[0]) / num_gpu
-      self.batches = []
-      for batch in self.label_batches:
-        if len(batch) == self.batch_size:
-          self.batches.append(batch[rank * image_batch_size: (rank + 1) * image_batch_size].copy())
+    image_index = dp_dict.get('image_index', None)
+    if image_index is not None:
+      self.image_index = dp_dict['image_index']
+    self._multi_gpu_seg()
 
   def dump(self):
     dp = DataProvider.dump(self)
-    dp['batches'] = self.batches
-    dp['label_batches'] = self.label_batches
+    dp['image_index'] = self.image_index
     return dp
 
 class ImageNetBatchDataProvider(DataProvider):
-    img_size = 256
-    border_size = 16
-    inner_size = 224
+  img_size = 256
+  border_size = 16
+  inner_size = 224
 
-    def __init__(self, data_dir, batch_range, multiview = False, minibatch_size = 128):
-        DataProvider.__init__(self, data_dir, batch_range, minibatch_size)
-        self.multiview = multiview
-        self.batch_size = self.batch_meta['batch_size']
-        self.num_view = 5 * 2 if self.multiview else 1
-        data_mean = self.batch_meta['data_mean']
-        self.data_mean = (data_mean
-            .reshape((3, 256, 256))[:,
-                                self.border_size:self.border_size + self.inner_size,
-                                self.border_size:self.border_size + self.inner_size]
-            .reshape((self.data_dim, 1))
-        )
-    def __decode_trim_images1(self, data, target):
-        images = []
-        for raw_data in data:
-            file = StringIO.StringIO(raw_data)
-            jpeg = Image.open(file)
-            images.append(np.asarray(jpeg, np.float32).transpose(2, 0, 1))
+  def __init__(self, data_dir, batch_range, minibatch_size = 128):
+    DataProvider.__init__(self, data_dir, batch_range, minibatch_size)
+    self.batch_size = self.batch_meta['batch_size']
+    self.num_view = 1
+    data_mean = self.batch_meta['data_mean']
+    self.data_mean = (data_mean
+        .reshape((3, 256, 256))[:,
+                            self.border_size:self.border_size + self.inner_size,
+                            self.border_size:self.border_size + self.inner_size]
+        .reshape((self.data_dim, 1))
+    )
 
-        cropped = np.ndarray((3, self.inner_size, self.inner_size, len(images) * self.num_view), dtype = np.float32)
-        self.__trim_borders(images, cropped)
+  def __decode_trim_images1(self, data, target):
+    images = []
+    for raw_data in data:
+      file = StringIO.StringIO(raw_data)
+      jpeg = Image.open(file)
+      images.append(np.asarray(jpeg, np.float32).transpose(2, 0, 1))
 
-    def __trim_borders(self, images, target):
-        if self.multiview:
-            start_positions = [(0, 0), (0, self.border_size * 2), (self.border_size, self.border_size), (self.border_size *2 , 0), (self.border_size * 2 , self.border_size * 2)]
-            end_positions = [(x + self.inner_size, y + self.inner_size) for (x, y) in start_positions]
-            for i in xrange(self.num_view / 2):
-                startY , startX = start_positions[i][0], start_positions[i][1]
-                endY, endX = end_positions[i][0], end_positions[i][1]
-                num_image = len(images)
-                for idx, img in enumerate(images):
-                    pic = img[:, startY:endY, startX:endX]
-                    target[:, :, :, i * num_image + idx] = pic
-                    target[:, :, :, (self.num_view/2 +i) * num_image + idx] = pic[:, :, ::-1]
-        else:
-            matrix.trim_images(images, target, self.img_size, self.border_size)
+    cropped = np.ndarray((3, self.inner_size, self.inner_size, len(images) * self.num_view), dtype = np.float32)
+    self.__trim_borders(images, cropped)
 
-    def __decode_trim_images2(self, images, target):
-        matrix.decode_trim_images(images, target, self.img_size, self.border_size)
+  def __trim_borders(self, images, target):
+    matrix.trim_images(images, target, self.img_size, self.border_size)
 
-    def __multigpu_seg(self, data):
-        if not multi_gpu:
-            return images
-        num_images = util.divup(len(images), num_gpu)
-        if rank != num_gpu - 1:
-            images = data['data'][rank * num_images: (rank + 1) * num_images]
-            labels = data['labels'][rank * num_images: (rank + 1) * num_images]
-        else:
-            images = data['data'][rank * num_images:]
-            labels = data['labels'][rank * num_images:]
-        data['data'] = images
-        data['labels'] = labels
-        return data
+  def __decode_trim_images2(self, images, target):
+    matrix.decode_trim_images(images, target, self.img_size, self.border_size)
 
-    def get_next_batch(self):
-        self.get_next_index()
-        epoch = self.curr_epoch
-        filename = os.path.join(self.data_dir, 'data_batch_%d' % (self.curr_batch))
-        start = time.time()
-        if os.path.isdir(filename):
-            images = []
-            labels = []
+  def __multigpu_seg(self, data):
+    if not multi_gpu:
+      return data
+    num_images = util.divup(len(images), num_gpu)
+    if rank != num_gpu - 1:
+      images = data['data'][rank * num_images: (rank + 1) * num_images]
+      labels = data['labels'][rank * num_images: (rank + 1) * num_images]
+    else:
+      images = data['data'][rank * num_images:]
+      labels = data['labels'][rank * num_images:]
+    data['data'] = images
+    data['labels'] = labels
+    return data
 
-            for sub_filename in os.listdir(filename):
-                path = os.path.join(filename, sub_filename)
-                data = util.load(path)
-                images.extend(data['data'])
-                labels.extend(data['labels'])
-            data['data'] = images
-            data['labels'] = labels
-        else:
-            data = util.load(filename)
-        data = self.__multigpu_seg(data)
-        images = data['data']
+  def get_next_batch(self):
+    self.get_next_index()
+    epoch = self.curr_epoch
+    filename = os.path.join(self.data_dir, 'data_batch_%d' % (self.curr_batch))
+    start = time.time()
+    if os.path.isdir(filename):
+      images = []
+      labels = []
 
-        cropped = np.ndarray((3, self.inner_size, self.inner_size, len(images) * self.num_view), dtype = np.float32)
-        self.__decode_trim_images2(images, cropped)
+      for sub_filename in os.listdir(filename):
+        path = os.path.join(filename, sub_filename)
+        data = util.load(path)
+        images.extend(data['data'])
+        labels.extend(data['labels'])
+      data['data'] = images
+      data['labels'] = labels
+    else:
+      data = util.load(filename)
+    data = self.__multigpu_seg(data)
+    images = data['data']
 
-        cropped = garray.reshape_last(cropped) - self.data_mean
-        cropped = np.require(cropped.reshape((3, self.inner_size, self.inner_size, len(images) * self.num_view)), dtype = np.single, requirements='C')
+    cropped = np.ndarray((3, self.inner_size, self.inner_size, len(images) * self.num_view), dtype = np.float32)
+    self.__decode_trim_images2(images, cropped)
 
-        labels = np.array(labels)
-        labels = labels.reshape(labels.size, )
-        labels = np.require(labels, dtype=np.single, requirements='C')
-        return BatchData(cropped, labels, epoch)
+    cropped = garray.reshape_last(cropped) - self.data_mean
+    cropped = np.require(cropped.reshape((3, self.inner_size, self.inner_size, len(images) * self.num_view)), dtype = np.single, requirements='C')
+
+    labels = np.array(labels)
+    labels = labels.reshape(labels.size, )
+    labels = np.require(labels, dtype=np.single, requirements='C')
+    return BatchData(cropped, labels, epoch)
 
 class DummyDataProvider(DataProvider):
   def __init__(self, inner_size, output_size, batch_size = 1024, minibatch_size = 128):
@@ -467,13 +425,6 @@ class ParallelDataProvider(DataProvider):
     return self.dp.image_shape
 
   @property
-  def multiview(self):
-    if hasattr(self.dp, 'multiview'):
-      return self.dp.multiview
-    else:
-      return False
-
-  @property
   def batch_size(self):
     if hasattr(self.dp, 'batch_size'):
       return self.dp.batch_size
@@ -508,15 +459,12 @@ class ParallelDataProvider(DataProvider):
     batch_data = self._data_queue.get()
 
     self.curr_epoch = batch_data.epoch
-    if not self.multiview and PREV_FILL_GPU:
-      if self._gpu_batch is not None:
-        self._gpu_batch.data.mem_free()
-        del self._gpu_batch
-      batch_data.data = garray.array(batch_data.data, dtype = np.float32)
-      batch_data.labels = garray.array(batch_data.labels, dtype = np.float32)
-      self._gpu_batch = batch_data
-    else:
-      self._cpu_batch = batch_data
+    if self._gpu_batch is not None:
+      self._gpu_batch.data.mem_free()
+      del self._gpu_batch
+    batch_data.data = garray.array(batch_data.data, dtype = np.float32)
+    batch_data.labels = garray.array(batch_data.labels, dtype = np.float32)
+    self._gpu_batch = batch_data
 
   def __get_next_minibatch(self):
     if self.index == 0:
@@ -564,65 +512,42 @@ class ParallelDataProvider(DataProvider):
     if self._reader is None:
       self._start_read()
 
-    #if self._gpu_batch is None:
-    #  self._fill_reserved_data()
     if self.index == 0:
-        self._fill_reserved_data()
+      self._fill_reserved_data()
 
     # the data has to be compete copy of image data on each worker
-    if not self.multiview and PREV_FILL_GPU:
-      width = self._gpu_batch.data.shape[-1]
-      gpu_data = self._gpu_batch.data
-      gpu_labels = self._gpu_batch.labels
-      epoch = self._gpu_batch.epoch
+    width = self._gpu_batch.data.shape[-1]
+    gpu_data = self._gpu_batch.data
+    gpu_labels = self._gpu_batch.labels
+    epoch = self._gpu_batch.epoch
 
-      # special case wheh the batch size is equal to the data provider batch size
-      label_batch_size = batch_size
-      tmp_batch_size = batch_size / num_gpu
-      if rank == num_gpu - 1:
-        tmp_batch_size = batch_size - tmp_batch_size * (num_gpu -1)
-      batch_size = tmp_batch_size
+    # special case wheh the batch size is equal to the data provider batch size
+    label_batch_size = batch_size
+    tmp_batch_size = batch_size / num_gpu
+    if rank == num_gpu - 1:
+      tmp_batch_size = batch_size - tmp_batch_size * (num_gpu -1)
+    batch_size = tmp_batch_size
 
-      if batch_size == width:
-        data = gpu_data.copy()
-        labels = gpu_labels.copy()
-        #self._fill_reserved_data()
+    if batch_size == width:
+      data = gpu_data.copy()
+      labels = gpu_labels.copy()
+      self.index = 0
+    else:
+      if self.index + batch_size >=  width:
+        width = width - self.index
+        labels = gpu_labels[self.index:self.index + batch_size]
+        data = gpu_data[:, :, :, self.index:self.index + batch_size]
+
         self.index = 0
       else:
-        if self.index + batch_size >=  width:
-          width = width - self.index
-          labels = gpu_labels[self.index:self.index + batch_size]
-          data = gpu_data[:, :, :, self.index:self.index + batch_size]
+        labels = gpu_labels[self.index : self.index + batch_size]
+        data = gpu_data[:, :, :, self.index:self.index + batch_size]
+        self.index += batch_size
 
-          self.index = 0
-          #self._fill_reserved_data()
-        else:
-          labels = gpu_labels[self.index : self.index + batch_size]
-          data = gpu_data[:, :, :, self.index:self.index + batch_size]
-          self.index += batch_size
-
-      if multi_gpu:
-        data = arr.assemble(data)
-        #gather label from other workers
-        labels = arr.concatenate(labels)
-    else:
-      channel, img_size, img_size, width = self._cpu_batch.data.shape
-      cpu_data = self._cpu_batch.data
-      cpu_labels = self._cpu_batch.labels
-      epoch = self._cpu_batch.epoch
-
-      width /= self.num_view
-      if self.index + batch_size >=  width:
-        batch_size = width - self.index
-
-      labels = cpu_labels[self.index:self.index + batch_size]
-      data = np.zeros((channel, img_size, img_size, batch_size * self.num_view), dtype = np.float32)
-      for i in range(self.num_view):
-        data[:, :, :, i* batch_size: (i+ 1) * batch_size] = cpu_data[:, :, :, self.index + width * i : self.index + width * i + batch_size]
-
-      self.index = (self.index + batch_size) / width
-      data = uniformed_array(np.require(data, requirements = 'C'), to2dim = True)
-      labels = uniformed_array(np.require(labels, requirements = 'C'))
+    if multi_gpu:
+      data = arr.assemble(data)
+      #gather label from other workers
+      labels = arr.concatenate(labels)
 
     return BatchData(data, labels, epoch)
 
@@ -631,6 +556,8 @@ class ParallelDataProvider(DataProvider):
   def recover_from_dp(self, dp):
     self.index = dp['index']
     self.dp.recover_from_dp(dp)
+    self._start_read()
+    self._fill_reserved_data()
 
   def dump(self):
     dp = self.dp.dump()
@@ -652,10 +579,7 @@ def get_by_name(name):
     dp_klass = dp_dict[name]
     def construct_dp(*args, **kw):
       dp = dp_klass(*args, **kw)
-      if PARALLEL_READ:
-        return ParallelDataProvider(dp)
-      else:
-        return dp
+      return ParallelDataProvider(dp)
     return construct_dp
 
 register_data_provider('cifar10', CifarDataProvider)

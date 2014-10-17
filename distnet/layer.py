@@ -520,17 +520,6 @@ class SoftmaxLayer(Layer):
     assert np.isscalar(self.batchCorrect)
     arr.logreg_cost_col(output, label, self.cost)
 
-  def logreg_cost_multiview(self, label, output, num_view):
-    # only try multiview with test on single gpu
-    unit = self.batch_size / num_view
-    if self.cost.shape[0] != unit:
-      self.cost = allocate((unit, 1))
-    maxid = garray.argmax(output, axis = 0)
-    self.batchCorrect = garray.same_reduce_multiview(label, maxid, num_view)
-    tmp = allocate((output.shape[0], unit))
-    garray.partial_copy_to(output, tmp, 0, output.shape[0], 0, unit)
-    garray.logreg_cost_col(tmp, label, self.cost)
-
   def bprop(self, label, input, output, outGrad):
     outGrad.fill(0)
     arr.softmax_bprop(output, label, outGrad)
