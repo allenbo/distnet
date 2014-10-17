@@ -13,18 +13,13 @@ from distbase import util
 
 test_id = 'imagenet-simple'
 
-checkpoint_dir = '/ssd/checkpoint/'
-#checkpoint_dir = '/proj/FastNet/checkpoint/'
-param_file = './config/imagenet_cudaconv.cfg'
+checkpoint_dir = './checkpoint/'
+param_file = './config/alexnet2014.cfg'
 output_dir = ''
-output_method = 'disk'
 
-#data_dir = '/proj/FastNet/part-imagenet/'
-#train_range = range(3, 26) #1,2,3,....,40
-#test_range = range(1, 3) #41, 42, ..., 48
-data_dir = '/ssd/part-imagenet-category/'
-train_range = range(11, 20) #1,2,3,....,40
-test_range = range(1, 10) #41, 42, ..., 48
+data_dir = './nn-data/imagenet/train'
+train_range = range(101, 1301)
+test_range = range(1, 101)
 data_provider = 'imagenet'
 
 
@@ -42,7 +37,7 @@ if model is None:
 save_freq = 100
 test_freq = 100
 adjust_freq = 100
-num_epochs = 4
+num_epochs = 90
 image_color = 3
 image_shape = ConvDataLayout.get_output_shape(image_size, image_size, image_color, batch_size)
 net = parser.load_model(net.FastNet(image_shape), model)

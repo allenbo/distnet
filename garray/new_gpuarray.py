@@ -8,7 +8,6 @@ from distbase import cuda_base
 import time
 import traceback
 
-curr_mem = 0
 default_stream = None
 
 @sync_function
@@ -38,18 +37,6 @@ def new_init(self, *args, **kw):
   global default_stream
   if default_stream is None:
       default_stream = driver.Stream()
-  #global curr_mem
-  #if 'shape' in kw:
-  #  shape = kw['shape']
-  #else:
-  #  shape = args[0]
-
-  #size = np.prod(shape) * 4 / 1024.0
-  #free, total = get_mem_info()
-  #if size <= free:
-  #  print shape, free, curr_mem
-  #  curr_mem += size
-
   #traceback.print_stack()
   result = old_init(self, *args, **kw)
   driver.Context.synchronize()
