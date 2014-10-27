@@ -8,7 +8,7 @@ top of the convolutional kernel code from [cuda-convnet](https://code.google.com
 
   * MPI:[OpenMPI](http://www.open-mpi.org) or [MVAPICH](http://mvapich.cse.ohio-state.edu/)
   * [CUDA](http://www.nvidia.com/object/cuda_home_new.html)
-  * [JPEGLIB](http://sourceforge.net/projects/libjpeg/)
+  * [JPEGLIB](http://www.ijg.org/)
 
   * [NumPy](http://www.numpy.org/)
   * [PyCUDA](http://documen.tician.de/pycuda/)
